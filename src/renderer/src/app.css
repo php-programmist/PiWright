@@ -1,0 +1,192 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #14161a;
+  color: #d7dce2;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #262a31;
+  font-size: 12px;
+  color: #9aa3ad;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #555;
+}
+
+.dot.ready {
+  background: #46c46e;
+}
+
+.dot.streaming {
+  background: #e0b23e;
+  animation: pulse 1s infinite alternate;
+}
+
+.dot.starting {
+  background: #5aa2e0;
+}
+
+.dot.error,
+.dot.disconnected {
+  background: #e05a5a;
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.spacer {
+  flex: 1;
+}
+
+.error {
+  padding: 6px 14px;
+  background: #3a2020;
+  color: #f0a0a0;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.user-message {
+  align-self: flex-end;
+  max-width: 75%;
+  background: #2a3140;
+  padding: 8px 12px;
+  border-radius: 10px 10px 2px 10px;
+  white-space: pre-wrap;
+}
+
+.assistant-message {
+  align-self: flex-start;
+  max-width: 85%;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.thinking {
+  align-self: flex-start;
+  max-width: 85%;
+  color: #8a93a0;
+  font-size: 12px;
+}
+
+.thinking pre {
+  white-space: pre-wrap;
+  margin: 4px 0 0;
+}
+
+.cursor {
+  color: #e0b23e;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #262a31;
+}
+
+.composer textarea {
+  flex: 1;
+  resize: vertical;
+  background: #1c2027;
+  color: #d7dce2;
+  border: 1px solid #333a44;
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+}
+
+.composer button,
+.settings button,
+.header .clear {
+  background: #2f6fdb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.composer button:disabled {
+  background: #333a44;
+  color: #777;
+}
+
+.header .clear {
+  background: transparent;
+  color: #9aa3ad;
+  border: 1px solid #333a44;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  border-top: 1px solid #262a31;
+  font-size: 12px;
+  color: #9aa3ad;
+}
+
+.settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings input,
+.settings select {
+  background: #1c2027;
+  color: #d7dce2;
+  border: 1px solid #333a44;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+  width: 160px;
+}
+
+.saved {
+  color: #46c46e;
+}
