@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
@@ -59,7 +59,8 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const active = useSessionsStore((s) => s.active.filter((r) => projectKey(r.project) === key))
+  const activeAll = useSessionsStore((s) => s.active)
+  const active = useMemo(() => activeAll.filter((r) => projectKey(r.project) === key), [activeAll, key])
   const toggleExpanded = useSessionsStore((s) => s.toggleExpanded)
   const removeProject = useSessionsStore((s) => s.removeProject)
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
