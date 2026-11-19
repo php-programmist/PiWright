@@ -1,0 +1,29 @@
+# Приватная спека — отдельный репозиторий, в публичный не попадает
+/spec/
+
+# Node / Electron
+node_modules/
+dist/
+out/
+release/
+*.tsbuildinfo
+
+# Env и секреты — только в %APPDATA%\Piwright
+.env
+.env.*
+*.local
+
+# Логи
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
