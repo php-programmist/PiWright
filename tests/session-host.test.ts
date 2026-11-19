@@ -85,18 +85,38 @@ describe('SessionHost', () => {
     const result = await host.prompt('ping')
     expect(result.ok).toBe(true)
     await vi.waitFor(() => {
-      expect(events.some((e) => e.type === 'agent_settled')).toBe(true)
+      expect(events.some((e) => e.type === 'turn_end')).toBe(true)
     })
     expect(statuses.map((s) => s.state)).toContain('ready')
     expect(statuses.some((s) => s.state === 'streaming')).toBe(true)
     host.dispose()
   })
 
-  it('restarts a dead process with --session on the next prompt', async () => {
+  it('restarts a dead process with --session on the next prompt and replays history', async () => {
     const first = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
-    const second = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
+    const second = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_messages') {
+        return {
+          messages: [
+            { role: 'user', content: [{ type: 'text', text: 'earlier question' }] },
+            { role: 'assistant', content: [{ type: 'text', text: 'earlier answer' }] }
+          ]
+        }
+      }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
     currentChild = first
-    const { host, spawnArgs, statuses } = makeHost([first, second])
+    const { host, spawnArgs, statuses, events } = makeHost([first, second])
     await host.prompt('one')
     first.closeWith(1)
     await vi.waitFor(() => {
@@ -108,6 +128,9 @@ describe('SessionHost', () => {
     expect(spawnArgs).toHaveLength(2)
     expect(spawnArgs[0]).toEqual(['--mode', 'rpc'])
     expect(spawnArgs[1]).toEqual(['--mode', 'rpc', '--session', 'C:\\proj\\.pi\\sessions\\a.jsonl'])
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'injected_user_message' && e.text === 'earlier question')).toBe(true)
+    })
     host.dispose()
   })
 
@@ -138,6 +161,93 @@ describe('SessionHost', () => {
     const result = await host.prompt('ping')
     expect(result.ok).toBe(false)
     expect(result.error).toContain('Project directory')
+    host.dispose()
+  })
+
+  it('extension_ui_request dialogs open, first answer wins, fire-and-forget methods are ignored', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"extension_ui_request","id":"u1","method":"confirm","title":"Run?","message":"rm -rf"}\n' +
+              '{"type":"extension_ui_request","id":"u2","method":"notify","message":"hi"}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'dialog_open')).toBe(true)
+    })
+    expect(events.some((e) => e.type === 'dialog_open' && e.dialog.kind === 'confirm')).toBe(true)
+    expect(events.some((e) => e.type === 'dialog_open' && e.dialog.kind === 'input')).toBe(false)
+    expect(host.getPendingDialogs()).toHaveLength(1)
+
+    const first = host.respondDialog('u1', { kind: 'confirmed', confirmed: true })
+    expect(first.ok).toBe(true)
+    const second = host.respondDialog('u1', { kind: 'confirmed', confirmed: false })
+    expect(second.ok).toBe(false)
+    expect(host.getPendingDialogs()).toHaveLength(0)
+    const sent = child.sent.filter((c) => c['type'] === 'extension_ui_response')
+    expect(sent).toEqual([{ type: 'extension_ui_response', id: 'u1', confirmed: true }])
+    host.dispose()
+  })
+
+  it('abort clears the queue then aborts', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'clear_queue') return { steering: ['stop that'], followUp: [] }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('go')
+    const result = await host.abort()
+    expect(result.ok).toBe(true)
+    expect(result.error).toBeNull()
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'queue_update' && e.steering.length === 0 && e.followUp.length === 0)).toBe(true)
+    })
+    const types = child.sent.map((c) => c['type'])
+    expect(types.indexOf('clear_queue')).toBeGreaterThanOrEqual(0)
+    expect(types.indexOf('abort')).toBeGreaterThan(types.indexOf('clear_queue'))
+    host.dispose()
+  })
+
+  it('setModel and setThinkingLevel send protocol commands and refresh thinking state', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return { ...handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl'), thinkingLevel: 'low' }
+      }
+      if (type === 'get_available_models') {
+        return { models: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'low'] }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child])
+    await host.prompt('go')
+    const modelResult = await host.setModel('p/m')
+    expect(modelResult.ok).toBe(true)
+    const setModel = child.sent.find((c) => c['type'] === 'set_model')
+    expect(setModel).toMatchObject({ provider: 'p', modelId: 'm' })
+    const thinkingResult = await host.setThinkingLevel('low')
+    expect(thinkingResult.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'set_thinking_level' && c['level'] === 'low')).toBe(true)
+    expect(statuses.some((s) => s.thinkingLevel === 'low')).toBe(true)
     host.dispose()
   })
 })

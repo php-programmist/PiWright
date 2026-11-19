@@ -29,15 +29,13 @@ async function runSmoke(backend: 'native' | 'wsl'): Promise<string> {
     await vi
       .waitFor(
         () => {
-          expect(events.some((e) => e.type === 'agent_settled')).toBe(true)
+          expect(events.some((e) => e.type === 'turn_end')).toBe(true)
         },
         { timeout: 150_000, interval: 500 }
       )
     let text = ''
     for (const e of events) {
-      if (e.type !== 'message_update') continue
-      const d = e.payload['assistantMessageEvent'] as Record<string, unknown> | undefined
-      if (d && d['type'] === 'text_delta' && typeof d['delta'] === 'string') text += d['delta']
+      if (e.type === 'assistant_delta') text += e.text
     }
     expect(text.trim().length).toBeGreaterThan(0)
     expect(statuses.some((s) => s.state === 'ready')).toBe(true)
