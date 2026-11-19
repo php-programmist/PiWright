@@ -126,10 +126,15 @@ export async function resolveSessionsRoot(project: ProjectEntry, settings: Setti
 
 /** cwd проекта на стороне бэкенда: у WSL — путь внутри дистрибутива. */
 export async function projectBackendCwd(project: ProjectEntry, settings: Settings): Promise<string> {
-  if (project.kind === 'native') return project.dir
-  const distros = await listWslDistros()
-  const distro = settings.wslDistro.trim() || distros[0]
-  return distro === undefined ? project.dir : ((await wslPathFor(distro, project.dir)) ?? project.dir)
+  return toBackendPath(project, settings, project.dir)
+}
+
+/** Путь на стороне бэкенда: WSL UNC (`\\wsl.localhost\…`) → путь внутри дистрибутива, иначе как есть.
+ *  Нужен для всего, что уходит в процесс pi: cwd, `--session <путь>`. */
+export async function toBackendPath(project: ProjectEntry, settings: Settings, path: string): Promise<string> {
+  if (project.kind === 'native') return path
+  const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
+  return distro === undefined ? path : ((await wslPathFor(distro, path)) ?? path)
 }
 
 /** История проекта: сводки файлов сессий, новые сверху. */

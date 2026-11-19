@@ -26,7 +26,7 @@ import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contr
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
-import { listProjectHistory } from '../sessions/session-catalog'
+import { listProjectHistory, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
 function isDialogAnswer(value: unknown): value is DialogAnswer {
@@ -78,11 +78,12 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     return { hostId: piHost.create(project).id }
   })
 
-  ipcMain.handle(SESSIONS_OPEN_CHANNEL, (_event, project: unknown, sessionFile: unknown) => {
+  ipcMain.handle(SESSIONS_OPEN_CHANNEL, async (_event, project: unknown, sessionFile: unknown) => {
     if (!isProjectEntry(project) || typeof sessionFile !== 'string' || sessionFile.length === 0) {
       throw new Error('Invalid session request')
     }
-    const created = piHost.create(project, sessionFile)
+    const backendPath = await toBackendPath(project, settings.get(), sessionFile)
+    const created = piHost.create(project, backendPath)
     void created.ensureStarted().catch(() => {})
     return { hostId: created.id }
   })
