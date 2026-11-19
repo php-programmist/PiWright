@@ -4,25 +4,24 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { SessionHost } from '../src/main/pi/session-host'
 import type { SessionHostListener } from '../src/main/pi/session-host'
-import type { PiEventMessage, PiStatus, Settings } from '../src/shared/ipc-contracts'
+import type { PiStatus, ProjectEntry, Settings } from '../src/shared/ipc-contracts'
+import type { UiEvent } from '../src/shared/agent-events'
 
 /** Живой smoke против настоящего pi: PIWRIGHT_LIVE_SMOKE=1 npx vitest run tests/live-smoke.test.ts.
  *  Полный круг «prompt → стрим → agent_settled» на обоих бэкендах (критерий фазы 1). */
 const enabled = process.env['PIWRIGHT_LIVE_SMOKE'] === '1'
 
-async function runSmoke(backend: 'native' | 'wsl'): Promise<string> {
+async function runSmoke(kind: 'native' | 'wsl'): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'piwright-smoke-'))
-  const settings: Settings = { backend, wslDistro: '', piPath: '', projectDir: dir }
-  const events: PiEventMessage[] = []
+  const settings: Settings = { wslDistro: '', piPath: '', projects: [] }
+  const project: ProjectEntry = { kind, dir }
+  const events: UiEvent[] = []
   const statuses: PiStatus[] = []
   const listener: SessionHostListener = {
     onEvent: (e) => events.push(e),
     onStatus: (s) => statuses.push(s)
   }
-  const host = new SessionHost(
-    () => settings,
-    listener
-  )
+  const host = new SessionHost(() => settings, listener, project)
   try {
     const result = await host.prompt('Reply with exactly one word: ping')
     expect(result.ok, result.error ?? 'prompt failed').toBe(true)

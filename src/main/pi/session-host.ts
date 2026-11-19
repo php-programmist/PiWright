@@ -1,8 +1,9 @@
-/** Реестр одной pi-сессии: ленивый старт, хендшейк, трансляция событий, диалоги расширений,
- *  abort/модель/thinking, рестарт после падения с `--session <путь>` и реплеем истории.
- *  Порт жизненного цикла `PiSession`. */
+/** Одна pi-сессия: ленивый старт, хендшейк, трансляция событий, диалоги расширений,
+ *  abort/модель/thinking/переименование, рестарт после падения с `--session <путь>` и реплеем истории.
+ *  Порт жизненного цикла `PiSession`. Реестр хостов — `PiHost`. */
+import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
-import type { DialogResult, PiEventMessage, PiStatus, PromptResult, Settings } from '../../shared/ipc-contracts'
+import type { DialogResult, PiStatus, PromptResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiHandshakeResult } from '../../shared/protocol-types'
 import type { PiBackend } from './backends/types'
@@ -12,11 +13,12 @@ import type { CreateBackendResult } from './backends/factory'
 import { PiEventTranslator } from './event-translator'
 import { decodeExtensionDialog, encodeDialogAnswer } from './extension-ui'
 import { runHandshake } from './handshake'
+import { sessionStatus } from './session-status'
 import { piArgs } from './pi-args'
 
 export interface SessionHostListener {
   onStatus(status: PiStatus): void
-  onEvent(event: PiEventMessage): void
+  onEvent(event: UiEvent): void
 }
 
 interface PendingDialogEntry {
@@ -26,35 +28,51 @@ interface PendingDialogEntry {
 
 const DIALOG_EXPIRY_GRACE_MS = 2000
 
-export class SessionHost {
-  private static readonly instances = new Set<SessionHost>()
+export interface SessionHostOptions {
+  /** Файл сессии для возобновления — спавн с `--session <путь>` и реплей истории. */
+  sessionFile?: string | null
+  createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
+}
 
-  static disposeAll(): void {
-    for (const instance of SessionHost.instances) instance.dispose()
-  }
+export class SessionHost {
+  readonly id = randomUUID()
 
   private conn: PiConnection | null = null
   private backend: PiBackend | null = null
-  private sessionFile: string | null = null
+  private sessionFile: string | null
   private startPromise: Promise<void> | null = null
   private translator: PiEventTranslator | null = null
   private handshake: PiHandshakeResult | null = null
   private lastState: PiStatus['state'] = 'idle'
-  /** Уровень thinking, выбранный до подъёма процесса, — уйдёт в хендшейке. */
+  private lastStatusData: PiStatus | null = null
+  private sessionName: string | null = null
+  private firstUserText: string | null = null
+  /** Уровень thinking/имя сессии, выбранные до подъёма процесса, — уйдут в хендшейке. */
   private desiredThinkingLevel: string | null = null
+  private desiredSessionName: string | null = null
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
+  private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
 
   constructor(
     private readonly getSettings: () => Settings,
     private readonly listener: SessionHostListener,
-    private readonly createBackend: (settings: Settings) => Promise<CreateBackendResult> = createPiBackend
+    public readonly project: ProjectEntry,
+    opts: SessionHostOptions = {}
   ) {
-    SessionHost.instances.add(this)
+    this.sessionFile = opts.sessionFile ?? null
+    this.createBackend = opts.createBackend ?? createPiBackend
+    this.status('idle')
+  }
+
+  /** Заголовок: имя сессии → первый текст пользователя → «New Chat». */
+  private get title(): string {
+    return this.sessionName ?? this.firstUserText ?? 'New Chat'
   }
 
   private status(state: PiStatus['state'], error: string | null = null): void {
     this.lastState = state
-    this.listener.onStatus({
+    const snapshot: PiStatus = {
+      hostId: this.id,
       state,
       backend: this.backend?.displayName ?? null,
       model: this.handshake?.model ? `${this.handshake.model.provider}/${this.handshake.model.id}` : null,
@@ -63,8 +81,18 @@ export class SessionHost {
       error,
       models: this.handshake?.models ?? [],
       thinkingLevels: this.handshake?.thinkingLevels ?? [],
-      thinkingLevel: this.handshake?.thinkingLevel ?? null
-    })
+      thinkingLevel: this.handshake?.thinkingLevel ?? null,
+      project: this.project,
+      title: this.title,
+      dot: sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind))
+    }
+    this.lastStatusData = snapshot
+    this.listener.onStatus(snapshot)
+  }
+
+  /** Последний статус — стартовая выдача панели для уже запущенных сессий. */
+  lastStatus(): PiStatus | null {
+    return this.lastStatusData
   }
 
   private emit(event: UiEvent): void {
@@ -73,24 +101,31 @@ export class SessionHost {
 
   /** Ленивый старт: бэкенд из настроек → спавн → хендшейк → реплей истории при возобновлении.
    *  Упавший процесс поднимается заново с `--session <файл>` на следующем prompt. */
-  private ensureStarted(): Promise<void> {
+  ensureStarted(): Promise<void> {
     if (this.conn !== null && this.conn.running) return Promise.resolve()
     if (this.startPromise !== null) return this.startPromise
-    this.startPromise = this.start().finally(() => {
-      this.startPromise = null
-    })
+    this.startPromise = this.start()
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        this.conn = null
+        this.status('error', message)
+        throw err
+      })
+      .finally(() => {
+        this.startPromise = null
+      })
     return this.startPromise
   }
 
   private async start(): Promise<void> {
     const settings = this.getSettings()
-    const projectDir = settings.projectDir.trim()
+    const projectDir = this.project.dir.trim()
     if (projectDir.length === 0) {
-      throw new Error('Project directory is not set. Open settings and pick a directory.')
+      throw new Error('Project directory is not set.')
     }
     const resume = this.sessionFile !== null
     this.status('starting')
-    const created = await this.createBackend(settings)
+    const created = await this.createBackend(this.project, settings)
     if (created.backend === null) {
       throw new Error(created.error)
     }
@@ -98,14 +133,24 @@ export class SessionHost {
     const translator = new PiEventTranslator({
       onAssistantTextDelta: (text) => this.emit({ type: 'assistant_delta', text }),
       onThoughtDelta: (text) => this.emit({ type: 'thought_delta', text }),
-      onInjectedUserMessage: (text) => this.emit({ type: 'injected_user_message', text }),
-      onUserMessage: (text) => this.emit({ type: 'user_message', text }),
+      onInjectedUserMessage: (text) => {
+        if (this.firstUserText === null && text.trim().length > 0) this.firstUserText = text.trim()
+        this.emit({ type: 'injected_user_message', text })
+      },
+      onUserMessage: (text) => {
+        if (this.firstUserText === null && text.trim().length > 0) this.firstUserText = text.trim()
+        this.emit({ type: 'user_message', text })
+      },
       onQueueUpdate: (steering, followUp) => this.emit({ type: 'queue_update', steering, followUp }),
       onToolStart: (call) => this.emit({ type: 'tool_start', call }),
       onToolUpdate: (id, text) => this.emit({ type: 'tool_update', id, text }),
       onToolEnd: (call, result) => this.emit({ type: 'tool_end', call, result }),
       onContextUsageUpdate: (usage) => this.emit({ type: 'context_usage', used: usage.used, size: usage.size }),
-      onSessionNameChanged: (name) => this.emit({ type: 'session_name', name }),
+      onSessionNameChanged: (name) => {
+        if (name !== null && name.trim().length > 0) this.sessionName = name
+        this.emit({ type: 'session_name', name })
+        this.status(this.lastState)
+      },
       onNotify: (message, isError) => this.emit({ type: 'notify', message, isError }),
       onCompactionStart: (reason) => this.emit({ type: 'compaction_start', reason }),
       onCompactionEnd: (end) => this.emit({ type: 'compaction_end', end }),
@@ -128,7 +173,11 @@ export class SessionHost {
     })
     try {
       await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile) })
-      const handshake = await runHandshake(conn, { desiredThinkingLevel: this.desiredThinkingLevel })
+      const handshake = await runHandshake(conn, {
+        desiredThinkingLevel: this.desiredThinkingLevel,
+        sessionName: this.desiredSessionName
+      })
+      this.desiredSessionName = null
       this.sessionFile = handshake.sessionFile
       this.handshake = handshake
       translator.contextWindow = handshake.model?.contextWindow ?? 0
@@ -177,6 +226,7 @@ export class SessionHost {
               if (this.pendingDialogs.get(id) === entry) {
                 this.pendingDialogs.delete(id)
                 this.emit({ type: 'dialog_expired', id })
+                this.status(this.lastState)
               }
             }, dialog.timeoutMs + DIALOG_EXPIRY_GRACE_MS)
           : null
@@ -184,6 +234,7 @@ export class SessionHost {
     if (entry.timer !== null) entry.timer.unref()
     this.pendingDialogs.set(id, entry)
     this.emit({ type: 'dialog_open', id, dialog })
+    this.status(this.lastState)
   }
 
   private clearPendingDialogs(): void {
@@ -200,11 +251,36 @@ export class SessionHost {
     if (entry.timer !== null) clearTimeout(entry.timer)
     this.pendingDialogs.delete(id)
     this.conn?.respondExtensionUi(id, encodeDialogAnswer(answer))
+    this.status(this.lastState)
     return { ok: true, error: null }
   }
 
   getPendingDialogs(): { id: string; dialog: ExtensionDialog }[] {
     return [...this.pendingDialogs.entries()].map(([id, entry]) => ({ id, dialog: entry.dialog }))
+  }
+
+  /** Переименовать сессию: живой процесс — `set_session_name`, до подъёма — в хендшейке. */
+  async rename(name: string): Promise<PromptResult> {
+    const trimmed = name.trim()
+    if (trimmed.length === 0) return { ok: false, error: 'Session name is empty' }
+    this.sessionName = trimmed
+    this.emit({ type: 'session_name', name: trimmed })
+    const conn = this.conn
+    if (conn === null || !conn.running) {
+      this.desiredSessionName = trimmed
+      this.status(this.lastState)
+      return { ok: true, error: null }
+    }
+    try {
+      const response = await conn.request('set_session_name', { name: trimmed })
+      if (!response.success) {
+        return { ok: false, error: `set_session_name failed: ${response.error ?? 'no details'}` }
+      }
+      this.status(this.lastState)
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   }
 
   /** Прервать ход: сначала снять очередь, затем `abort`. Процесс и сессия живут дальше.
@@ -304,14 +380,11 @@ export class SessionHost {
       return await this.sendPrompt(text)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      this.conn = null
-      this.status('error', message)
       return { ok: false, error: message }
     }
   }
 
   dispose(): void {
-    SessionHost.instances.delete(this)
     this.clearPendingDialogs()
     this.conn?.close()
     this.conn = null

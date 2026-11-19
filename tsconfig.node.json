@@ -19,8 +19,7 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
-    "src/renderer/src/stores/**/*.ts",
-    "src/renderer/src/lib/**/*.ts",
+    "src/renderer/src/stores/chat.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts",
     "vitest.config.ts"

@@ -69,10 +69,6 @@ export async function listWslDistros(): Promise<string[]> {
   })
 }
 
-export async function hasWslDistro(): Promise<boolean> {
-  return (await listWslDistros()).length > 0
-}
-
 /** Путь к pi в дистрибутиве: настройка → `command -v pi` → известные пути. Порт `WslBackend.resolvePiPath`. */
 export async function resolveWslPi(distro: string, settingsPath: string | null): Promise<string | null> {
   const fromSettings = (settingsPath ?? '').trim()
@@ -84,6 +80,18 @@ export async function resolveWslPi(distro: string, settingsPath: string | null):
   const output = await runWslProbe(distro, probes.join(' || '))
   if (output === null) return null
   return output.split('\n').map((l) => l.trim()).find((l) => l.includes('/pi')) ?? null
+}
+
+const wslHomeCache = new Map<string, string>()
+
+/** Домашняя директория пользователя в дистрибутиве (`echo $HOME`), кэшируется. */
+export async function resolveWslHome(distro: string): Promise<string | null> {
+  const cached = wslHomeCache.get(distro)
+  if (cached !== undefined) return cached
+  const output = await runWslProbe(distro, 'echo "$HOME"')
+  const home = output?.trim().startsWith('/') === true ? output.trim() : null
+  if (home !== null) wslHomeCache.set(distro, home)
+  return home
 }
 
 const wslPathCache = new Map<string, string>()

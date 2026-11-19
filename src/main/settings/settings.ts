@@ -1,13 +1,23 @@
-/** Настройки: JSON в `%APPDATA%\Piwright\settings.json`. Атомарная запись (tmp + rename). */
+/** Настройки: JSON в `%APPDATA%\Piwright\settings.json`. Атомарная запись (tmp + rename).
+ *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir) мигтируются в первый проект. */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Settings } from '../../shared/ipc-contracts'
+import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 
 export const DEFAULT_SETTINGS: Settings = {
-  backend: 'auto',
   wslDistro: '',
   piPath: '',
-  projectDir: ''
+  projects: []
+}
+
+/** Старые настройки (фазы 1–2) → один проект: backend native → native, иначе wsl. */
+function migrateLegacy(raw: Record<string, unknown>, base: Settings): Settings {
+  if (base.projects.length > 0) return base
+  const dir = raw['projectDir']
+  if (typeof dir !== 'string' || dir.trim().length === 0) return base
+  const kind = raw['backend'] === 'native' ? 'native' : 'wsl'
+  const project: ProjectEntry = { kind, dir }
+  return { ...base, projects: [project] }
 }
 
 export class SettingsService {
@@ -22,7 +32,8 @@ export class SettingsService {
     try {
       const raw: unknown = JSON.parse(readFileSync(this.filePath, 'utf8'))
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_SETTINGS }
-      return { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
+      const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
+      return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }
     }

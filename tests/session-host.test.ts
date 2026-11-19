@@ -4,10 +4,12 @@ import { SessionHost } from '../src/main/pi/session-host'
 import type { SessionHostListener } from '../src/main/pi/session-host'
 import type { PiBackend } from '../src/main/pi/backends/types'
 import type { CreateBackendResult } from '../src/main/pi/backends/factory'
-import type { PiEventMessage, PiStatus, Settings } from '../src/shared/ipc-contracts'
+import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
+import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { backend: 'native', wslDistro: '', piPath: '', projectDir: 'C:\\proj' }
+const SETTINGS: Settings = { wslDistro: '', piPath: '', projects: [] }
+const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 function handshakeData(sessionFile: string): Record<string, unknown> {
   return {
@@ -24,11 +26,11 @@ function makeHost(
   settings: Settings = SETTINGS
 ): {
   host: SessionHost
-  events: PiEventMessage[]
+  events: UiEvent[]
   statuses: PiStatus[]
   spawnArgs: string[][]
 } {
-  const events: PiEventMessage[] = []
+  const events: UiEvent[] = []
   const statuses: PiStatus[] = []
   const spawnArgs: string[][] = []
   const listener: SessionHostListener = {
@@ -45,11 +47,7 @@ function makeHost(
     }
   }
   const created: CreateBackendResult = { backend, error: null }
-  const host = new SessionHost(
-    () => settings,
-    listener,
-    async () => created
-  )
+  const host = new SessionHost(() => settings, listener, PROJECT, { createBackend: async () => created })
   return { host, events, statuses, spawnArgs }
 }
 
@@ -135,12 +133,13 @@ describe('SessionHost', () => {
   })
 
   it('reports backend resolution failure as an error status', async () => {
-    const events: PiEventMessage[] = []
+    const events: UiEvent[] = []
     const statuses: PiStatus[] = []
     const host = new SessionHost(
       () => SETTINGS,
       { onEvent: (e) => events.push(e), onStatus: (s) => statuses.push(s) },
-      async () => ({ backend: null, error: 'no pi found' })
+      PROJECT,
+      { createBackend: async () => ({ backend: null, error: 'no pi found' }) }
     )
     const result = await host.prompt('ping')
     expect(result.ok).toBe(false)
@@ -152,11 +151,12 @@ describe('SessionHost', () => {
   it('rejects an empty project dir before spawning', async () => {
     const statuses: PiStatus[] = []
     const host = new SessionHost(
-      () => ({ ...SETTINGS, projectDir: ' ' }),
+      () => ({ ...SETTINGS }),
       { onEvent: () => {}, onStatus: (s) => statuses.push(s) },
-      async () => {
+      { kind: 'native', dir: ' ' },
+      { createBackend: async () => {
         throw new Error('backend factory must not be called')
-      }
+      } }
     )
     const result = await host.prompt('ping')
     expect(result.ok).toBe(false)

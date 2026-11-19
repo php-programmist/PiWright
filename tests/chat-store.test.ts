@@ -8,7 +8,9 @@ import { useChatStore } from '../src/renderer/src/stores/chat'
 import type { Entry } from '../src/renderer/src/stores/chat'
 import type { UiEvent } from '../src/shared/agent-events'
 
-/** Редьюсер транскрипта: дельты с троттлингом, инструменты, эхо, диалоги. */
+/** Редьюсер транскрипта: дельты с троттлингом, инструменты, эхо, диалоги, изоляция сессий. */
+
+const HOST = 'host-1'
 
 function translateFixture(): UiEvent[] {
   const lines: string[] = []
@@ -47,7 +49,7 @@ function translateFixture(): UiEvent[] {
 describe('chat store transcript', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    useChatStore.getState().resetTranscript()
+    useChatStore.getState().resetTranscript(HOST)
   })
 
   afterEach(() => {
@@ -55,27 +57,27 @@ describe('chat store transcript', () => {
   })
 
   function entries(): Entry[] {
-    return useChatStore.getState().entries
+    return useChatStore.getState().hosts[HOST]?.entries ?? []
   }
 
   it('deltas are throttled into one text entry', () => {
     const store = useChatStore.getState()
-    store.applyEvent({ type: 'turn_start' })
-    store.applyEvent({ type: 'assistant_delta', text: 'he' })
-    store.applyEvent({ type: 'assistant_delta', text: 'llo' })
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'assistant_delta', text: 'he' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'assistant_delta', text: 'llo' } })
     expect(entries()).toEqual([])
     vi.advanceTimersByTime(200)
     expect(entries()).toEqual([{ kind: 'text', id: expect.any(Number), text: 'hello', open: true }])
-    store.applyEvent({ type: 'turn_end' })
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
     expect(entries()[0]).toMatchObject({ text: 'hello', open: false })
-    expect(useChatStore.getState().streaming).toBe(false)
+    expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
   })
 
   it('non-delta events flush pending deltas first', () => {
     const store = useChatStore.getState()
-    store.applyEvent({ type: 'turn_start' })
-    store.applyEvent({ type: 'assistant_delta', text: 'partial' })
-    store.applyEvent({ type: 'tool_start', call: { id: 'c1', name: 'bash', args: { command: 'ls' } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'assistant_delta', text: 'partial' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: { command: 'ls' } } } })
     const list = entries()
     expect(list[0]).toMatchObject({ kind: 'text', text: 'partial', open: false })
     expect(list[1]).toMatchObject({ kind: 'tool', call: { id: 'c1' }, result: null })
@@ -83,19 +85,19 @@ describe('chat store transcript', () => {
 
   it('tool update and end fill the matching block', () => {
     const store = useChatStore.getState()
-    store.applyEvent({ type: 'tool_start', call: { id: 'c1', name: 'bash', args: {} } })
-    store.applyEvent({ type: 'tool_update', id: 'c1', text: 'line 1' })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: {} } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_update', id: 'c1', text: 'line 1' } })
     expect(entries()[0]).toMatchObject({ partial: 'line 1' })
-    store.applyEvent({ type: 'tool_end', call: { id: 'c1', name: 'bash', args: {} }, result: { text: 'line 1\nline 2', isError: false, patch: null } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_end', call: { id: 'c1', name: 'bash', args: {} }, result: { text: 'line 1\nline 2', isError: false, patch: null } } })
     expect(entries()[0]).toMatchObject({ result: { text: 'line 1\nline 2' } })
   })
 
   it('own echoes are suppressed, queued deliveries are shown', () => {
     const store = useChatStore.getState()
-    store.addUserMessage('hello')
-    store.applyEvent({ type: 'user_message', text: 'hello' })
+    store.addUserMessage(HOST, 'hello')
+    store.applyEvent({ hostId: HOST, event: { type: 'user_message', text: 'hello' } })
     expect(entries()).toHaveLength(1)
-    store.applyEvent({ type: 'user_message', text: 'queued follow-up' })
+    store.applyEvent({ hostId: HOST, event: { type: 'user_message', text: 'queued follow-up' } })
     expect(entries()).toHaveLength(2)
     expect(entries()[1]).toMatchObject({ kind: 'user', text: 'queued follow-up' })
   })
@@ -103,23 +105,34 @@ describe('chat store transcript', () => {
   it('dialogs open, expire and take receipts', () => {
     const store = useChatStore.getState()
     store.applyEvent({
-      type: 'dialog_open',
-      id: 'u1',
-      dialog: { kind: 'confirm', title: 'Run?', message: null, timeoutMs: null }
+      hostId: HOST,
+      event: { type: 'dialog_open', id: 'u1', dialog: { kind: 'confirm', title: 'Run?', message: null, timeoutMs: null } }
     })
     expect(entries()[0]).toMatchObject({ kind: 'dialog', dialogId: 'u1', receipt: null })
-    store.setDialogReceipt('u1', 'answered')
+    store.setDialogReceipt(HOST, 'u1', 'answered')
     expect(entries()[0]).toMatchObject({ receipt: 'answered' })
-    store.applyEvent({ type: 'dialog_expired', id: 'u1' })
+    store.applyEvent({ hostId: HOST, event: { type: 'dialog_expired', id: 'u1' } })
     expect(entries()[0]).toMatchObject({ receipt: 'answered' })
-    store.applyEvent({ type: 'dialog_open', id: 'u2', dialog: { kind: 'input', title: 'q', placeholder: null, timeoutMs: null } })
-    store.applyEvent({ type: 'dialog_expired', id: 'u2' })
+    store.applyEvent({ hostId: HOST, event: { type: 'dialog_open', id: 'u2', dialog: { kind: 'input', title: 'q', placeholder: null, timeoutMs: null } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'dialog_expired', id: 'u2' } })
     expect(entries()[1]).toMatchObject({ receipt: 'expired' })
+  })
+
+  it('sessions are isolated by hostId', () => {
+    const store = useChatStore.getState()
+    store.addUserMessage(HOST, 'mine')
+    store.addUserMessage('host-2', 'theirs')
+    store.applyEvent({ hostId: 'host-2', event: { type: 'assistant_delta', text: 'reply' } })
+    expect(entries()).toHaveLength(1)
+    expect(useChatStore.getState().hosts['host-2']?.entries).toHaveLength(1)
+    store.removeHost('host-2')
+    expect(useChatStore.getState().hosts['host-2']).toBeUndefined()
+    expect(entries()).toHaveLength(1)
   })
 
   it('translated edit-turn fixture builds the full transcript', () => {
     const store = useChatStore.getState()
-    for (const event of translateFixture()) store.applyEvent(event)
+    for (const event of translateFixture()) store.applyEvent({ hostId: HOST, event })
     const list = entries()
     const kinds = list.map((e) => e.kind)
     expect(kinds[0]).toBe('user')
@@ -131,6 +144,6 @@ describe('chat store transcript', () => {
     const results = list.filter((e): e is Extract<Entry, { kind: 'result' }> => e.kind === 'result')
     expect(results).toHaveLength(1)
     expect(results[0].usage.contextTokens).toBe(1895)
-    expect(useChatStore.getState().streaming).toBe(false)
+    expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
   })
 })
