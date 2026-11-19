@@ -2,9 +2,12 @@ import { useEffect } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
+import { FilesPanel } from './views/files/FilesPanel'
+import { FileViewer } from './views/files/FileViewer'
 import { ChatView } from './views/chat/ChatView'
 import { SettingsView } from './views/settings/SettingsView'
 import { useChatStore } from './stores/chat'
+import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
 import { useSessionsStore } from './stores/sessions'
 
@@ -18,6 +21,9 @@ export function App(): React.JSX.Element {
   const gitOpen = useGitStore((s) => s.open)
   const toggleGit = useGitStore((s) => s.toggleOpen)
   const diffOpen = useGitStore((s) => s.selectedPath !== null)
+  const filesOpen = useFilesStore((s) => s.open)
+  const toggleFiles = useFilesStore((s) => s.toggleOpen)
+  const viewerOpen = useFilesStore((s) => s.viewerOpen)
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
 
   useEffect(() => {
@@ -31,6 +37,9 @@ export function App(): React.JSX.Element {
       applyChatStatus(status)
       applySessionsStatus(status)
     })
+    const offFilesChanged = window.piwright.onFilesChanged((message) => {
+      void useFilesStore.getState().applyFileChanged(message.project, message.path)
+    })
     void load()
     void window.piwright.getPendingDialogs().then((pending) => {
       for (const p of pending) applyEvent({ hostId: p.hostId, event: { type: 'dialog_open', id: p.id, dialog: p.dialog } })
@@ -38,6 +47,7 @@ export function App(): React.JSX.Element {
     return () => {
       offEvent()
       offStatus()
+      offFilesChanged()
     }
   }, [applyEvent, applyChatStatus, applySessionsStatus, load])
 
@@ -51,14 +61,27 @@ export function App(): React.JSX.Element {
           <div className="chat-column">
             <ChatView chat={chat ?? null} />
             {diffOpen && <DiffOverlay />}
+            {viewerOpen && <FileViewer />}
           </div>
           <div className="right-side">
             {gitOpen && <GitPanel />}
+            {filesOpen && <FilesPanel />}
             <div className="right-bar">
               <button className={gitOpen ? 'active' : ''} title="Git" onClick={toggleGit}>
                 <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
                   <line x1="1" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.4" />
                   <circle cx="8" cy="8" r="3.2" fill="#171a1f" stroke="currentColor" strokeWidth="1.4" />
+                </svg>
+              </button>
+              <button className={filesOpen ? 'active' : ''} title="Files" onClick={toggleFiles}>
+                <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M1.5 3.5h4.6l1.4 1.8h7v7.2h-13z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
             </div>

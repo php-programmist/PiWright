@@ -127,6 +127,31 @@ export interface GitMessageResult extends GitOpResult {
   message: string
 }
 
+/** Запись каталога в дереве файлов проекта (`.git` скрыт). */
+export interface FileEntry {
+  name: string
+  kind: 'dir' | 'file'
+}
+
+export interface FileListResult {
+  ok: boolean
+  error: string | null
+  entries: FileEntry[]
+}
+
+export interface FileReadResult {
+  ok: boolean
+  error: string | null
+  content: string
+}
+
+/** Файл из набора открытых изменился на диске (chokidar в main). */
+export interface FileChangedMessage {
+  project: ProjectEntry
+  /** Путь относительно корня проекта, слэши вперёд. */
+  path: string
+}
+
 /** Диалог, ждущий ответа renderer'а (реплей при переподключении — те же объекты). */
 export interface PendingDialog {
   hostId: string
@@ -159,8 +184,12 @@ export interface PiwrightApi {
   gitPush(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry): Promise<GitLogResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
+  filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
+  filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
+  filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   onPiEvent(cb: (message: PiEventMessage) => void): () => void
   onPiStatus(cb: (status: PiStatus) => void): () => void
+  onFilesChanged(cb: (message: FileChangedMessage) => void): () => void
 }
 
 export const SETTINGS_GET_CHANNEL = 'settings:get'
@@ -187,5 +216,9 @@ export const GIT_COMMIT_CHANNEL = 'git:commit'
 export const GIT_PUSH_CHANNEL = 'git:push'
 export const GIT_LOG_CHANNEL = 'git:log'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
+export const FILES_LIST_CHANNEL = 'files:list'
+export const FILES_READ_CHANNEL = 'files:read'
+export const FILES_WATCH_CHANNEL = 'files:watch'
+export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const PI_EVENT_CHANNEL = 'pi:event'
 export const PI_STATUS_CHANNEL = 'pi:status'

@@ -2,6 +2,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import {
+  FILES_CHANGED_CHANNEL,
+  FILES_LIST_CHANNEL,
+  FILES_READ_CHANNEL,
+  FILES_WATCH_CHANNEL,
   GIT_COMMIT_CHANNEL,
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
@@ -67,8 +71,12 @@ const api: PiwrightApi = {
   gitPush: (project) => ipcRenderer.invoke(GIT_PUSH_CHANNEL, project),
   gitLog: (project) => ipcRenderer.invoke(GIT_LOG_CHANNEL, project),
   gitGenerateMessage: (project) => ipcRenderer.invoke(GIT_GENERATE_MESSAGE_CHANNEL, project),
+  filesList: (project, dir) => ipcRenderer.invoke(FILES_LIST_CHANNEL, project, dir),
+  filesRead: (project, path) => ipcRenderer.invoke(FILES_READ_CHANNEL, project, path),
+  filesWatch: (project, paths) => ipcRenderer.invoke(FILES_WATCH_CHANNEL, project, paths),
   onPiEvent: (cb) => subscribe(PI_EVENT_CHANNEL, cb),
-  onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb)
+  onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb),
+  onFilesChanged: (cb) => subscribe(FILES_CHANGED_CHANNEL, cb)
 }
 
 contextBridge.exposeInMainWorld('piwright', api)

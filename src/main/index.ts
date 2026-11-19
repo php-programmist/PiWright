@@ -1,14 +1,16 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { PI_EVENT_CHANNEL, PI_STATUS_CHANNEL } from '../shared/ipc-contracts'
+import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
+import { FileService } from './files/file-service'
 import { PiHost } from './pi/pi-host'
 import { SettingsService } from './settings/settings'
 
 let mainWindow: BrowserWindow | null = null
 let piHost: PiHost | null = null
 let gitService: GitService | null = null
+let fileService: FileService | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -35,6 +37,9 @@ function createWindow(): void {
 app.whenReady().then(() => {
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
   gitService = new GitService(() => settings.get())
+  fileService = new FileService({
+    onChanged: (project, path) => mainWindow?.webContents.send(FILES_CHANGED_CHANNEL, { project, path })
+  })
   piHost = new PiHost(
     () => settings.get(),
     {
@@ -42,7 +47,7 @@ app.whenReady().then(() => {
       onEvent: (message) => mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
     }
   )
-  registerIpc(ipcMain, settings, piHost, gitService)
+  registerIpc(ipcMain, settings, piHost, gitService, fileService)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -55,4 +60,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   piHost?.disposeAll()
+  fileService?.dispose()
 })

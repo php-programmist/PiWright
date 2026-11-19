@@ -1,18 +1,40 @@
 import { editTexts, toolHeader } from '../lib/tool-blocks'
+import { useFilesStore } from '../stores/files'
+import { useSessionsStore } from '../stores/sessions'
+import { toProjectRelative } from '../../../shared/file-paths'
 import type { ToolCall, ToolResult } from '../../../shared/agent-events'
 
-/** Тул-блок: свёрнутая шапка (иконка, команда/путь), тело — вывод, патч или тексты правки. */
 export function ToolBlock({ call, partial, result }: { call: ToolCall; partial: string; result: ToolResult | null }): React.JSX.Element {
   const header = toolHeader(call)
   const status = result === null ? (partial.length > 0 ? 'running…' : 'running…') : result.isError ? 'error' : 'done'
   const edits = editTexts(call)
   const body = result !== null ? result.text : partial
+  const activeHostId = useSessionsStore((s) => s.activeHostId)
+  const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
+  const openFile = useFilesStore((s) => s.openFile)
+  const rawPath = typeof call.args['path'] === 'string' ? call.args['path'] : null
+  const relPath = rawPath !== null && project !== null ? toProjectRelative(project.dir, rawPath) : null
   return (
     <details className={`tool-block ${result?.isError ? 'error' : ''}`}>
       <summary>
         <span className="tool-icon">{header.icon}</span>
         <span className="tool-title">{header.title}</span>
-        {header.detail.length > 0 && <span className="tool-detail">{header.detail}</span>}
+        {header.detail.length > 0 &&
+          (relPath !== null && relPath.length > 0 && project !== null ? (
+            <span
+              className="tool-detail link"
+              title={rawPath ?? undefined}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                void openFile(project, relPath)
+              }}
+            >
+              {header.detail}
+            </span>
+          ) : (
+            <span className="tool-detail">{header.detail}</span>
+          ))}
         <span className={`tool-status ${status}`}>{status}</span>
       </summary>
       <div className="tool-body">

@@ -5,6 +5,9 @@ import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { IpcMain } from 'electron'
 import {
+  FILES_LIST_CHANNEL,
+  FILES_READ_CHANNEL,
+  FILES_WATCH_CHANNEL,
   GIT_COMMIT_CHANNEL,
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
@@ -33,6 +36,7 @@ import {
 import type { DialogAnswer } from '../../shared/agent-events'
 import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
+import type { FileService } from '../files/file-service'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
@@ -62,7 +66,7 @@ function isPathList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((p) => typeof p === 'string' && p.length > 0)
 }
 
-export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService): void {
+export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService, files: FileService): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
@@ -226,6 +230,26 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
   ipcMain.handle(GIT_GENERATE_MESSAGE_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', message: '' }
     return git.generateCommitMessage(project)
+  })
+
+  ipcMain.handle(FILES_LIST_CHANNEL, async (_event, project: unknown, dir: unknown) => {
+    if (!isProjectEntry(project) || typeof dir !== 'string') {
+      return { ok: false, error: 'Invalid request', entries: [] }
+    }
+    return files.listDir(project, dir)
+  })
+
+  ipcMain.handle(FILES_READ_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request', content: '' }
+    }
+    return files.read(project, path)
+  })
+
+  ipcMain.handle(FILES_WATCH_CHANNEL, (_event, project: unknown, paths: unknown) => {
+    if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
+    files.setWatched(project, paths)
+    return { ok: true, error: null }
   })
 }
 
