@@ -79,6 +79,54 @@ export interface SessionsSnapshot {
   active: PiStatus[]
 }
 
+/** Файл в `git status --porcelain=v2`: index — статус в индексе, worktree — в рабочем дереве
+ *  ('.' — без изменений, '?' — untracked). Путь относительно корня репо, слэши вперёд. */
+export interface GitFileEntry {
+  path: string
+  origPath: string | null
+  index: string
+  worktree: string
+  untracked: boolean
+}
+
+export interface GitStatus {
+  branch: string | null
+  upstream: string | null
+  ahead: number | null
+  behind: number | null
+  detached: boolean
+  entries: GitFileEntry[]
+}
+
+export interface GitLogEntry {
+  hash: string
+  subject: string
+}
+
+export interface GitOpResult {
+  ok: boolean
+  error: string | null
+}
+
+export interface GitStatusResult extends GitOpResult {
+  status: GitStatus | null
+}
+
+/** Содержимое для DiffEditor: original = `git show HEAD:<path>` (untracked — пусто),
+ *  modified = файл на диске (удалён — пусто). */
+export interface GitFileDiffResult extends GitOpResult {
+  original: string
+  modified: string
+}
+
+export interface GitLogResult extends GitOpResult {
+  entries: GitLogEntry[]
+}
+
+export interface GitMessageResult extends GitOpResult {
+  message: string
+}
+
 /** Диалог, ждущий ответа renderer'а (реплей при переподключении — те же объекты). */
 export interface PendingDialog {
   hostId: string
@@ -103,6 +151,14 @@ export interface PiwrightApi {
   setThinkingLevel(hostId: string, level: string): Promise<PromptResult>
   respondDialog(hostId: string, id: string, answer: DialogAnswer): Promise<DialogResult>
   getPendingDialogs(): Promise<PendingDialog[]>
+  gitStatus(project: ProjectEntry): Promise<GitStatusResult>
+  gitFileDiff(project: ProjectEntry, path: string): Promise<GitFileDiffResult>
+  gitStage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  gitUnstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
+  gitPush(project: ProjectEntry): Promise<GitOpResult>
+  gitLog(project: ProjectEntry): Promise<GitLogResult>
+  gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   onPiEvent(cb: (message: PiEventMessage) => void): () => void
   onPiStatus(cb: (status: PiStatus) => void): () => void
 }
@@ -123,5 +179,13 @@ export const SESSION_SET_MODEL_CHANNEL = 'session:set-model'
 export const SESSION_SET_THINKING_CHANNEL = 'session:set-thinking'
 export const SESSION_RESPOND_DIALOG_CHANNEL = 'session:respond-dialog'
 export const SESSION_PENDING_DIALOGS_CHANNEL = 'session:pending-dialogs'
+export const GIT_STATUS_CHANNEL = 'git:status'
+export const GIT_FILE_DIFF_CHANNEL = 'git:file-diff'
+export const GIT_STAGE_CHANNEL = 'git:stage'
+export const GIT_UNSTAGE_CHANNEL = 'git:unstage'
+export const GIT_COMMIT_CHANNEL = 'git:commit'
+export const GIT_PUSH_CHANNEL = 'git:push'
+export const GIT_LOG_CHANNEL = 'git:log'
+export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const PI_EVENT_CHANNEL = 'pi:event'
 export const PI_STATUS_CHANNEL = 'pi:status'

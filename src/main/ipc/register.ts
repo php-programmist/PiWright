@@ -5,6 +5,14 @@ import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { IpcMain } from 'electron'
 import {
+  GIT_COMMIT_CHANNEL,
+  GIT_FILE_DIFF_CHANNEL,
+  GIT_GENERATE_MESSAGE_CHANNEL,
+  GIT_LOG_CHANNEL,
+  GIT_PUSH_CHANNEL,
+  GIT_STAGE_CHANNEL,
+  GIT_STATUS_CHANNEL,
+  GIT_UNSTAGE_CHANNEL,
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
@@ -24,6 +32,7 @@ import {
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
 import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { GitService } from '../git/git-service'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
@@ -49,7 +58,11 @@ function host(piHost: PiHost, hostId: unknown): SessionHost | null {
   return piHost.get(hostId)
 }
 
-export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost): void {
+function isPathList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((p) => typeof p === 'string' && p.length > 0)
+}
+
+export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
@@ -169,6 +182,51 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
   })
 
   ipcMain.handle(SESSION_PENDING_DIALOGS_CHANNEL, () => piHost.pendingDialogs())
+
+  ipcMain.handle(GIT_STATUS_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', status: null }
+    return git.status(project)
+  })
+
+  ipcMain.handle(GIT_FILE_DIFF_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string' || path.length === 0) {
+      return { ok: false, error: 'Invalid request', original: '', modified: '' }
+    }
+    return git.fileDiff(project, path)
+  })
+
+  ipcMain.handle(GIT_STAGE_CHANNEL, async (_event, project: unknown, paths: unknown) => {
+    if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
+    return git.stage(project, paths)
+  })
+
+  ipcMain.handle(GIT_UNSTAGE_CHANNEL, async (_event, project: unknown, paths: unknown) => {
+    if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
+    return git.unstage(project, paths)
+  })
+
+  ipcMain.handle(GIT_COMMIT_CHANNEL, async (_event, project: unknown, message: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    if (typeof message !== 'string' || message.trim().length === 0) {
+      return { ok: false, error: 'Commit message is empty' }
+    }
+    return git.commit(project, message)
+  })
+
+  ipcMain.handle(GIT_PUSH_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    return git.push(project)
+  })
+
+  ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', entries: [] }
+    return git.log(project)
+  })
+
+  ipcMain.handle(GIT_GENERATE_MESSAGE_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', message: '' }
+    return git.generateCommitMessage(project)
+  })
 }
 
 async function chooseDefaultPath(kind: BackendMode, settings: Settings): Promise<string | undefined> {

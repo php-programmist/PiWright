@@ -2,6 +2,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import {
+  GIT_COMMIT_CHANNEL,
+  GIT_FILE_DIFF_CHANNEL,
+  GIT_GENERATE_MESSAGE_CHANNEL,
+  GIT_LOG_CHANNEL,
+  GIT_PUSH_CHANNEL,
+  GIT_STAGE_CHANNEL,
+  GIT_STATUS_CHANNEL,
+  GIT_UNSTAGE_CHANNEL,
   PI_EVENT_CHANNEL,
   PI_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
@@ -51,6 +59,14 @@ const api: PiwrightApi = {
   respondDialog: (hostId: string, id: string, answer: DialogAnswer) =>
     ipcRenderer.invoke(SESSION_RESPOND_DIALOG_CHANNEL, hostId, id, answer),
   getPendingDialogs: () => ipcRenderer.invoke(SESSION_PENDING_DIALOGS_CHANNEL),
+  gitStatus: (project) => ipcRenderer.invoke(GIT_STATUS_CHANNEL, project),
+  gitFileDiff: (project, path) => ipcRenderer.invoke(GIT_FILE_DIFF_CHANNEL, project, path),
+  gitStage: (project, paths) => ipcRenderer.invoke(GIT_STAGE_CHANNEL, project, paths),
+  gitUnstage: (project, paths) => ipcRenderer.invoke(GIT_UNSTAGE_CHANNEL, project, paths),
+  gitCommit: (project, message) => ipcRenderer.invoke(GIT_COMMIT_CHANNEL, project, message),
+  gitPush: (project) => ipcRenderer.invoke(GIT_PUSH_CHANNEL, project),
+  gitLog: (project) => ipcRenderer.invoke(GIT_LOG_CHANNEL, project),
+  gitGenerateMessage: (project) => ipcRenderer.invoke(GIT_GENERATE_MESSAGE_CHANNEL, project),
   onPiEvent: (cb) => subscribe(PI_EVENT_CHANNEL, cb),
   onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb)
 }
