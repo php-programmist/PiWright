@@ -27,3 +27,6 @@ npm-debug.log*
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# LSP (машинно-специфичный)
+.pi-lsp.json

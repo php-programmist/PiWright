@@ -163,19 +163,6 @@ body {
   font-size: 12px;
 }
 
-.dot.confirm {
-  background: #e08a3c;
-}
-
-.dot.question {
-  background: #e0c04a;
-}
-
-.dot.busy {
-  background: #e0b23e;
-  animation: pulse 1s infinite alternate;
-}
-
 .dot.idle {
   background: #46c46e;
 }
@@ -260,13 +247,19 @@ body {
   background: #46c46e;
 }
 
-.dot.streaming {
-  background: #e0b23e;
+.dot.streaming,
+.dot.busy {
+  background: #5aa2e0;
   animation: pulse 1s infinite alternate;
 }
 
 .dot.starting {
   background: #5aa2e0;
+}
+
+.dot.confirm,
+.dot.question {
+  background: #e0b23e;
 }
 
 .dot.error,
