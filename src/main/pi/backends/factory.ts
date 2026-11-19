@@ -8,9 +8,18 @@ import { createWslSpawner, listWslDistros, resolveWslPi } from './wsl'
 
 export type CreateBackendResult = { backend: PiBackend; error: null } | { backend: null; error: string }
 
+/** Настройка «pi path» валидна только в формате своего бэкенда: Windows-путь для native,
+ *  POSIX для WSL; чужой формат — авто-резолв (после миграции там мог быть путь другого бэкенда). */
+export function filterSettingsPiPath(kind: 'native' | 'wsl', raw: string): string | null {
+  const trimmed = raw.trim()
+  if (trimmed.length === 0) return null
+  const posix = trimmed.startsWith('/') || trimmed.startsWith('~/')
+  return kind === 'wsl' ? (posix ? trimmed : null) : posix ? null : trimmed
+}
+
 export async function createPiBackend(project: ProjectEntry, settings: Settings): Promise<CreateBackendResult> {
   if (project.kind === 'native') {
-    const piPath = resolveNativePi(settings.piPath || null, homedir())
+    const piPath = resolveNativePi(filterSettingsPiPath('native', settings.piPath), homedir())
     if (piPath === null) {
       return { backend: null, error: 'Could not find the pi executable on the host. Set it in settings.' }
     }
@@ -21,7 +30,7 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
   if (!distro) {
     return { backend: null, error: 'No WSL distro available. Set it in settings.' }
   }
-  const piPath = await resolveWslPi(distro, settings.piPath || null)
+  const piPath = await resolveWslPi(distro, filterSettingsPiPath('wsl', settings.piPath))
   if (piPath === null) {
     return { backend: null, error: `Could not find the pi executable in WSL distro "${distro}". Set it in settings.` }
   }
