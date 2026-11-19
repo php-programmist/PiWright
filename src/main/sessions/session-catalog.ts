@@ -144,3 +144,27 @@ export async function listProjectHistory(project: ProjectEntry, settings: Settin
   const cwd = await projectBackendCwd(project, settings)
   return listProjectSessions(root, cwd)
 }
+
+/** Удаление файла сессии с диска. Разрешено только внутри корня каталога сессий и только
+ *  в каталогах самого проекта/его worktrees — защита от удаления чужих файлов по пути из UI. */
+export async function deleteSessionFile(
+  root: string,
+  projectCwd: string,
+  filePath: string
+): Promise<{ ok: boolean; error: string | null }> {
+  const normalized = win32.normalize(filePath)
+  const rel = win32.relative(win32.normalize(root), normalized)
+  if (rel.length === 0 || rel.startsWith('..') || win32.isAbsolute(rel)) {
+    return { ok: false, error: 'Path is outside the sessions directory' }
+  }
+  const dirName = win32.basename(win32.dirname(normalized))
+  if (!isProjectSessionDir(dirName, projectCwd)) {
+    return { ok: false, error: 'Directory does not belong to the project' }
+  }
+  try {
+    await fs.rm(normalized, { force: false })
+    return { ok: true, error: null }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}

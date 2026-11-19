@@ -7,6 +7,7 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
+  SESSIONS_DELETE_HISTORY_CHANNEL,
   SESSIONS_HISTORY_CHANNEL,
   SESSIONS_LIST_CHANNEL,
   SESSIONS_NEW_CHANNEL,
@@ -40,6 +41,8 @@ const api: PiwrightApi = {
   openSession: (project: ProjectEntry, sessionFile: string) => ipcRenderer.invoke(SESSIONS_OPEN_CHANNEL, project, sessionFile),
   closeSession: (hostId: string) => ipcRenderer.invoke(SESSIONS_CLOSE_CHANNEL, hostId),
   renameSession: (hostId: string, name: string) => ipcRenderer.invoke(SESSIONS_RENAME_CHANNEL, hostId, name),
+  deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
+    ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),
   chooseProjectDir: (kind: BackendMode) => ipcRenderer.invoke(SESSIONS_CHOOSE_DIR_CHANNEL, kind),
   prompt: (hostId: string, text: string) => ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),

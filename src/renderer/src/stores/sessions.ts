@@ -9,6 +9,8 @@ export interface SessionRow {
   title: string
   dot: SessionDot
   state: string
+  /** pi session id после хендшейка — по нему активная сессия скрывается из истории. */
+  sessionId: string | null
 }
 
 /** Проект панели: строка + его история (подгружается лениво). */
@@ -60,7 +62,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     const [snapshot, settings] = await Promise.all([window.piwright.listSessions(), window.piwright.getSettings()])
     useChatStore.getState().setSettings(settings)
     set((state) => ({
-      active: snapshot.active.map((s) => ({ hostId: s.hostId, project: s.project, title: s.title, dot: s.dot, state: s.state })),
+      active: snapshot.active.map((s) => ({
+        hostId: s.hostId,
+        project: s.project,
+        title: s.title,
+        dot: s.dot,
+        state: s.state,
+        sessionId: s.sessionId
+      })),
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
       projects: sortProjects(settings.projects.map((project) => {
@@ -74,7 +83,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   applyStatus: (status) => {
     set((state) => {
       const active = state.active.filter((r) => r.hostId !== status.hostId)
-      active.push({ hostId: status.hostId, project: status.project, title: status.title, dot: status.dot, state: status.state })
+      active.push({
+        hostId: status.hostId,
+        project: status.project,
+        title: status.title,
+        dot: status.dot,
+        state: status.state,
+        sessionId: status.sessionId
+      })
       return { active }
     })
   },

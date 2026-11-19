@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { promises as fs } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { filterSettingsPiPath } from '../src/main/pi/backends/factory'
-import { toBackendPath } from '../src/main/sessions/session-catalog'
+import { deleteSessionFile, toBackendPath } from '../src/main/sessions/session-catalog'
 import type { Settings } from '../src/shared/ipc-contracts'
 
 const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPath: '', projects: [] }
@@ -38,5 +41,61 @@ describe('toBackendPath', () => {
 
   it('wsl POSIX passes through', async () => {
     expect(await toBackendPath({ kind: 'wsl', dir: '/home/u/p' }, SETTINGS, '/home/u/p/x.jsonl')).toBe('/home/u/p/x.jsonl')
+  })
+})
+
+describe('deleteSessionFile', () => {
+  it('deletes a session file inside the project dir', async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), 'piwright-del-'))
+    try {
+      const dir = join(root, '--tmp-p--')
+      await fs.mkdir(dir, { recursive: true })
+      const file = join(dir, 'a.jsonl')
+      await fs.writeFile(file, 'x', 'utf8')
+      const result = await deleteSessionFile(root, '/tmp/p', file)
+      expect(result).toEqual({ ok: true, error: null })
+      await expect(fs.stat(file)).rejects.toThrow()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses paths outside the sessions root', async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), 'piwright-del-'))
+    const outside = await fs.mkdtemp(join(tmpdir(), 'piwright-out-'))
+    try {
+      const result = await deleteSessionFile(root, '/tmp/p', join(outside, 'a.jsonl'))
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('outside')
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+      await fs.rm(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses directories of other projects', async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), 'piwright-del-'))
+    try {
+      const dir = join(root, '--tmp-q--')
+      await fs.mkdir(dir, { recursive: true })
+      const file = join(dir, 'a.jsonl')
+      await fs.writeFile(file, 'x', 'utf8')
+      const result = await deleteSessionFile(root, '/tmp/p', file)
+      expect(result.ok).toBe(false)
+      expect(result.error).toContain('belong')
+      await expect(fs.stat(file)).resolves.toBeTruthy()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a missing file', async () => {
+    const root = await fs.mkdtemp(join(tmpdir(), 'piwright-del-'))
+    try {
+      const result = await deleteSessionFile(root, '/tmp/p', join(root, '--tmp-p--', 'gone.jsonl'))
+      expect(result.ok).toBe(false)
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
   })
 })

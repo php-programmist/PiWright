@@ -40,7 +40,7 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
   )
 }
 
-function HistoryItem({ project, summary }: { project: ProjectEntry; summary: SessionSummary }): React.JSX.Element {
+function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; summary: SessionSummary; onDelete: () => void }): React.JSX.Element {
   const openSession = async (): Promise<void> => {
     const ref = await window.piwright.openSession(project, summary.path)
     useSessionsStore.getState().setActive(ref.hostId)
@@ -51,6 +51,16 @@ function HistoryItem({ project, summary }: { project: ProjectEntry; summary: Ses
       <span className="history-date">
         {new Date(summary.lastActivityEpochMs).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </span>
+      <button
+        className="icon remove"
+        title="Delete session from disk"
+        onClick={(e) => {
+          e.stopPropagation()
+          onDelete()
+        }}
+      >
+        ×
+      </button>
     </div>
   )
 }
@@ -78,6 +88,17 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     await window.piwright.closeSession(hostId)
     useChatStore.getState().removeHost(hostId)
     useSessionsStore.getState().forgetHost(hostId)
+    void refreshHistory(row.project)
+  }
+
+  const deleteHistory = async (summary: SessionSummary): Promise<void> => {
+    const answer = window.confirm(
+      `Delete session "${summary.title}" from disk?\n\nIts session file will be removed permanently.`
+    )
+    if (!answer) return
+    const result = await window.piwright.deleteHistorySession(row.project, summary.path)
+    if (!result.ok && result.error !== null) window.alert(result.error)
+    void refreshHistory(row.project)
   }
 
   const renameSession = async (hostId: string): Promise<void> => {
@@ -86,7 +107,9 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     setRenameText('')
   }
 
-  const visible = row.showAllHistory ? row.history : row.history.slice(0, HISTORY_PREVIEW_LIMIT)
+  const activeIds = useMemo(() => new Set(active.map((r) => r.sessionId).filter((id): id is string => id !== null)), [active])
+  const history = useMemo(() => row.history.filter((h) => !activeIds.has(h.id)), [row.history, activeIds])
+  const visible = row.showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_LIMIT)
 
   return (
     <div className="project">
@@ -130,11 +153,11 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
           {active.length === 0 && <div className="panel-hint">no active sessions</div>}
           <div className="history-head">history</div>
           {row.historyLoading && <div className="panel-hint">loading…</div>}
-          {!row.historyLoading && row.history.length === 0 && <div className="panel-hint">no past sessions</div>}
-          {visible.map((h) => <HistoryItem key={h.path} project={row.project} summary={h} />)}
-          {!row.historyLoading && row.history.length > HISTORY_PREVIEW_LIMIT && (
+          {!row.historyLoading && history.length === 0 && <div className="panel-hint">no past sessions</div>}
+          {visible.map((h) => <HistoryItem key={h.path} project={row.project} summary={h} onDelete={() => void deleteHistory(h)} />)}
+          {!row.historyLoading && history.length > HISTORY_PREVIEW_LIMIT && (
             <button className="show-all" onClick={() => setShowAll(key, !row.showAllHistory)}>
-              {row.showAllHistory ? 'show less' : `show all (${row.history.length})`}
+              {row.showAllHistory ? 'show less' : `show all (${history.length})`}
             </button>
           )}
         </div>

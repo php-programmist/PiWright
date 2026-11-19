@@ -8,6 +8,7 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
+  SESSIONS_DELETE_HISTORY_CHANNEL,
   SESSIONS_HISTORY_CHANNEL,
   SESSIONS_LIST_CHANNEL,
   SESSIONS_NEW_CHANNEL,
@@ -26,7 +27,7 @@ import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contr
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
-import { listProjectHistory, toBackendPath } from '../sessions/session-catalog'
+import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
 function isDialogAnswer(value: unknown): value is DialogAnswer {
@@ -98,6 +99,21 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     if (h === null) return { ok: false, error: 'Session not found' }
     if (typeof name !== 'string') return { ok: false, error: 'Session name is empty' }
     return h.rename(name)
+  })
+
+  ipcMain.handle(SESSIONS_DELETE_HISTORY_CHANNEL, async (_event, project: unknown, sessionPath: unknown) => {
+    if (!isProjectEntry(project) || typeof sessionPath !== 'string' || sessionPath.length === 0) {
+      return { ok: false, error: 'Invalid request' }
+    }
+    const current = settings.get()
+    const root = await resolveSessionsRoot(project, current)
+    if (root === null) return { ok: false, error: 'Sessions directory not found' }
+    const backendPath = await toBackendPath(project, current, sessionPath)
+    if (piHost.statuses().some((s) => s.sessionFile !== null && s.sessionFile === backendPath)) {
+      return { ok: false, error: 'Session is active — close it first' }
+    }
+    const cwd = await projectBackendCwd(project, current)
+    return deleteSessionFile(root, cwd, sessionPath)
   })
 
   ipcMain.handle(SESSIONS_CHOOSE_DIR_CHANNEL, async (_event, kind: unknown) => {
