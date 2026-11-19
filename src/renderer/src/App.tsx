@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
 import { ChatView } from './views/chat/ChatView'
+import { SettingsView } from './views/settings/SettingsView'
 import { useChatStore } from './stores/chat'
 import { useSessionsStore } from './stores/sessions'
 
@@ -10,6 +11,7 @@ export function App(): React.JSX.Element {
   const applySessionsStatus = useSessionsStore((s) => s.applyStatus)
   const load = useSessionsStore((s) => s.load)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
+  const settingsOpen = useSessionsStore((s) => s.settingsOpen)
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
 
   useEffect(() => {
@@ -30,12 +32,16 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <div className="layout">
-        <SessionsPanel />
-        <div className="chat-column">
-          <ChatView chat={chat ?? null} />
+      {settingsOpen ? (
+        <SettingsView />
+      ) : (
+        <div className="layout">
+          <SessionsPanel />
+          <div className="chat-column">
+            <ChatView chat={chat ?? null} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

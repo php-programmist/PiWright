@@ -13,7 +13,10 @@ export interface ProjectEntry {
 
 export interface Settings {
   wslDistro: string
-  piPath: string
+  /** Путь к pi для нативных (Windows) проектов. */
+  piPathNative: string
+  /** Путь к pi для WSL-проектов (POSIX внутри дистрибутива). */
+  piPathWsl: string
   projects: ProjectEntry[]
 }
 

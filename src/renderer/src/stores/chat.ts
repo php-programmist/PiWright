@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { compactionBannerText, compactionSummaryText } from '../../../shared/agent-events'
 import type { ExtensionDialog, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
-import type { PiEventMessage, PiStatus, Settings } from '../../../shared/ipc-contracts'
+import type { PiEventMessage, PiStatus } from '../../../shared/ipc-contracts'
 
 export type Entry =
   | { kind: 'user'; id: number; text: string }
@@ -29,11 +29,9 @@ export interface HostChat {
 
 interface ChatState {
   hosts: Record<string, HostChat>
-  settings: Settings | null
   applyEvent: (message: PiEventMessage) => void
   applyStatus: (status: PiStatus) => void
   removeHost: (hostId: string) => void
-  setSettings: (settings: Settings) => void
   addUserMessage: (hostId: string, text: string) => void
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
   resetTranscript: (hostId: string) => void
@@ -243,7 +241,6 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
 
 export const useChatStore = create<ChatState>((set) => ({
   hosts: {},
-  settings: null,
   applyEvent: (message) => {
     const { hostId, event } = message
     const isDelta = event.type === 'assistant_delta' || event.type === 'thought_delta'
@@ -282,7 +279,6 @@ export const useChatStore = create<ChatState>((set) => ({
       return { hosts }
     })
   },
-  setSettings: (settings) => set({ settings }),
   addUserMessage: (hostId, text) => {
     ownEchoes.set(hostId, (ownEchoes.get(hostId) ?? 0) + 1)
     set((state) => {

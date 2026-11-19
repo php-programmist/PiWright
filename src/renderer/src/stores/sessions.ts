@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { useChatStore } from './chat'
 import type { ProjectEntry, SessionSummary, SessionDot, Settings } from '../../../shared/ipc-contracts'
 
 /** Активная сессия панели: статус с main + флаг открытой вкладки. */
@@ -26,6 +25,9 @@ interface SessionsState {
   active: SessionRow[]
   activeHostId: string | null
   expanded: Record<string, boolean>
+  settingsOpen: boolean
+  openSettings: () => void
+  closeSettings: () => void
   load: () => Promise<void>
   applyStatus: (status: import('../../../shared/ipc-contracts').PiStatus) => void
   forgetHost: (hostId: string) => void
@@ -56,11 +58,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   active: [],
   activeHostId: null,
   expanded: {},
+  settingsOpen: false,
   settings: null,
+
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false }),
 
   load: async () => {
     const [snapshot, settings] = await Promise.all([window.piwright.listSessions(), window.piwright.getSettings()])
-    useChatStore.getState().setSettings(settings)
     set((state) => ({
       active: snapshot.active.map((s) => ({
         hostId: s.hostId,

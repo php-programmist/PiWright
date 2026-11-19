@@ -19,7 +19,7 @@ export function filterSettingsPiPath(kind: 'native' | 'wsl', raw: string): strin
 
 export async function createPiBackend(project: ProjectEntry, settings: Settings): Promise<CreateBackendResult> {
   if (project.kind === 'native') {
-    const piPath = resolveNativePi(filterSettingsPiPath('native', settings.piPath), homedir())
+    const piPath = resolveNativePi(filterSettingsPiPath('native', settings.piPathNative), homedir())
     if (piPath === null) {
       return { backend: null, error: 'Could not find the pi executable on the host. Set it in settings.' }
     }
@@ -30,7 +30,7 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
   if (!distro) {
     return { backend: null, error: 'No WSL distro available. Set it in settings.' }
   }
-  const piPath = await resolveWslPi(distro, filterSettingsPiPath('wsl', settings.piPath))
+  const piPath = await resolveWslPi(distro, filterSettingsPiPath('wsl', settings.piPathWsl))
   if (piPath === null) {
     return { backend: null, error: `Could not find the pi executable in WSL distro "${distro}". Set it in settings.` }
   }

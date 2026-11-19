@@ -5,7 +5,6 @@ import { ToolBlock } from '../../components/ToolBlock'
 import { useChatStore } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
-import type { Settings } from '../../../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -55,39 +54,6 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
   }
 }
 
-function SettingsPanel({ settings, onSaved }: { settings: Settings; onSaved: (s: Settings) => void }): React.JSX.Element {
-  const [draft, setDraft] = useState<Settings>(settings)
-  const [saved, setSaved] = useState(false)
-
-  const update = (patch: Partial<Settings>): void => setDraft({ ...draft, ...patch })
-
-  const save = async (): Promise<void> => {
-    const next = await window.piwright.setSettings(draft)
-    onSaved(next)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-  }
-
-  return (
-    <div className="settings">
-      <label>
-        WSL distro
-        <input
-          value={draft.wslDistro}
-          placeholder="auto"
-          onChange={(e) => update({ wslDistro: e.target.value })}
-        />
-      </label>
-      <label>
-        pi path
-        <input value={draft.piPath} placeholder="auto" onChange={(e) => update({ piPath: e.target.value })} />
-      </label>
-      <button onClick={() => void save()}>Save</button>
-      {saved && <span className="saved">saved — applies to the next session</span>}
-    </div>
-  )
-}
-
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const status = chat?.status ?? null
@@ -95,9 +61,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const streaming = chat?.streaming ?? false
   const queue = chat?.queue ?? { steering: [], followUp: [] }
   const contextUsage = chat?.contextUsage ?? null
-  const settings = useChatStore((s) => s.settings)
   const applyEvent = useChatStore((s) => s.applyEvent)
-  const setSettings = useChatStore((s) => s.setSettings)
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
   const resetTranscript = useChatStore((s) => s.resetTranscript)
@@ -218,7 +182,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           Send
         </button>
       </footer>
-      {settings !== null && <SettingsPanel settings={settings} onSaved={setSettings} />}
     </>
   )
 }

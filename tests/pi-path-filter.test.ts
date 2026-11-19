@@ -6,7 +6,7 @@ import { filterSettingsPiPath } from '../src/main/pi/backends/factory'
 import { deleteSessionFile, toBackendPath } from '../src/main/sessions/session-catalog'
 import type { Settings } from '../src/shared/ipc-contracts'
 
-const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPath: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPathNative: '', piPathWsl: '', projects: [] }
 
 describe('filterSettingsPiPath', () => {
   it('empty setting yields null (auto-resolve)', () => {

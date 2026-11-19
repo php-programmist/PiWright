@@ -1,23 +1,39 @@
 /** Настройки: JSON в `%APPDATA%\Piwright\settings.json`. Атомарная запись (tmp + rename).
- *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir) мигтируются в первый проект. */
+ *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir/piPath) мигтируются:
+ *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 
 export const DEFAULT_SETTINGS: Settings = {
   wslDistro: '',
-  piPath: '',
+  piPathNative: '',
+  piPathWsl: '',
   projects: []
 }
 
-/** Старые настройки (фазы 1–2) → один проект: backend native → native, иначе wsl. */
+function isPosixPath(path: string): boolean {
+  return path.startsWith('/') || path.startsWith('~/')
+}
+
+/** Старые настройки (фазы 1–2) → один проект + piPath в поле своего формата. */
 function migrateLegacy(raw: Record<string, unknown>, base: Settings): Settings {
-  if (base.projects.length > 0) return base
-  const dir = raw['projectDir']
-  if (typeof dir !== 'string' || dir.trim().length === 0) return base
-  const kind = raw['backend'] === 'native' ? 'native' : 'wsl'
-  const project: ProjectEntry = { kind, dir }
-  return { ...base, projects: [project] }
+  let migrated = base
+  if (base.projects.length === 0) {
+    const dir = raw['projectDir']
+    if (typeof dir === 'string' && dir.trim().length > 0) {
+      const kind = raw['backend'] === 'native' ? 'native' : 'wsl'
+      const project: ProjectEntry = { kind, dir }
+      migrated = { ...migrated, projects: [project] }
+    }
+  }
+  const legacyPiPath = typeof raw['piPath'] === 'string' ? raw['piPath'].trim() : ''
+  if (legacyPiPath.length > 0) {
+    migrated = isPosixPath(legacyPiPath)
+      ? { ...migrated, piPathWsl: migrated.piPathWsl.length > 0 ? migrated.piPathWsl : legacyPiPath }
+      : { ...migrated, piPathNative: migrated.piPathNative.length > 0 ? migrated.piPathNative : legacyPiPath }
+  }
+  return migrated
 }
 
 export class SettingsService {

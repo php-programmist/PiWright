@@ -168,6 +168,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
 
 export function SessionsPanel(): React.JSX.Element {
   const projects = useSessionsStore((s) => s.projects)
+  const openSettings = useSessionsStore((s) => s.openSettings)
   const [adding, setAdding] = useState(false)
 
   return (
@@ -180,6 +181,9 @@ export function SessionsPanel(): React.JSX.Element {
       <div className="panel-body">
         {projects.length === 0 && <div className="panel-hint">Add a project to start</div>}
         {projects.map((row) => <ProjectRow key={projectKey(row.project)} row={row} />)}
+      </div>
+      <div className="panel-foot">
+        <button className="icon" title="Settings" onClick={openSettings}>⚙</button>
       </div>
     </aside>
   )
