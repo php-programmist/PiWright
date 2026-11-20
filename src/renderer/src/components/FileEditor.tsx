@@ -5,9 +5,10 @@ import * as monaco from 'monaco-editor'
 interface FileEditorProps {
   path: string
   content: string
+  wordWrap: boolean
 }
 
-export function FileEditor({ path, content }: FileEditorProps): React.JSX.Element {
+export function FileEditor({ path, content, wordWrap }: FileEditorProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const modelRef = useRef<monaco.editor.ITextModel | null>(null)
@@ -29,6 +30,10 @@ export function FileEditor({ path, content }: FileEditorProps): React.JSX.Elemen
       modelRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ wordWrap: wordWrap ? 'on' : 'off' })
+  }, [wordWrap])
 
   useEffect(() => {
     const editor = editorRef.current

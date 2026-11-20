@@ -60,6 +60,8 @@ export class RemoteSession {
   /** Идёт ход: ведётся по сырым строкам (agent_start/agent_settled), как в jb-pi —
    *  тап срабатывает до обновления статуса хоста. */
   streaming: boolean
+  /** Ход завершился, а телефон его не долистал — зелёная точка таба. */
+  unread: boolean
 
   constructor(
     readonly host: SessionHost,
@@ -67,6 +69,7 @@ export class RemoteSession {
   ) {
     this.telegramEnabled = true
     this.streaming = host.streaming
+    this.unread = false
   }
 
   get title(): string {
@@ -84,7 +87,8 @@ export class RemoteBridge {
   private readonly socketSessions = new Map<number, string>()
   private readonly allSockets = new Set<RemoteSocket>()
   private readonly pendingUi = new Map<string, PendingUi>()
-  private readonly visibleSockets = new Set<number>()
+  /** Состояние страницы телефона по сокету: видимость и «на дне ленты». */
+  private readonly socketView = new Map<number, { visible: boolean; atBottom: boolean }>()
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -169,7 +173,10 @@ export class RemoteBridge {
 
   /** true — страница телефона на переднем плане: telegram-уведомления гасятся. */
   isPhoneVisible(): boolean {
-    return this.visibleSockets.size > 0
+    for (const view of this.socketView.values()) {
+      if (view.visible) return true
+    }
+    return false
   }
 
   /** Telegram-флаг сессии (по умолчанию включён, гасится с телефона). */
@@ -208,7 +215,7 @@ export class RemoteBridge {
 
   private onClose(socket: RemoteSocket): void {
     this.allSockets.delete(socket)
-    this.visibleSockets.delete(socket.seq)
+    this.socketView.delete(socket.seq)
     this.detach(socket)
   }
 
@@ -240,8 +247,16 @@ export class RemoteBridge {
         return
       case 'visibility': {
         const visible = frame['visible'] === true
-        if (visible) this.visibleSockets.add(socket.seq)
-        else this.visibleSockets.delete(socket.seq)
+        const atBottom = frame['atBottom'] === true
+        const previous = this.socketView.get(socket.seq)
+        this.socketView.set(socket.seq, { visible, atBottom })
+        if (visible && atBottom && previous?.atBottom !== true) {
+          const remote = this.sessionFor(socket)
+          if (remote !== undefined && remote.unread) {
+            remote.unread = false
+            this.broadcastSessions()
+          }
+        }
         return
       }
       case 'telegram': {
@@ -286,10 +301,12 @@ export class RemoteBridge {
     this.detach(socket)
     this.socketSessions.set(socket.seq, remote.id)
     remote.sockets.push(socket)
+    remote.unread = false
     socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.telegramEnabled)))
     void this.sendSnapshot(socket, remote)
     socket.send(JSON.stringify(todosFrame(remoteTodos(widgetLinesOf(remote)))))
     this.replayPendingDialogs(socket, remote)
+    this.broadcastSessions()
   }
 
   private detach(socket: RemoteSocket): void {
@@ -456,6 +473,7 @@ export class RemoteBridge {
       this.broadcastSessions()
     } else if (type === 'agent_settled' || type === 'agent_end') {
       remote.streaming = false
+      if (!this.hasAttachedViewer(remote)) remote.unread = true
       this.broadcastSessions()
     } else if (type === 'extension_ui_request' && frame !== null) {
       this.registerUiRequest(remote, frame, line)
@@ -519,6 +537,14 @@ export class RemoteBridge {
     return true
   }
 
+  /** Телефон сейчас смотрит конец ленты сессии — ход считается прочитанным сразу. */
+  private hasAttachedViewer(remote: RemoteSession): boolean {
+    return remote.sockets.some((s) => {
+      const view = this.socketView.get(s.seq)
+      return view !== undefined && view.visible && view.atBottom
+    })
+  }
+
   private broadcast(remote: RemoteSession, line: string): void {
     for (const socket of remote.sockets) socket.send(line)
   }
@@ -545,7 +571,8 @@ export class RemoteBridge {
         title: remote.title,
         project: remote.projectName,
         status,
-        telegram: remote.telegramEnabled
+        telegram: remote.telegramEnabled,
+        unread: remote.unread
       }
     })
   }

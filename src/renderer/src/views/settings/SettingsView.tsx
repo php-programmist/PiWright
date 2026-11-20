@@ -136,6 +136,10 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 </label>
               </section>
               <section className="settings-section">
+                <h3>{t('Remote (phone browser)')}</h3>
+                <RemotePortField draft={draft} update={update} />
+              </section>
+              <section className="settings-section">
                 <h3>WSL</h3>
                 <label>
                   {t('distro')}
@@ -221,6 +225,55 @@ const SOUND_FIELDS: { key: keyof NotificationSounds; key2: string }[] = [
   { key: 'error', key2: 'error' }
 ]
 
+/** Поле порта remote + проверка занятости (Settings → General). */
+function RemotePortField({
+  draft,
+  update
+}: {
+  draft: Settings
+  update: (patch: Partial<Settings>) => void
+}): React.JSX.Element {
+  const remotePrefs = draft.notifications.remote
+  const [check, setCheck] = useState<'idle' | 'checking' | 'free' | 'busy'>('idle')
+  const t = useT()
+
+  const checkPort = async (): Promise<void> => {
+    setCheck('checking')
+    const result = await window.piwright.remoteCheckPort(remotePrefs.port)
+    setCheck(result.busy ? 'busy' : 'free')
+  }
+
+  return (
+    <>
+      <label>
+        {t('port')}
+        <span className="sound-row">
+          <input
+            type="number"
+            value={remotePrefs.port}
+            min={1}
+            max={65535}
+            onChange={(e) => {
+              updateRemotePort(update, draft, Number(e.target.value))
+              setCheck('idle')
+            }}
+          />
+          <button className="ghost" onClick={() => void checkPort()} disabled={check === 'checking'}>
+            {t('Check')}
+          </button>
+        </span>
+      </label>
+      {check === 'free' && <div className="panel-hint">{t('port is free')}</div>}
+      {check === 'busy' && <div className="settings-error">{t('port is busy')}</div>}
+    </>
+  )
+}
+
+function updateRemotePort(update: (patch: Partial<Settings>) => void, draft: Settings, port: number): void {
+  if (!Number.isFinite(port)) return
+  update({ notifications: { ...draft.notifications, remote: { ...draft.notifications.remote, port } } })
+}
+
 function NotificationsTab({
   draft,
   update
@@ -232,12 +285,29 @@ function NotificationsTab({
   const [tokenInput, setTokenInput] = useState('')
   const [testResult, setTestResult] = useState<string | null>(null)
   const [remote, setRemote] = useState<Awaited<ReturnType<typeof window.piwright.remoteStatus>> | null>(null)
+  const [portBusy, setPortBusy] = useState(false)
   const t = useT()
 
   useEffect(() => {
     void window.piwright.telegramTokenStatus().then((s) => setTokenConfigured(s.configured))
-    void window.piwright.remoteStatus().then(setRemote)
   }, [])
+
+  // Статус моста и ошибка занятого порта — после автосейва (500 мс) и попытки старта сервера.
+  // При выключении portBusy не сбрасываем синхронно (react-hooks v7) — ошибка скрыта условием enabled.
+  useEffect(() => {
+    if (!draft.notifications.remote.enabled) return
+    const timer = setTimeout(async () => {
+      const status = await window.piwright.remoteStatus()
+      setRemote(status)
+      if (!status.running) {
+        const probe = await window.piwright.remoteCheckPort(draft.notifications.remote.port)
+        setPortBusy(probe.busy)
+      } else {
+        setPortBusy(false)
+      }
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [draft.notifications.remote.enabled, draft.notifications.remote.port])
 
   const sounds = draft.notifications.sounds
   const telegram = draft.notifications.telegram
@@ -363,23 +433,18 @@ function NotificationsTab({
           <input type="checkbox" checked={remotePrefs.enabled} onChange={(e) => updateRemote({ enabled: e.target.checked })} />
           {t('enable remote bridge (sessions are shared on the LAN)')}
         </label>
-        <label>
-          {t('port')}
-          <input
-            type="number"
-            value={remotePrefs.port}
-            min={1}
-            max={65535}
-            onChange={(e) => updateRemote({ port: Number(e.target.value) })}
-          />
-        </label>
         {remote !== null && remote.running && (
           <div className="panel-hint">
             {remote.lanAddresses.length > 0 ? `http://${remote.lanAddresses[0]}:${remote.port}/` : `port ${remote.port}`} · PIN{' '}
             {remote.pin}
           </div>
         )}
-        {remote !== null && !remote.running && <div className="panel-hint">{t('Bridge is off — enable it and reopen settings.')}</div>}
+        {remotePrefs.enabled && !remote?.running && portBusy && (
+          <div className="settings-error">
+            {t('Port {port} is busy — pick a free one in Settings → General', { port: remotePrefs.port })}
+          </div>
+        )}
+        {!remotePrefs.enabled && <div className="panel-hint">{t('Bridge is off — enable it and reopen settings.')}</div>}
       </section>
     </>
   )

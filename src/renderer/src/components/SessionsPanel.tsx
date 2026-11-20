@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { useLang, useT } from '../lib/i18n'
+import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 
 const DOT_CLASS: Record<string, string> = {
@@ -41,15 +42,45 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
   )
 }
 
-function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; summary: SessionSummary; onDelete: () => void }): React.JSX.Element {
+function HistoryItem({
+  project,
+  summary,
+  children,
+  subOpen,
+  onToggleSub,
+  onDelete
+}: {
+  project: ProjectEntry
+  summary: SessionSummary
+  children: SessionSummary[]
+  subOpen: boolean
+  onToggleSub: () => void
+  onDelete: () => void
+}): React.JSX.Element {
   const t = useT()
   const lang = useLang()
   const openSession = async (): Promise<void> => {
-    const ref = await window.piwright.openSession(project, summary.path)
-    useSessionsStore.getState().setActive(ref.hostId)
+    const result = await window.piwright.openSession(project, summary.path)
+    if (!result.ok) {
+      if (result.error !== null) window.alert(result.error)
+      return
+    }
+    useSessionsStore.getState().setActive(result.hostId)
   }
   return (
     <div className="history-item" title={summary.title} onClick={() => void openSession()}>
+      {children.length > 0 && (
+        <button
+          className="icon sub-toggle"
+          title={t('Subagent sessions')}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSub()
+          }}
+        >
+          {subOpen ? '▾' : '▸'}
+        </button>
+      )}
       <span className="history-title">{summary.title}</span>
       <span className="history-date">
         {new Date(summary.lastActivityEpochMs).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {
@@ -73,6 +104,23 @@ function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; su
   )
 }
 
+function TranscriptItem({ summary, onOpen }: { summary: SessionSummary; onOpen: (summary: SessionSummary) => void }): React.JSX.Element {
+  const lang = useLang()
+  return (
+    <div className="history-item sub" title={summary.title} onClick={() => onOpen(summary)}>
+      <span className="history-title">{summary.title}</span>
+      <span className="history-date">
+        {new Date(summary.lastActivityEpochMs).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
+      </span>
+    </div>
+  )
+}
+
 function SessionDot({ hostId, dot }: { hostId: string; dot: import('../../../shared/ipc-contracts').SessionDot }): React.JSX.Element {
   const unread = useChatStore((s) => s.hosts[hostId]?.unread ?? false)
   const cls = DOT_CLASS[dot] ?? 'idle'
@@ -85,7 +133,15 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const activeAll = useSessionsStore((s) => s.active)
-  const active = useMemo(() => activeAll.filter((r) => projectKey(r.project) === key), [activeAll, key])
+  const active = useMemo(
+    () =>
+      activeAll.filter((r) => {
+        if (projectKey(r.project) === key) return true
+        const wt = splitWorktreeHostDir(r.project.dir)
+        return wt !== null && sameProjectDir(wt.root, row.project.dir)
+      }),
+    [activeAll, key, row.project.dir]
+  )
   const unreadCount = useChatStore((s) =>
     active.reduce((n, r) => (r.dot === 'idle' && (s.hosts[r.hostId]?.unread ?? false) ? n + 1 : n), 0)
   )
@@ -98,9 +154,28 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const t = useT()
   const [renaming, setRenaming] = useState(false)
   const [renameText, setRenameText] = useState('')
+  const [subOpen, setSubOpen] = useState<Record<string, boolean>>({})
+  const [wtCreating, setWtCreating] = useState(false)
+  const [wtName, setWtName] = useState('')
+  const openTranscript = useSessionsStore((s) => s.openTranscript)
 
   const newSession = async (): Promise<void> => {
     const ref = await window.piwright.newSession(row.project)
+    useSessionsStore.getState().setActive(ref.hostId)
+    if (!expanded) toggleExpanded(key)
+  }
+
+  const createWorktree = async (): Promise<void> => {
+    const name = wtName.trim()
+    setWtCreating(false)
+    setWtName('')
+    if (name.length === 0) return
+    const result = await window.piwright.worktreeCreate(row.project, name)
+    if (!result.ok || result.dir === null) {
+      if (result.error !== null) window.alert(result.error)
+      return
+    }
+    const ref = await window.piwright.newSession({ kind: row.project.kind, dir: result.dir })
     useSessionsStore.getState().setActive(ref.hostId)
     if (!expanded) toggleExpanded(key)
   }
@@ -128,9 +203,24 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     setRenameText('')
   }
 
+  const toggleSub = (path: string): void => {
+    setSubOpen((prev) => ({ ...prev, [path]: !prev[path] }))
+    void refreshHistory(row.project)
+  }
+
   const activeIds = useMemo(() => new Set(active.map((r) => r.sessionId).filter((id): id is string => id !== null)), [active])
-  const history = useMemo(() => row.history.filter((h) => !activeIds.has(h.id)), [row.history, activeIds])
-  const visible = row.showAllHistory ? history : history.slice(0, HISTORY_PREVIEW_LIMIT)
+  const topLevel = useMemo(() => row.history.filter((h) => h.parentSession === null && !activeIds.has(h.id)), [row.history, activeIds])
+  const childrenOf = useMemo(() => {
+    const map = new Map<string, SessionSummary[]>()
+    for (const h of row.history) {
+      if (h.parentSession === null) continue
+      const list = map.get(h.parentSession)
+      if (list !== undefined) list.push(h)
+      else map.set(h.parentSession, [h])
+    }
+    return map
+  }, [row.history])
+  const visible = row.showAllHistory ? topLevel : topLevel.slice(0, HISTORY_PREVIEW_LIMIT)
 
   return (
     <div className="project">
@@ -140,6 +230,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
         <span className="kind-badge">{kindLabel(row.project.kind)}</span>
         <span className="spacer" />
         <button className="icon" title={t('Session history')} onClick={() => { if (!expanded) toggleExpanded(key); void refreshHistory(row.project) }}>⟲</button>
+        <button className="icon" title={t('New worktree')} onClick={() => setWtCreating(true)}>⎇</button>
         <button className="icon" title={t('New session')} onClick={() => void newSession()}>+</button>
         <button className="icon remove" title={t('Remove project')} onClick={() => void removeProject(row.project)}>×</button>
       </div>
@@ -152,40 +243,94 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
       )}
       {expanded && (
         <div className="project-children">
-          {active.map((s) => (
-            <div
-              key={s.hostId}
-              className={`session-row${s.hostId === activeHostId ? ' current' : ''}`}
-              onClick={() => useSessionsStore.getState().setActive(s.hostId)}
-            >
-              <SessionDot hostId={s.hostId} dot={s.dot} />
-              {renaming ? (
-                <input
-                  autoFocus
-                  value={renameText}
-                  onChange={(e) => setRenameText(e.target.value)}
-                  onBlur={() => void renameSession(s.hostId)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void renameSession(s.hostId)
-                    if (e.key === 'Escape') setRenaming(false)
-                  }}
-                />
-              ) : (
-                <span className="session-title" onDoubleClick={() => setRenaming(true)}>{s.title}</span>
-              )}
-              <span className="spacer" />
-              <button className="icon" title={t('Rename (or double-click title)')} onClick={() => setRenaming(true)}>✎</button>
-              <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
+          {wtCreating && (
+            <div className="session-row">
+              <input
+                autoFocus
+                value={wtName}
+                placeholder={t('worktree name')}
+                onChange={(e) => setWtName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void createWorktree()
+                  if (e.key === 'Escape') {
+                    setWtCreating(false)
+                    setWtName('')
+                  }
+                }}
+                onBlur={() => {
+                  setWtCreating(false)
+                  setWtName('')
+                }}
+              />
             </div>
-          ))}
+          )}
+          {active.map((s) => {
+            const wt = splitWorktreeHostDir(s.project.dir)
+            const sub = s.sessionFile !== null ? (childrenOf.get(s.sessionFile) ?? []) : []
+            return (
+              <div key={s.hostId}>
+                <div
+                  className={`session-row${s.hostId === activeHostId ? ' current' : ''}`}
+                  onClick={() => useSessionsStore.getState().setActive(s.hostId)}
+                >
+                  <SessionDot hostId={s.hostId} dot={s.dot} />
+                  {sub.length > 0 && (
+                    <button
+                      className="icon sub-toggle"
+                      title={t('Subagent sessions')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleSub(s.sessionFile!)
+                      }}
+                    >
+                      {subOpen[s.sessionFile!] ? '▾' : '▸'}
+                    </button>
+                  )}
+                  {renaming ? (
+                    <input
+                      autoFocus
+                      value={renameText}
+                      onChange={(e) => setRenameText(e.target.value)}
+                      onBlur={() => void renameSession(s.hostId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void renameSession(s.hostId)
+                        if (e.key === 'Escape') setRenaming(false)
+                      }}
+                    />
+                  ) : (
+                    <span className="session-title" onDoubleClick={() => setRenaming(true)}>{s.title}</span>
+                  )}
+                  {wt !== null && <span className="kind-badge" title={s.project.dir}>{wt.name}</span>}
+                  <span className="spacer" />
+                  <button className="icon" title={t('Rename (or double-click title)')} onClick={() => setRenaming(true)}>✎</button>
+                  <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
+                </div>
+                {sub.length > 0 && subOpen[s.sessionFile!] &&
+                  sub.map((c) => <TranscriptItem key={c.path} summary={c} onOpen={(x) => openTranscript(row.project, x)} />)}
+              </div>
+            )
+          })}
           {active.length === 0 && <div className="panel-hint">{t('no active sessions')}</div>}
           <div className="history-head">{t('history')}</div>
           {row.historyLoading && <div className="panel-hint">{t('loading…')}</div>}
-          {!row.historyLoading && history.length === 0 && <div className="panel-hint">{t('no past sessions')}</div>}
-          {visible.map((h) => <HistoryItem key={h.path} project={row.project} summary={h} onDelete={() => void deleteHistory(h)} />)}
-          {!row.historyLoading && history.length > HISTORY_PREVIEW_LIMIT && (
+          {!row.historyLoading && topLevel.length === 0 && <div className="panel-hint">{t('no past sessions')}</div>}
+          {visible.map((h) => (
+            <div key={h.path}>
+              <HistoryItem
+                project={row.project}
+                summary={h}
+                children={childrenOf.get(h.path) ?? []}
+                subOpen={subOpen[h.path] ?? false}
+                onToggleSub={() => toggleSub(h.path)}
+                onDelete={() => void deleteHistory(h)}
+              />
+              {subOpen[h.path] &&
+                (childrenOf.get(h.path) ?? []).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={(x) => openTranscript(row.project, x)} />)}
+            </div>
+          ))}
+          {!row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (
             <button className="show-all" onClick={() => setShowAll(key, !row.showAllHistory)}>
-              {row.showAllHistory ? t('show less') : t('show all ({count})', { count: history.length })}
+              {row.showAllHistory ? t('show less') : t('show all ({count})', { count: topLevel.length })}
             </button>
           )}
         </div>

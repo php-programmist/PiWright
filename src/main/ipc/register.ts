@@ -30,6 +30,7 @@ import {
   MODELS_LIST_CHANNEL,
   MODELS_REVEAL_CHANNEL,
   MODELS_SAVE_CHANNEL,
+  REMOTE_CHECK_PORT_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
@@ -40,6 +41,7 @@ import {
   SESSIONS_NEW_CHANNEL,
   SESSIONS_OPEN_CHANNEL,
   SESSIONS_RENAME_CHANNEL,
+  SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
@@ -59,7 +61,9 @@ import {
   TERM_CREATE_CHANNEL,
   TERM_INPUT_CHANNEL,
   TERM_PROFILES_CHANNEL,
-  TERM_RESIZE_CHANNEL
+  TERM_RESIZE_CHANNEL,
+  WORKTREE_CREATE_CHANNEL,
+  WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
 import type { BackendMode, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
@@ -76,10 +80,13 @@ import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
 import type { TelegramTokenStore } from '../notifications/token-store'
 import type { RemoteBridge } from '../remote/bridge'
+import { isPortBusy } from '../remote/server'
 import { listMcpServers, probeMcpServer, revealMcpFile, saveMcpServers } from '../mcp/mcp-config'
 import { listModels, revealModelsFile, saveModels } from '../models/models-service'
 import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-service'
-import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
+import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath, checkSessionPath, readSessionHeader } from '../sessions/session-catalog'
+import { readSessionTranscript } from '../sessions/transcript'
+import { worktreeNameFromCwd } from '../../shared/worktree'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
 function isDialogAnswer(value: unknown): value is DialogAnswer {
@@ -199,12 +206,58 @@ export function registerIpc(
 
   ipcMain.handle(SESSIONS_OPEN_CHANNEL, async (_event, project: unknown, sessionFile: unknown) => {
     if (!isProjectEntry(project) || typeof sessionFile !== 'string' || sessionFile.length === 0) {
-      throw new Error('Invalid session request')
+      return { ok: false, error: 'Invalid session request', hostId: null }
     }
-    const backendPath = await toBackendPath(project, settings.get(), sessionFile)
-    const created = piHost.create(project, backendPath)
+    const current = settings.get()
+    const root = await resolveSessionsRoot(project, current)
+    if (root === null) return { ok: false, error: 'Sessions directory not found', hostId: null }
+    const cwd = await projectBackendCwd(project, current)
+    const checked = checkSessionPath(root, cwd, sessionFile)
+    if ('error' in checked) return { ok: false, error: checked.error, hostId: null }
+    const backendPath = await toBackendPath(project, current, sessionFile)
+    // Сессия worktree: пересоздать worktree по имени из cwd заголовка (порт openSessionTab jb-pi).
+    let hostProject = project
+    const header = await readSessionHeader(checked.path)
+    const wtName = header !== null ? worktreeNameFromCwd(header.cwd) : null
+    if (wtName !== null) {
+      const wt = await git.worktreeCreate(project, wtName)
+      if (!wt.ok || wt.dir === null) return { ok: false, error: wt.error, hostId: null }
+      hostProject = { kind: project.kind, dir: wt.dir }
+    }
+    const created = piHost.create(hostProject, backendPath)
     void created.ensureStarted().catch(() => {})
-    return { hostId: created.id }
+    return { ok: true, error: null, hostId: created.id }
+  })
+
+  ipcMain.handle(WORKTREE_CREATE_CHANNEL, async (_event, project: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string') {
+      return { ok: false, error: 'Invalid request', dir: null, name: '', branch: null }
+    }
+    return git.worktreeCreate(project, name)
+  })
+
+  ipcMain.handle(WORKTREE_REMOVE_CHANNEL, async (_event, project: unknown, name: unknown, force: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string' || typeof force !== 'boolean') {
+      return { ok: false, error: 'Invalid request', uncommitted: false }
+    }
+    return git.worktreeRemove(project, name, force)
+  })
+
+  ipcMain.handle(SESSIONS_TRANSCRIPT_CHANNEL, async (_event, project: unknown, sessionPath: unknown) => {
+    if (!isProjectEntry(project) || typeof sessionPath !== 'string' || sessionPath.length === 0) {
+      return { ok: false, error: 'Invalid request', events: [] }
+    }
+    const current = settings.get()
+    const root = await resolveSessionsRoot(project, current)
+    if (root === null) return { ok: false, error: 'Sessions directory not found', events: [] }
+    const cwd = await projectBackendCwd(project, current)
+    const checked = checkSessionPath(root, cwd, sessionPath)
+    if ('error' in checked) return { ok: false, error: checked.error, events: [] }
+    try {
+      return { ok: true, error: null, events: await readSessionTranscript(checked.path) }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), events: [] }
+    }
   })
 
   ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown) => {
@@ -417,6 +470,12 @@ export function registerIpc(
   })
 
   ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })
+
+  ipcMain.handle(REMOTE_CHECK_PORT_CHANNEL, async (_event, port: unknown) => {
+    const p = typeof port === 'number' && Number.isFinite(port) ? Math.round(port) : NaN
+    if (p < 1 || p > 65535) return { busy: true }
+    return { busy: await isPortBusy(p) }
+  })
 
   ipcMain.handle(MODELS_LIST_CHANNEL, async (_event, backend: unknown) => {
     if (backend !== 'native' && backend !== 'wsl') {

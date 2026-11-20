@@ -118,18 +118,34 @@ export interface HostRef {
   hostId: string
 }
 
-/** Сводка файла сессии из каталога истории (порт `SessionSummary`). */
+/** Открытие исторической сессии: с ошибкой (например, worktree не пересоздался) — без hostId. */
+export interface SessionOpenResult {
+  ok: boolean
+  error: string | null
+  hostId: string | null
+}
+
+/** Сводка файла сессии из каталога истории (порт `SessionSummary`).
+ *  parentSession — абсолютный путь к .jsonl родителя (субагент), null у обычных сессий. */
 export interface SessionSummary {
   id: string
   title: string
   lastActivityEpochMs: number
   cwd: string
   path: string
+  parentSession: string | null
 }
 
 /** Активные сессии — статусы всех хостов; renderer строит из них панель. */
 export interface SessionsSnapshot {
   active: PiStatus[]
+}
+
+/** Транскрипт исторической сессии: события для ленты (реплей без pi). */
+export interface SessionTranscriptResult {
+  ok: boolean
+  error: string | null
+  events: UiEvent[]
 }
 
 /** Файл в `git status --porcelain=v2`: index — статус в индексе, worktree — в рабочем дереве
@@ -178,6 +194,22 @@ export interface GitLogResult extends GitOpResult {
 
 export interface GitMessageResult extends GitOpResult {
   message: string
+}
+
+/** Создание worktree: dir — хост-каталог для сессий (native — путь Windows, wsl — UNC). */
+export interface WorktreeCreateResult {
+  ok: boolean
+  error: string | null
+  dir: string | null
+  name: string
+  branch: string | null
+}
+
+/** Удаление worktree; uncommitted — отказ из-за незакоммиченных (UI предложит force). */
+export interface WorktreeRemoveResult {
+  ok: boolean
+  error: string | null
+  uncommitted: boolean
 }
 
 /** Локальные ветки репозитория (`git branch --list`). */
@@ -352,8 +384,10 @@ export interface PiwrightApi {
   setSettings(patch: Partial<Settings>): Promise<Settings>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
+  /** Транскрипт сессии без запуска pi: UiEvent-ы из JSONL (для просмотра сессии субагента). */
+  sessionTranscript(project: ProjectEntry, sessionPath: string): Promise<SessionTranscriptResult>
   newSession(project: ProjectEntry): Promise<HostRef>
-  openSession(project: ProjectEntry, sessionFile: string): Promise<HostRef>
+  openSession(project: ProjectEntry, sessionFile: string): Promise<SessionOpenResult>
   closeSession(hostId: string): Promise<PromptResult>
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
@@ -379,6 +413,10 @@ export interface PiwrightApi {
   /** `git branch -d <name>` (безопасное удаление; неслитая ветка — ошибка git). */
   gitBranchDelete(project: ProjectEntry, name: string): Promise<GitOpResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
+  /** `git worktree add` (существующий worktree/ветка переиспользуются); dir — для новой сессии. */
+  worktreeCreate(project: ProjectEntry, name: string): Promise<WorktreeCreateResult>
+  /** `git worktree remove [--force]`; ветку не трогает. */
+  worktreeRemove(project: ProjectEntry, name: string, force: boolean): Promise<WorktreeRemoveResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesWrite(project: ProjectEntry, path: string, content: string): Promise<FileWriteResult>
@@ -393,6 +431,8 @@ export interface PiwrightApi {
   telegramTokenStatus(): Promise<{ configured: boolean }>
   telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
   remoteStatus(): Promise<RemoteStatus>
+  /** Занят ли TCP-порт на 0.0.0.0 (как его биндит remote-мост). */
+  remoteCheckPort(port: number): Promise<{ busy: boolean }>
   modelsList(backend: BackendMode): Promise<ModelsListResult>
   modelsSave(backend: BackendMode, doc: unknown): Promise<ModelsOpResult>
   modelsReveal(backend: BackendMode): Promise<ModelsOpResult>
@@ -419,6 +459,7 @@ export const SETTINGS_GET_CHANNEL = 'settings:get'
 export const SETTINGS_SET_CHANNEL = 'settings:set'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'
+export const SESSIONS_TRANSCRIPT_CHANNEL = 'sessions:transcript'
 export const SESSIONS_NEW_CHANNEL = 'sessions:new'
 export const SESSIONS_OPEN_CHANNEL = 'sessions:open'
 export const SESSIONS_CLOSE_CHANNEL = 'sessions:close'
@@ -443,6 +484,8 @@ export const GIT_CHECKOUT_CHANNEL = 'git:checkout'
 export const GIT_BRANCH_RENAME_CHANNEL = 'git:branch-rename'
 export const GIT_BRANCH_DELETE_CHANNEL = 'git:branch-delete'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
+export const WORKTREE_CREATE_CHANNEL = 'worktree:create'
+export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'
 export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'
 export const FILES_WRITE_CHANNEL = 'files:write'
@@ -456,6 +499,7 @@ export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'
 export const TELEGRAM_TOKEN_STATUS_CHANNEL = 'telegram:token-status'
 export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
 export const REMOTE_STATUS_CHANNEL = 'remote:status'
+export const REMOTE_CHECK_PORT_CHANNEL = 'remote:check-port'
 export const MODELS_LIST_CHANNEL = 'models:list'
 export const MODELS_SAVE_CHANNEL = 'models:save'
 export const MODELS_REVEAL_CHANNEL = 'models:reveal'

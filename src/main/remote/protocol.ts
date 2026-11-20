@@ -42,6 +42,8 @@ export interface RemoteSessionInfo {
   project: string
   status: string
   telegram: boolean
+  /** Ход завершился, а телефон его не долистал (как зелёная точка на десктопе). */
+  unread: boolean
 }
 
 /** Событие, о котором десктоп сообщает в Telegram. */
@@ -54,7 +56,14 @@ export function telegramMessageText(project: string, title: string, kind: Remote
 export function sessionListFrame(sessions: RemoteSessionInfo[]): PiJsonObject {
   return {
     type: 'sessions',
-    sessions: sessions.map((s) => ({ id: s.id, title: s.title, project: s.project, status: s.status, telegram: s.telegram }))
+    sessions: sessions.map((s) => ({
+      id: s.id,
+      title: s.title,
+      project: s.project,
+      status: s.status,
+      telegram: s.telegram,
+      unread: s.unread
+    }))
   }
 }
 

@@ -16,6 +16,7 @@ import {
   MODELS_LIST_CHANNEL,
   MODELS_REVEAL_CHANNEL,
   MODELS_SAVE_CHANNEL,
+  REMOTE_CHECK_PORT_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SOUNDS_CHOOSE_CHANNEL,
   SOUNDS_READ_CHANNEL,
@@ -48,6 +49,7 @@ import {
   SESSIONS_NEW_CHANNEL,
   SESSIONS_OPEN_CHANNEL,
   SESSIONS_RENAME_CHANNEL,
+  SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
@@ -61,7 +63,9 @@ import {
   TERM_EXIT_CHANNEL,
   TERM_INPUT_CHANNEL,
   TERM_PROFILES_CHANNEL,
-  TERM_RESIZE_CHANNEL
+  TERM_RESIZE_CHANNEL,
+  WORKTREE_CREATE_CHANNEL,
+  WORKTREE_REMOVE_CHANNEL
 } from '../shared/ipc-contracts'
 import type { DialogAnswer } from '../shared/agent-events'
 import type {
@@ -87,6 +91,8 @@ const api: PiwrightApi = {
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),
   sessionHistory: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_HISTORY_CHANNEL, project),
+  sessionTranscript: (project: ProjectEntry, sessionPath: string) =>
+    ipcRenderer.invoke(SESSIONS_TRANSCRIPT_CHANNEL, project, sessionPath),
   newSession: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_NEW_CHANNEL, project),
   openSession: (project: ProjectEntry, sessionFile: string) => ipcRenderer.invoke(SESSIONS_OPEN_CHANNEL, project, sessionFile),
   closeSession: (hostId: string) => ipcRenderer.invoke(SESSIONS_CLOSE_CHANNEL, hostId),
@@ -114,6 +120,8 @@ const api: PiwrightApi = {
   gitBranchRename: (project, oldName, newName) => ipcRenderer.invoke(GIT_BRANCH_RENAME_CHANNEL, project, oldName, newName),
   gitBranchDelete: (project, name) => ipcRenderer.invoke(GIT_BRANCH_DELETE_CHANNEL, project, name),
   gitGenerateMessage: (project) => ipcRenderer.invoke(GIT_GENERATE_MESSAGE_CHANNEL, project),
+  worktreeCreate: (project, name) => ipcRenderer.invoke(WORKTREE_CREATE_CHANNEL, project, name),
+  worktreeRemove: (project, name, force) => ipcRenderer.invoke(WORKTREE_REMOVE_CHANNEL, project, name, force),
   filesList: (project, dir) => ipcRenderer.invoke(FILES_LIST_CHANNEL, project, dir),
   filesRead: (project, path) => ipcRenderer.invoke(FILES_READ_CHANNEL, project, path),
   filesWrite: (project, path, content) => ipcRenderer.invoke(FILES_WRITE_CHANNEL, project, path, content),
@@ -126,6 +134,7 @@ const api: PiwrightApi = {
   telegramTokenStatus: () => ipcRenderer.invoke(TELEGRAM_TOKEN_STATUS_CHANNEL),
   telegramTest: (chatId, token) => ipcRenderer.invoke(TELEGRAM_TEST_CHANNEL, chatId, token),
   remoteStatus: () => ipcRenderer.invoke(REMOTE_STATUS_CHANNEL),
+  remoteCheckPort: (port: number) => ipcRenderer.invoke(REMOTE_CHECK_PORT_CHANNEL, port),
   modelsList: (backend: BackendMode) => ipcRenderer.invoke(MODELS_LIST_CHANNEL, backend),
   modelsSave: (backend: BackendMode, doc: unknown) => ipcRenderer.invoke(MODELS_SAVE_CHANNEL, backend, doc),
   modelsReveal: (backend: BackendMode) => ipcRenderer.invoke(MODELS_REVEAL_CHANNEL, backend),

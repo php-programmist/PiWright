@@ -64,7 +64,35 @@ export async function parseSessionSummary(
   const id = header === null ? null : str(header, 'id')
   const title = name ?? firstUserText
   if (id === null || title === null) return null
-  return { id, title, lastActivityEpochMs: lastModifiedMs, cwd: str(header, 'cwd') ?? '', path }
+  return {
+    id,
+    title,
+    lastActivityEpochMs: lastModifiedMs,
+    cwd: str(header, 'cwd') ?? '',
+    path,
+    parentSession: str(header, 'parentSession')
+  }
+}
+
+/** Заголовок сессии (первая строка .jsonl): cwd и parentSession без чтения всего файла. */
+export async function readSessionHeader(filePath: string): Promise<{ cwd: string; parentSession: string | null } | null> {
+  try {
+    const stream = createReadStream(filePath, { encoding: 'utf8' })
+    const lines = createInterface({ input: stream, crlfDelay: Infinity })
+    try {
+      for await (const line of lines) {
+        const parsed = parseJsonObject(line)
+        if (parsed === null || parsed['type'] !== 'session') return null
+        return { cwd: str(parsed, 'cwd') ?? '', parentSession: str(parsed, 'parentSession') }
+      }
+      return null
+    } finally {
+      lines.close()
+      stream.close()
+    }
+  } catch {
+    return null
+  }
 }
 
 /** Читает файл сессии построчно (файлы бывают большими) и возвращает сводку. */
@@ -145,6 +173,16 @@ export async function listProjectHistory(project: ProjectEntry, settings: Settin
   return listProjectSessions(root, cwd)
 }
 
+/** Нормализованный путь файла сессии внутри корня и в каталогах проекта/его worktrees; иначе null. */
+function validatedSessionPath(root: string, projectCwd: string, filePath: string): string | null {
+  const normalized = win32.normalize(filePath)
+  const rel = win32.relative(win32.normalize(root), normalized)
+  if (rel.length === 0 || rel.startsWith('..') || win32.isAbsolute(rel)) return null
+  const dirName = win32.basename(win32.dirname(normalized))
+  if (!isProjectSessionDir(dirName, projectCwd)) return null
+  return normalized
+}
+
 /** Удаление файла сессии с диска. Разрешено только внутри корня каталога сессий и только
  *  в каталогах самого проекта/его worktrees — защита от удаления чужих файлов по пути из UI. */
 export async function deleteSessionFile(
@@ -152,19 +190,18 @@ export async function deleteSessionFile(
   projectCwd: string,
   filePath: string
 ): Promise<{ ok: boolean; error: string | null }> {
-  const normalized = win32.normalize(filePath)
-  const rel = win32.relative(win32.normalize(root), normalized)
-  if (rel.length === 0 || rel.startsWith('..') || win32.isAbsolute(rel)) {
-    return { ok: false, error: 'Path is outside the sessions directory' }
-  }
-  const dirName = win32.basename(win32.dirname(normalized))
-  if (!isProjectSessionDir(dirName, projectCwd)) {
-    return { ok: false, error: 'Directory does not belong to the project' }
-  }
+  const normalized = validatedSessionPath(root, projectCwd, filePath)
+  if (normalized === null) return { ok: false, error: 'Path is outside the sessions directory' }
   try {
     await fs.rm(normalized, { force: false })
     return { ok: true, error: null }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/** Проверка пути для чтения (транскрипт/открытие) — те же гарантии, что у удаления. */
+export function checkSessionPath(root: string, projectCwd: string, filePath: string): { path: string } | { error: string } {
+  const normalized = validatedSessionPath(root, projectCwd, filePath)
+  return normalized === null ? { error: 'Path is outside the sessions directory' } : { path: normalized }
 }

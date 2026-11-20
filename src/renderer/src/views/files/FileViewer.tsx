@@ -22,6 +22,8 @@ export function FileViewer(): React.JSX.Element | null {
   const closeTab = useFilesStore((s) => s.closeTab)
   const closeViewer = useFilesStore((s) => s.closeViewer)
   const setError = useFilesStore((s) => s.setError)
+  const wordWrap = useFilesStore((s) => s.wordWrap)
+  const toggleWordWrap = useFilesStore((s) => s.toggleWordWrap)
 
   if (!viewerOpen || project === null || activePath === null) return null
 
@@ -44,6 +46,13 @@ export function FileViewer(): React.JSX.Element | null {
           </div>
         ))}
         <span className="spacer" />
+        <button
+          className={`diff-mode${wordWrap ? ' active' : ''}`}
+          title={t('Soft wrap long lines')}
+          onClick={toggleWordWrap}
+        >
+          {t('wrap')}
+        </button>
         <button className="icon file-close" title={t('Close viewer (back to chat)')} onClick={closeViewer}>×</button>
       </div>
       {error !== null && (
@@ -56,7 +65,7 @@ export function FileViewer(): React.JSX.Element | null {
         {/\.(md|markdown)$/i.test(activePath) ? (
           <MarkdownLive key={activePath} project={project} path={activePath} content={contents[activePath] ?? ''} />
         ) : (
-          <FileEditor path={activePath} content={contents[activePath] ?? ''} />
+          <FileEditor path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
         )}
       </div>
     </div>

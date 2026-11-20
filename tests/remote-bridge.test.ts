@@ -191,6 +191,43 @@ describe('RemoteBridge', () => {
     expect(bridge.isPhoneVisible()).toBe(false)
   })
 
+  it('agent_settled sets unread; attach and visibility+atBottom clear it', () => {
+    const host = fakeHost()
+    const { bridge } = bridgeWith([host])
+    bridge.syncSessions()
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(1)
+    bridge['onOpen'](socket)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    expect(remote.unread).toBe(false)
+
+    remote.tap(JSON.stringify({ type: 'agent_settled' }))
+    expect(remote.unread).toBe(true)
+    const frames = socket.lines.map((l) => JSON.parse(l) as { type: string; sessions?: { unread: boolean }[] }).filter((f) => f.type === 'sessions')
+    expect(frames.at(-1)?.sessions?.[0].unread).toBe(true)
+
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    expect(remote.unread).toBe(false)
+
+    remote.tap(JSON.stringify({ type: 'agent_end' }))
+    expect(remote.unread).toBe(true)
+    bridge['onText'](socket, JSON.stringify({ type: 'visibility', visible: true, atBottom: true }))
+    expect(remote.unread).toBe(false)
+  })
+
+  it('phone watching the bottom while the turn settles → no unread', () => {
+    const host = fakeHost()
+    const { bridge } = bridgeWith([host])
+    bridge.syncSessions()
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(1)
+    bridge['onOpen'](socket)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    bridge['onText'](socket, JSON.stringify({ type: 'visibility', visible: true, atBottom: true }))
+    remote.tap(JSON.stringify({ type: 'agent_settled' }))
+    expect(remote.unread).toBe(false)
+  })
+
   it('unknown frame type answers with error', () => {
     const { bridge } = bridgeWith([])
     const socket = fakeSocket(1)

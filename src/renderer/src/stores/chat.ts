@@ -178,6 +178,92 @@ function appendChildTool(entries: Entry[], parentId: string, child: ToolEntry): 
   return mapToolEntry(entries, parentId, (t) => ({ ...t, children: [...t.children, child] }))
 }
 
+/** Лента транскрипта исторической сессии из UiEvent-ов реплея (без буферов и статусов). */
+export function transcriptEntries(events: UiEvent[]): Entry[] {
+  const entries: Entry[] = []
+  const tools = new Map<string, ToolEntry>()
+  const findTool = (id: string): ToolEntry | null => {
+    const known = tools.get(id)
+    if (known !== undefined) return known
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]
+      if (e.kind === 'tool' && e.call.id === id) return e
+    }
+    return null
+  }
+  for (const event of events) {
+    switch (event.type) {
+      case 'user_message':
+      case 'injected_user_message':
+        entries.push({ kind: 'user', id: newId(), text: event.text })
+        break
+      case 'assistant_delta': {
+        const last = entries[entries.length - 1]
+        if (last?.kind === 'text') last.text += event.text
+        else entries.push({ kind: 'text', id: newId(), text: event.text, open: false })
+        break
+      }
+      case 'thought_delta': {
+        const last = entries[entries.length - 1]
+        if (last?.kind === 'thinking') last.text += event.text
+        else entries.push({ kind: 'thinking', id: newId(), text: event.text, open: false })
+        break
+      }
+      case 'tool_start': {
+        const entry: ToolEntry = { kind: 'tool', id: newId(), call: event.call, partial: '', result: null, children: [] }
+        tools.set(event.call.id, entry)
+        if (event.call.parentToolCallId === null || !appendChildTool(entries, event.call.parentToolCallId, entry)) {
+          entries.push(entry)
+        }
+        break
+      }
+      case 'tool_update': {
+        const tool = findTool(event.id)
+        if (tool !== null && tool.result === null) tool.partial = event.text
+        break
+      }
+      case 'tool_end': {
+        const tool = findTool(event.call.id)
+        if (tool !== undefined && tool !== null) tool.result = event.result
+        else {
+          const entry: ToolEntry = { kind: 'tool', id: newId(), call: event.call, partial: '', result: event.result, children: [] }
+          tools.set(event.call.id, entry)
+          if (event.call.parentToolCallId === null || !appendChildTool(entries, event.call.parentToolCallId, entry)) {
+            entries.push(entry)
+          }
+        }
+        break
+      }
+      case 'notify':
+        entries.push(
+          event.isError
+            ? { kind: 'error', id: newId(), text: event.message }
+            : { kind: 'info', id: newId(), text: event.message }
+        )
+        break
+      case 'compaction_start':
+        entries.push({ kind: 'info', id: newId(), text: compactionBannerText(event.reason) })
+        break
+      case 'compaction_end':
+        entries.push({
+          kind: 'info',
+          id: newId(),
+          text: event.end.error ?? (event.end.aborted ? 'Compaction cancelled.' : compactionSummaryText(event.end))
+        })
+        break
+      case 'turn_result':
+        entries.push({ kind: 'result', id: newId(), usage: event.usage })
+        break
+      case 'turn_error':
+        entries.push({ kind: 'error', id: newId(), text: event.message })
+        break
+      default:
+        break
+    }
+  }
+  return entries
+}
+
 /** Чистый переход по транслированному событию; дельты буферизуются отдельно. */
 function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
   switch (event.type) {

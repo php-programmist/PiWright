@@ -10,6 +10,7 @@ import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
+import { splitWorktreeHostDir } from '../../../../shared/worktree'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -21,7 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   error: 'error'
 }
 
-function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void }): React.JSX.Element | null {
+export function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
       return <div className="user-message">{entry.text}</div>
@@ -59,7 +60,7 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
   }
 }
 
-function ChatThinkingSummary(): React.JSX.Element {
+export function ChatThinkingSummary(): React.JSX.Element {
   const t = useT()
   return <summary>{t('thinking')}</summary>
 }
@@ -89,6 +90,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const autoScrollRef = useRef(true)
   const pendingImagesRef = useRef<string[]>([])
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
+  const worktree = project !== null ? splitWorktreeHostDir(project.dir) : null
 
   const activeHostRef = useRef(activeHostId ?? '')
   useEffect(() => {
@@ -166,6 +168,22 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     if (!result.ok && result.error !== null && result.error !== 'pi connection is not running') {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
+  }
+
+  const removeWorktree = async (): Promise<void> => {
+    if (worktree === null || project === null) return
+    if (!window.confirm(t("Remove worktree '{name}'?", { name: worktree.name }))) return
+    let result = await window.piwright.worktreeRemove(project, worktree.name, false)
+    if (!result.ok && result.uncommitted && window.confirm(t('There are uncommitted changes. Force remove?'))) {
+      result = await window.piwright.worktreeRemove(project, worktree.name, true)
+    }
+    if (!result.ok) {
+      window.alert(result.error)
+      return
+    }
+    await window.piwright.closeSession(activeHostId)
+    useChatStore.getState().removeHost(activeHostId)
+    useSessionsStore.getState().forgetHost(activeHostId)
   }
 
   const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
@@ -252,6 +270,16 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {text}
           </span>
         ))}
+        {worktree !== null && (
+          <button className="icon" title={t('Remove worktree')} onClick={() => void removeWorktree()}>
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="6" cy="6" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <circle cx="18" cy="12" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M6 8.4v7.2M8.4 6h4.1a3 3 0 0 1 3 3v.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          </button>
+        )}
         <button
           className="icon"
           title={muted ? t('Unmute sounds for this session') : t('Mute sounds for this session')}

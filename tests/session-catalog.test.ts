@@ -32,7 +32,7 @@ describe('isProjectSessionDir', () => {
 describe('parseSessionSummary', () => {
   it('title is the first user message, id and cwd from the header', async () => {
     const s = await parseSessionSummary('/s/f.jsonl', [HEADER, USER], 42)
-    expect(s).toEqual({ id: 's1', title: 'say hi', lastActivityEpochMs: 42, cwd: '/tmp/p', path: '/s/f.jsonl' })
+    expect(s).toEqual({ id: 's1', title: 'say hi', lastActivityEpochMs: 42, cwd: '/tmp/p', path: '/s/f.jsonl', parentSession: null })
   })
 
   it('session name wins over first message, last one wins', async () => {

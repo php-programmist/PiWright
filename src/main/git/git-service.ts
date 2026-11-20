@@ -14,15 +14,25 @@ import type {
   GitOpResult,
   GitStatusResult,
   ProjectEntry,
-  Settings
+  Settings,
+  WorktreeCreateResult,
+  WorktreeRemoveResult
 } from '../../shared/ipc-contracts'
 import { PiConnection } from '../pi/connection'
 import { obj, str } from '../pi/event-translator'
 import { createPiBackend } from '../pi/backends/factory'
-import { buildBashCommand, buildWslSpawnArgs } from '../pi/backends/shell'
+import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 import { buildCommitPrompt, cleanCommitMessage } from './commit-message'
 import { parseLogOneline, parseStatusOutput } from './porcelain'
+import {
+  hasWorktreeNamed,
+  isUncommittedChangesError,
+  splitWorktreeHostDir,
+  validateWorktreeName,
+  worktreeBranchFor,
+  worktreePathFor
+} from '../../shared/worktree'
 
 const GIT_TIMEOUT_MS = 30_000
 const PUSH_TIMEOUT_MS = 120_000
@@ -204,6 +214,59 @@ export class GitService {
     const args = ['branch', '-d', trimmed]
     const result = await this.run(project, args)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  private async worktreeRepoRoot(project: ProjectEntry): Promise<string | null> {
+    const result = await this.run(project, ['rev-parse', '--show-toplevel'])
+    return result.code === 0 ? result.stdout.trim() || null : null
+  }
+
+  /** Хост-каталог worktree для сессий: native — путь как есть, wsl — UNC дистрибутива. */
+  private async worktreeHostDir(project: ProjectEntry, backendPath: string): Promise<string> {
+    if (project.kind !== 'wsl') return backendPath
+    const settings = this.getSettings()
+    const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
+    return distro === undefined ? backendPath : buildWslUncPath(distro, backendPath)
+  }
+
+  /** Присоединиться к worktree или создать: существующий worktree → без git-операции,
+   *  ветка worktree-<name> есть → add без -b, иначе add -b от HEAD. Порт WorktreeManager.create. */
+  async worktreeCreate(project: ProjectEntry, name: string): Promise<WorktreeCreateResult> {
+    const trimmed = name.trim()
+    const branch = validateWorktreeName(trimmed) ? worktreeBranchFor(trimmed) : null
+    if (branch === null) return { ok: false, error: 'Invalid worktree name', dir: null, name: trimmed, branch: null }
+    const root = await this.worktreeRepoRoot(project)
+    if (root === null) return { ok: false, error: 'Not a git repository', dir: null, name: trimmed, branch }
+    const listed = await this.run(project, ['worktree', 'list', '--porcelain'])
+    if (listed.code !== 0) {
+      return { ok: false, error: errorOf(listed, ['worktree', 'list']), dir: null, name: trimmed, branch }
+    }
+    if (!hasWorktreeNamed(listed.stdout, trimmed)) {
+      const branchOut = await this.run(project, ['branch', '--list', branch])
+      const branchExists = branchOut.code === 0 && branchOut.stdout.trim().length > 0
+      const path = worktreePathFor(root, trimmed)
+      const args = branchExists ? ['worktree', 'add', path, branch] : ['worktree', 'add', '-b', branch, path, 'HEAD']
+      const out = await this.run(project, args)
+      if (out.code !== 0) return { ok: false, error: errorOf(out, args), dir: null, name: trimmed, branch }
+    }
+    return { ok: true, error: null, dir: await this.worktreeHostDir(project, worktreePathFor(root, trimmed)), name: trimmed, branch }
+  }
+
+  /** `git worktree remove [--force]`; ветку не трогаем. Порт WorktreeManager.remove.
+   *  project может быть самим worktree (кнопка в шапке чата) — root считаем от родительского репо. */
+  async worktreeRemove(project: ProjectEntry, name: string, force: boolean): Promise<WorktreeRemoveResult> {
+    const trimmed = name.trim()
+    if (!validateWorktreeName(trimmed)) return { ok: false, error: 'Invalid worktree name', uncommitted: false }
+    const wt = splitWorktreeHostDir(project.dir)
+    const baseDir = wt !== null ? { ...project, dir: wt.root } : project
+    const root = await this.worktreeRepoRoot(baseDir)
+    if (root === null) return { ok: false, error: 'Not a git repository', uncommitted: false }
+    const args = ['worktree', 'remove', ...(force ? ['--force'] : []), worktreePathFor(root, trimmed)]
+    // cwd — родительский репо: git не может удалить каталог, который сам является его cwd.
+    const out = await this.run(baseDir, args)
+    if (out.code === 0) return { ok: true, error: null, uncommitted: false }
+    const message = out.stderr.trim() || out.stdout.trim() || `git worktree remove failed (exit ${out.code})`
+    return { ok: false, error: message, uncommitted: isUncommittedChangesError(message) }
   }
 
   /** Сообщение коммита: `git diff --staged` → промпт → одноразовый pi (RPC, без сессии и

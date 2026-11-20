@@ -34,5 +34,8 @@ Desktop.ini
 # playwright-cli (snapshots, session artifacts)
 .playwright-cli/
 
+# Смоук-скрипты и временные файлы
+/tmp/
+
 # Локальные инструкции агента
 AGENTS.md

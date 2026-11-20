@@ -145,12 +145,21 @@ function send(frame) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(frame));
 }
 
-/** Сервер гасит уведомления в Telegram, пока страница на переднем плане. */
+/** Сервер гасит уведомления в Telegram, пока страница на переднем плане; atBottom — для unread-точек табов. */
 function sendVisibility() {
-  send({ type: "visibility", visible: document.visibilityState === "visible" });
+  send({ type: "visibility", visible: document.visibilityState === "visible", atBottom: atBottom() });
 }
 
 document.addEventListener("visibilitychange", sendVisibility);
+
+// Доскроллил до низа — сервер гасит unread-точку этой сессии.
+let lastSentAtBottom = null;
+stream.addEventListener("scroll", () => {
+  const bottom = atBottom();
+  if (bottom === lastSentAtBottom) return;
+  lastSentAtBottom = bottom;
+  sendVisibility();
+});
 
 function setDot(state) {
   dot.className = "dot";
@@ -200,7 +209,7 @@ function renderTabs(sessions) {
     tab.dataset.id = session.id;
     tab.title = session.project ? `${session.title} · ${session.project}` : session.title;
     const status = document.createElement("span");
-    status.className = `dot ${session.status || "idle"}`;
+    status.className = "dot " + (session.status === "idle" && !session.unread ? "" : session.status || "idle");
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = session.title;

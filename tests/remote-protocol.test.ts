@@ -117,10 +117,10 @@ describe('lan address picking', () => {
 
 describe('frames', () => {
   it('sessions list carries all fields', () => {
-    const frame = sessionListFrame([{ id: '1', title: 't', project: 'p', status: 'busy', telegram: true }])
+    const frame = sessionListFrame([{ id: '1', title: 't', project: 'p', status: 'busy', telegram: true, unread: false }])
     expect(frame).toEqual({
       type: 'sessions',
-      sessions: [{ id: '1', title: 't', project: 'p', status: 'busy', telegram: true }]
+      sessions: [{ id: '1', title: 't', project: 'p', status: 'busy', telegram: true, unread: false }]
     })
   })
 

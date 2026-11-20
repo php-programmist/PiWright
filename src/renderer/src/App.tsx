@@ -7,6 +7,7 @@ import { FileViewer } from './views/files/FileViewer'
 import { TerminalPanel } from './views/terminal/TerminalPanel'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
+import { TranscriptView } from './views/chat/TranscriptView'
 import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
@@ -34,6 +35,7 @@ export function App(): React.JSX.Element {
   const viewerOpen = useFilesStore((s) => s.viewerOpen)
   const termOpen = useTerminalStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
+  const transcript = useSessionsStore((s) => s.transcript)
   const [centerView, setCenterView] = useState<'chat' | 'mcp' | 'skills'>('chat')
   const hydratedRef = useRef(false)
   const theme = settings?.theme ?? 'dark'
@@ -126,7 +128,11 @@ export function App(): React.JSX.Element {
           <div className="workspace">
             <div className="content-row">
               <div className="chat-column">
-                {centerView === 'chat' && <ChatView chat={chat ?? null} />}
+                {transcript !== null ? (
+                  <TranscriptView key={transcript.summary.path} project={transcript.project} summary={transcript.summary} />
+                ) : (
+                  centerView === 'chat' && <ChatView chat={chat ?? null} />
+                )}
                 {centerView === 'mcp' && <McpView />}
                 {centerView === 'skills' && <SkillsView />}
                 {diffOpen && <DiffOverlay />}

@@ -13,6 +13,8 @@ interface FilesData {
   activePath: string | null
   contents: Record<string, string>
   error: string | null
+  /** Перенос длинных строк в редакторе файлов. */
+  wordWrap: boolean
 }
 
 interface FilesState extends FilesData {
@@ -29,6 +31,7 @@ interface FilesState extends FilesData {
   setActiveTab: (path: string) => void
   closeViewer: () => void
   setError: (error: string | null) => void
+  toggleWordWrap: () => void
   /** Оптимистичная запись md-файла (live-preview): контент сразу в сторе, при ошибке — перечит. */
   saveContent: (project: ProjectEntry, path: string, content: string) => Promise<boolean>
   applyFileChanged: (project: ProjectEntry, path: string) => Promise<void>
@@ -43,7 +46,8 @@ function resetState(): FilesData {
     tabs: [],
     activePath: null,
     contents: {},
-    error: null
+    error: null,
+    wordWrap: false
   }
 }
 
@@ -125,6 +129,8 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   closeViewer: () => set({ viewerOpen: false }),
 
   setError: (error) => set({ error }),
+
+  toggleWordWrap: () => set((state) => ({ wordWrap: !state.wordWrap })),
 
   saveContent: async (project, path, content) => {
     set((state) => ({ contents: { ...state.contents, [path]: content } }))

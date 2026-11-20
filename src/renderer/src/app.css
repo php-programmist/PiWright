@@ -861,6 +861,17 @@ body {
   color: var(--muted);
 }
 
+.history-item.sub {
+  padding-left: 40px;
+}
+
+.sub-toggle {
+  flex: none;
+  width: 18px;
+  min-width: 18px;
+  padding: 0;
+}
+
 .history-item:hover {
   background: var(--hover);
   color: var(--text);

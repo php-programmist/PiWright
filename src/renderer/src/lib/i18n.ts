@@ -119,6 +119,8 @@ const RU: Record<string, string> = {
   'Pick a session to browse its files': 'Выберите сессию, чтобы смотреть файлы',
   'Close tab': 'Закрыть вкладку',
   'Close viewer (back to chat)': 'Закрыть просмотр (вернуться к чату)',
+  'Soft wrap long lines': 'Мягкий перенос длинных строк',
+  'wrap': 'перенос',
 
   // Дифф
   'Previous file': 'Предыдущий файл',
@@ -190,6 +192,9 @@ const RU: Record<string, string> = {
   'enable remote bridge (sessions are shared on the LAN)': 'включить remote-мост (сессии доступны в локальной сети)',
   'port': 'порт',
   'Bridge is off — enable it and reopen settings.': 'Мост выключен — включите и переоткройте настройки.',
+  'port is free': 'порт свободен',
+  'port is busy': 'порт занят',
+  'Port {port} is busy — pick a free one in Settings → General': 'Порт {port} занят — выберите свободный в Настройках → Общие',
 
   // Настройки — Models
   'Open models.json in editor': 'Открыть models.json в редакторе',
@@ -293,7 +298,21 @@ const RU: Record<string, string> = {
   'User skills of the project backend (~/.pi/agent/skills) and project skills (.pi/skills, .agents/skills). Toggles write into the backend settings.json; new chats pick them up.':
     'Юзерские навыки бэкенда проекта (~/.pi/agent/skills) и проектные (.pi/skills, .agents/skills). Тогглы пишутся в settings.json бэкенда; новые чаты их подхватят.',
   'No skills found.': 'Навыки не найдены.',
-  'Pick a session — skills are per-project.': 'Выберите сессию — навыки настраиваются на проект.'
+  'Pick a session — skills are per-project.': 'Выберите сессию — навыки настраиваются на проект.',
+
+  // Субагенты (транскрипт)
+  'Back to parent session': '← назад к родителю',
+  'Subagent sessions': 'Сессии субагентов',
+  'Subagents': 'Субагенты',
+  'Transcript failed to load': 'Не удалось загрузить транскрипт',
+
+  // Worktree
+  'New worktree': 'Новый worktree',
+  'worktree name': 'имя worktree',
+  'Remove worktree': 'Удалить worktree',
+  "Remove worktree '{name}'?": "Удалить worktree «{name}»?",
+  'There are uncommitted changes. Force remove?': 'Есть незакоммиченные изменения. Удалить принудительно?',
+  'Invalid worktree name': 'Неверное имя worktree'
 }
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string

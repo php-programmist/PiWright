@@ -2,6 +2,7 @@
  *  (вшита ?raw-импортами), апгрейдит любой Upgrade в WebSocket. Порт `RemoteWebServer.kt`;
  *  вместо ручного HTTP-парсинга — node:http, WebSocket остался ручным (ws.ts). */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo, Socket as NetSocket } from 'node:net'
 import { networkInterfaces } from 'node:os'
 import type { RemoteAuth } from './auth'
@@ -35,6 +36,30 @@ export function lanCandidates(): [string, string][] {
     }
   }
   return result
+}
+
+/** Занят ли порт для бинда на 0.0.0.0 (так слушает remote-мост) — пробный listen. */
+export function isPortBusy(port: number, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createNetServer()
+    let settled = false
+    const done = (busy: boolean): void => {
+      if (settled) return
+      settled = true
+      server.close()
+      resolve(busy)
+    }
+    const timer = setTimeout(() => done(true), timeoutMs)
+    timer.unref()
+    server.once('error', () => {
+      clearTimeout(timer)
+      done(true)
+    })
+    server.listen(port, '0.0.0.0', () => {
+      clearTimeout(timer)
+      done(false)
+    })
+  })
 }
 
 function cookieToken(req: IncomingMessage): string | null {

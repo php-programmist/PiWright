@@ -82,7 +82,7 @@ describe('deleteSessionFile', () => {
       await fs.writeFile(file, 'x', 'utf8')
       const result = await deleteSessionFile(root, '/tmp/p', file)
       expect(result.ok).toBe(false)
-      expect(result.error).toContain('belong')
+      expect(result.error).toContain('outside')
       await expect(fs.stat(file)).resolves.toBeTruthy()
     } finally {
       await fs.rm(root, { recursive: true, force: true })
