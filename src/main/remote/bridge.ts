@@ -237,6 +237,21 @@ export class RemoteBridge {
     return true
   }
 
+  /** Диалог отвечен с ПК (SessionHost.respondDialog): закрыть карточку на телефоне и
+   *  пересчитать точку таба. false — сессия не расшарена или диалог уже закрыт. */
+  answerUiFromPc(hostId: string, id: string): boolean {
+    const remote = this.sessionsByHost.get(hostId)
+    if (remote === undefined) return false
+    const pending = this.pendingUi.get(id)
+    if (pending === undefined || pending.answered) return false
+    pending.answered = true
+    this.pendingUi.delete(id)
+    if (pending.timer !== null) clearTimeout(pending.timer)
+    this.broadcast(remote, JSON.stringify(uiAnsweredFrame(id, 'pc')))
+    this.broadcastSessions()
+    return true
+  }
+
   // ------------------------------------------------------------- web server
 
   private onOpen(socket: RemoteSocket): void {

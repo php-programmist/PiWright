@@ -387,7 +387,9 @@ export function registerIpc(
     if (h === null) return { ok: false, error: 'Session not found' }
     if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Dialog id is empty' }
     if (!isDialogAnswer(answer)) return { ok: false, error: 'Invalid dialog answer' }
-    return h.respondDialog(id, answer)
+    const result = h.respondDialog(id, answer)
+    if (result.ok && typeof hostId === 'string') notifications?.bridge.answerUiFromPc(hostId, id)
+    return result
   })
 
   ipcMain.handle(SESSION_PENDING_DIALOGS_CHANNEL, () => piHost.pendingDialogs())

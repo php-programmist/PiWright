@@ -204,6 +204,37 @@ describe('SessionHost', () => {
     expect(host.getPendingDialogs()).toHaveLength(0)
     const sent = child.sent.filter((c) => c['type'] === 'extension_ui_response')
     expect(sent).toEqual([{ type: 'extension_ui_response', id: 'u1', confirmed: true }])
+    expect(events.some((e) => e.type === 'dialog_answered' && e.id === 'u1' && e.by === 'pc')).toBe(true)
+    host.dispose()
+  })
+
+  it('phone answer via respondRemoteUi clears the pending dialog and emits dialog_answered', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData('{"type":"extension_ui_request","id":"u1","method":"confirm","title":"Run?"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'dialog_open')).toBe(true)
+    })
+
+    host.respondRemoteUi('u1', { confirmed: true })
+    expect(host.getPendingDialogs()).toHaveLength(0)
+    expect(events.some((e) => e.type === 'dialog_answered' && e.id === 'u1' && e.by === 'phone')).toBe(true)
+    expect(child.sent.filter((c) => c['type'] === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'u1', confirmed: true }
+    ])
     host.dispose()
   })
 

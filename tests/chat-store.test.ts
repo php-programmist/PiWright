@@ -150,6 +150,24 @@ describe('chat store transcript', () => {
     expect(entries()[1]).toMatchObject({ receipt: 'expired' })
   })
 
+  it('dialog_answered from the other side closes an open card, answered card stays', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({
+      hostId: HOST,
+      event: { type: 'dialog_open', id: 'u1', dialog: { kind: 'confirm', title: 'Run?', message: null, timeoutMs: null } }
+    })
+    store.applyEvent({ hostId: HOST, event: { type: 'dialog_answered', id: 'u1', by: 'phone' } })
+    expect(entries()[0]).toMatchObject({ receipt: 'answered' })
+
+    store.applyEvent({
+      hostId: HOST,
+      event: { type: 'dialog_open', id: 'u2', dialog: { kind: 'confirm', title: 'Run?', message: null, timeoutMs: null } }
+    })
+    store.setDialogReceipt(HOST, 'u2', 'answered')
+    store.applyEvent({ hostId: HOST, event: { type: 'dialog_answered', id: 'u2', by: 'phone' } })
+    expect(entries()[1]).toMatchObject({ receipt: 'answered' })
+  })
+
   it('sessions are isolated by hostId', () => {
     const store = useChatStore.getState()
     store.addUserMessage(HOST, 'mine')

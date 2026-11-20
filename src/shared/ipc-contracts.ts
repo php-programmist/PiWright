@@ -362,7 +362,7 @@ export interface ModelsOpResult {
   error: string | null
 }
 
-/** Состояние remote-моста (вкладка Notifications). */
+/** Состояние remote-моста (вкладка General). */
 export interface RemoteStatus {
   running: boolean
   port: number

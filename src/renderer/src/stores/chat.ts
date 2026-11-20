@@ -390,6 +390,16 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
         )
       }
     }
+    case 'dialog_answered': {
+      // Ответ с другой стороны (ПК ↔ телефон): закрыть карточку, если ещё открыта.
+      const flushed = withFlushed(hostId, host)
+      return {
+        ...flushed,
+        entries: flushed.entries.map((e) =>
+          e.kind === 'dialog' && e.dialogId === event.id && e.receipt === null ? { ...e, receipt: 'answered' } : e
+        )
+      }
+    }
     case 'session_name':
       return host
   }

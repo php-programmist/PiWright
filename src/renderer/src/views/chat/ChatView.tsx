@@ -251,7 +251,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const modelKey = status.model
   const toolsHidden = chat?.toolsHidden ?? false
   const muted = chat?.muted ?? false
-  const visibleEntries = toolsHidden ? entries.filter((e) => e.kind !== 'tool') : entries
+  const visibleEntries = toolsHidden
+    ? entries.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking')
+    : entries
   const ctxPercent =
     contextUsage !== null && contextUsage.size > 0 ? Math.min(100, Math.max(0, Math.round((contextUsage.used / contextUsage.size) * 100))) : null
   const fmtTokens = (n: number): string => n.toLocaleString('en-US')

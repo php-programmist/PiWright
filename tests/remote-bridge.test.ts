@@ -28,6 +28,7 @@ function fakeHost(overrides: Partial<Record<'streaming' | 'displayTitle', unknow
     displayTitle: overrides['displayTitle'] ?? 'fix auth',
     remoteTaps: [] as ((line: string) => void)[],
     sentLines: [] as string[],
+    respondUiCalls: [] as unknown[],
     addRemoteTap(tap: (line: string) => void) {
       host.remoteTaps.push(tap)
     },
@@ -40,7 +41,9 @@ function fakeHost(overrides: Partial<Record<'streaming' | 'displayTitle', unknow
     requestRemote(_type: string): Promise<PiResponse> {
       return Promise.resolve({ id: '1', command: _type, success: true, data: { messages: [] }, error: null })
     },
-    respondRemoteUi() {},
+    respondRemoteUi(id: string, fields: unknown) {
+      host.respondUiCalls.push([id, fields])
+    },
     rename() {
       return Promise.resolve({ ok: true, error: null })
     },
@@ -176,8 +179,28 @@ describe('RemoteBridge', () => {
     bridge['onText'](phone, JSON.stringify({ type: 'ui_response', id: 'ui-9', answer: { confirmed: true } }))
     const answered = desktop.lines.map((l) => JSON.parse(l) as { type: string }).find((f) => f.type === 'ui_answered')
     expect(answered).toBeDefined()
+    expect((host as unknown as { respondUiCalls: unknown[] }).respondUiCalls).toEqual([['ui-9', { confirmed: true }]])
     bridge['onText'](phone, JSON.stringify({ type: 'ui_response', id: 'ui-9', answer: { confirmed: true } }))
     expect(JSON.parse(phone.lines[phone.lines.length - 1])).toMatchObject({ type: 'error' })
+  })
+
+  it('answerUiFromPc closes the phone card and clears the pending ui', () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 'ui-5', method: 'confirm', title: 'run?' }))
+    const phone = fakeSocket(1)
+    bridge['onText'](phone, JSON.stringify({ type: 'attach', id: remote.id }))
+    phone.lines.length = 0
+
+    expect(bridge.answerUiFromPc('host-1', 'ui-5')).toBe(true)
+    const answered = phone.lines.map((l) => JSON.parse(l) as { type: string; by?: string }).find((f) => f.type === 'ui_answered')
+    expect(answered).toMatchObject({ type: 'ui_answered', id: 'ui-5', by: 'pc' })
+    const sessions = phone.lines.map((l) => JSON.parse(l) as { type: string; sessions?: { status: string }[] }).find((f) => f.type === 'sessions')
+    expect(sessions?.sessions?.[0].status).not.toBe('question')
+
+    expect(bridge.answerUiFromPc('host-1', 'ui-5')).toBe(false)
+    expect(bridge.answerUiFromPc('no-such-host', 'ui-5')).toBe(false)
   })
 
   it('telegram toggle from phone updates the flag (default off, включается явно)', () => {

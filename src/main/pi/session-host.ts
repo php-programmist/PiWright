@@ -149,7 +149,15 @@ export class SessionHost {
     return this.conn !== null ? this.conn.request(type, fields) : Promise.reject(new Error('pi connection is not running'))
   }
 
+  /** Ответ с телефона (remote-мост): снять диалог с ПК, сообщить renderer'у, пересчитать точку. */
   respondRemoteUi(id: string, fields: PiJsonObject): void {
+    const entry = this.pendingDialogs.get(id)
+    if (entry !== undefined) {
+      if (entry.timer !== null) clearTimeout(entry.timer)
+      this.pendingDialogs.delete(id)
+      this.emit({ type: 'dialog_answered', id, by: 'phone' })
+      this.status(this.lastState)
+    }
     this.conn?.respondExtensionUi(id, fields)
   }
 
@@ -341,6 +349,7 @@ export class SessionHost {
     if (entry.timer !== null) clearTimeout(entry.timer)
     this.pendingDialogs.delete(id)
     this.conn?.respondExtensionUi(id, encodeDialogAnswer(answer))
+    this.emit({ type: 'dialog_answered', id, by: 'pc' })
     this.status(this.lastState)
     return { ok: true, error: null }
   }

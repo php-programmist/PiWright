@@ -145,3 +145,4 @@ export type UiEvent =
   | { type: 'assistant_message_start' }
   | { type: 'dialog_open'; id: string; dialog: ExtensionDialog }
   | { type: 'dialog_expired'; id: string }
+  | { type: 'dialog_answered'; id: string; by: 'pc' | 'phone' }

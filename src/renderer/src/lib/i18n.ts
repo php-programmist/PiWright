@@ -63,8 +63,8 @@ const RU: Record<string, string> = {
   'Disable Telegram notifications for this session': 'Выключить уведомления Telegram для этой сессии',
   'Share this session with a phone on the same Wi-Fi': 'Расшарить эту сессию телефону в той же Wi-Fi сети',
   'Stop sharing this session with the phone': 'Убрать шаринг этой сессии с телефона',
-  'Show tool blocks': 'Показать тул-блоки',
-  'Hide tool blocks': 'Скрыть тул-блоки',
+  'Show tool blocks': 'Показать тул-блоки и размышления',
+  'Hide tool blocks': 'Скрыть тул-блоки и размышления',
   'Ask Pi (Enter to send, Shift+Enter for newline)': 'Спросить pi (Enter — отправить, Shift+Enter — новая строка)',
   'Ask Pi (Ctrl+Enter to send)': 'Спросить pi (Ctrl+Enter — отправить)',
   'Send': 'Отправить',
@@ -209,10 +209,9 @@ const RU: Record<string, string> = {
   'Remote (phone browser)': 'Remote (браузер телефона)',
   'Enable remote bridge (sessions are shared on the LAN)': 'Включить remote-мост (сессии доступны в локальной сети)',
   'Port': 'Порт',
-  'Bridge is off — enable it and reopen settings.': 'Мост выключен — включите и переоткройте настройки.',
   'Port is free': 'Порт свободен',
   'Port is busy': 'Порт занят',
-  'Port {port} is busy — pick a free one in Settings → General': 'Порт {port} занят — выберите свободный в Настройках → Общие',
+  'Port {port} is busy — pick a free one': 'Порт {port} занят — выберите свободный',
 
   // Настройки — Models
   'Open models.json in editor': 'Открыть models.json в редакторе',
