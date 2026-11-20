@@ -44,6 +44,7 @@ import {
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
+ PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
   SESSIONS_HISTORY_CHANNEL,
@@ -104,6 +105,7 @@ const api: PiwrightApi = {
   deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
     ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),
   chooseProjectDir: (kind: BackendMode) => ipcRenderer.invoke(SESSIONS_CHOOSE_DIR_CHANNEL, kind),
+  revealProject: (project: ProjectEntry) => ipcRenderer.invoke(PROJECTS_REVEAL_CHANNEL, project),
   prompt: (hostId: string, text: string, images?: string[], behavior?: PromptBehavior) =>
     ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),

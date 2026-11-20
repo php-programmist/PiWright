@@ -253,6 +253,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           value={modelKey ?? ''}
           onChange={(e) => void window.piwright.setModel(activeHostId, e.target.value)}
         >
+          {modelKey === null && (
+            <option value="" disabled hidden>
+              {t('model')}
+            </option>
+          )}
           {modelKey !== null && !status.models.some((m) => `${m.provider}/${m.id}` === modelKey) && (
             <option value={modelKey}>{modelKey}</option>
           )}
@@ -270,6 +275,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           value={status.thinkingLevel ?? ''}
           onChange={(e) => void window.piwright.setThinkingLevel(activeHostId, e.target.value)}
         >
+          {status.thinkingLevel === null && (
+            <option value="" disabled hidden>
+              {t('thinking')}
+            </option>
+          )}
           {status.thinkingLevels.map((level) => (
             <option key={level} value={level}>
               {t('thinking: {level}', { level })}

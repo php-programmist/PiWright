@@ -6,6 +6,7 @@ import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-
 import type { DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
+import type { PiModelInfo } from '../../shared/protocol-types'
 import type { PiBackend } from './backends/types'
 import { PiConnection } from './connection'
 import { createPiBackend } from './backends/factory'
@@ -31,12 +32,19 @@ interface PendingDialogEntry {
 
 const DIALOG_EXPIRY_GRACE_MS = 2000
 
+function modelKey(model: { provider: string; id: string } | null | undefined): string | null {
+  return model ? `${model.provider}/${model.id}` : null
+}
+
 export interface SessionHostOptions {
   /** Файл сессии для возобновления — спавн с `--session <путь>` и реплей истории. */
   sessionFile?: string | null
   createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   /** Установка расширения ask_question; null — стартовать без него (по умолчанию — вшитое). */
   installAskExtension?: (project: ProjectEntry, settings: Settings) => Promise<string | null>
+  /** Каталог моделей/уровней thinking из кэша прошлых сессий — виден в UI до хендшейка. */
+  seedModels?: PiModelInfo[]
+  seedThinkingLevels?: string[]
 }
 
 export class SessionHost {
@@ -52,9 +60,12 @@ export class SessionHost {
   private lastStatusData: PiStatus | null = null
   private sessionName: string | null = null
   private firstUserText: string | null = null
-  /** Уровень thinking/имя сессии, выбранные до подъёма процесса, — уйдут в хендшейке. */
+  /** Уровень thinking/имя сессии/модель, выбранные до подъёма процесса, — уйдут в хендшейке и сразу после него. */
   private desiredThinkingLevel: string | null = null
   private desiredSessionName: string | null = null
+  private desiredModel: string | null = null
+  private readonly seedModels: PiModelInfo[]
+  private readonly seedThinkingLevels: string[]
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
@@ -69,6 +80,8 @@ export class SessionHost {
     this.sessionFile = opts.sessionFile ?? null
     this.createBackend = opts.createBackend ?? createPiBackend
     this.installAskExtension = opts.installAskExtension ?? ensureAskExtension
+    this.seedModels = opts.seedModels ?? []
+    this.seedThinkingLevels = opts.seedThinkingLevels ?? []
     this.status('idle')
   }
 
@@ -83,12 +96,14 @@ export class SessionHost {
       hostId: this.id,
       state,
       backend: this.backend?.displayName ?? null,
-      model: this.handshake?.model ? `${this.handshake.model.provider}/${this.handshake.model.id}` : null,
+      model: this.handshake?.model
+        ? `${this.handshake.model.provider}/${this.handshake.model.id}`
+        : this.desiredModel,
       sessionId: this.handshake?.sessionId ?? null,
       sessionFile: this.sessionFile,
       error,
-      models: this.handshake?.models ?? [],
-      thinkingLevels: this.handshake?.thinkingLevels ?? [],
+      models: this.handshake?.models ?? this.seedModels,
+      thinkingLevels: this.handshake?.thinkingLevels ?? this.seedThinkingLevels,
       thinkingLevel: this.handshake?.thinkingLevel ?? null,
       project: this.project,
       title: this.title,
@@ -242,6 +257,9 @@ export class SessionHost {
             : {}
         const messages = data['messages']
         if (Array.isArray(messages)) translator.replay(messages)
+      }
+      if (this.desiredModel !== null && this.desiredModel !== modelKey(handshake.model)) {
+        await this.applyModelKey(this.desiredModel)
       }
       this.status('ready')
     } catch (err) {
@@ -427,11 +445,22 @@ export class SessionHost {
     return response.success
   }
 
-  /** Сменить модель на живой сессии; после успеха — перечитать уровни thinking. */
+  /** Сменить модель на живой сессии; до подъёма процесса — применится сразу после хендшейка. */
   async setModel(key: string): Promise<PromptResult> {
     const conn = this.conn
-    if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
-    const model = this.handshake?.models.find((m) => `${m.provider}/${m.id}` === key)
+    if (conn === null || !conn.running) {
+      this.desiredModel = key
+      this.status(this.lastState)
+      return { ok: true, error: null }
+    }
+    return this.applyModelKey(key)
+  }
+
+  /** set_model + обновить handshake/контекстное окно + перечитать уровни thinking. */
+  private async applyModelKey(key: string): Promise<PromptResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running || this.handshake === null) return { ok: false, error: 'pi connection is not running' }
+    const model = this.handshake.models.find((m) => `${m.provider}/${m.id}` === key)
     try {
       const response = await conn.request('set_model', {
         provider: model?.provider ?? key.split('/')[0] ?? key,
@@ -440,7 +469,7 @@ export class SessionHost {
       if (!response.success) {
         return { ok: false, error: `set_model failed: ${response.error ?? 'no details'}` }
       }
-      if (this.handshake !== null && model !== undefined) {
+      if (model !== undefined) {
         this.handshake = { ...this.handshake, model }
         if (this.translator !== null) this.translator.contextWindow = model.contextWindow
       }

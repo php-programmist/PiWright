@@ -1,7 +1,7 @@
 ﻿import { describe, expect, it, vi } from 'vitest'
 import type { ChildProcess } from 'node:child_process'
 import { SessionHost } from '../src/main/pi/session-host'
-import type { SessionHostListener } from '../src/main/pi/session-host'
+import type { SessionHostListener, SessionHostOptions } from '../src/main/pi/session-host'
 import type { PiBackend } from '../src/main/pi/backends/types'
 import type { CreateBackendResult } from '../src/main/pi/backends/factory'
 import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
@@ -24,7 +24,8 @@ function handshakeData(sessionFile: string): Record<string, unknown> {
 
 function makeHost(
   children: ScriptedChild[],
-  settings: Settings = SETTINGS
+  settings: Settings = SETTINGS,
+  hostOpts: Partial<SessionHostOptions> = {}
 ): {
   host: SessionHost
   events: UiEvent[]
@@ -50,7 +51,8 @@ function makeHost(
   const created: CreateBackendResult = { backend, error: null }
   const host = new SessionHost(() => settings, listener, PROJECT, {
     createBackend: async () => created,
-    installAskExtension: async () => null
+    installAskExtension: async () => null,
+    ...hostOpts
   })
   return { host, events, statuses, spawnArgs }
 }
@@ -398,6 +400,36 @@ describe('SessionHost', () => {
     const types = child.sent.map((c) => c['type'])
     expect(types.indexOf('clear_queue')).toBeGreaterThanOrEqual(0)
     expect(types.indexOf('abort')).toBeGreaterThan(types.indexOf('clear_queue'))
+    host.dispose()
+  })
+
+  it('seed catalog is visible before start; setModel before start applies right after handshake', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') {
+        return { models: [{ provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'low'] }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child], SETTINGS, {
+      seedModels: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, imageInput: false, thinkingLevels: ['off', 'low'] }],
+      seedThinkingLevels: ['off', 'low']
+    })
+    const idle = host.lastStatus()
+    expect(idle?.state).toBe('idle')
+    expect(idle?.models.length).toBe(1)
+    expect(idle?.thinkingLevels).toEqual(['off', 'low'])
+    const picked = await host.setModel('p/m2')
+    expect(picked.ok).toBe(true)
+    expect(statuses[statuses.length - 1]?.model).toBe('p/m2')
+    await host.prompt('go')
+    expect(child.sent.some((c) => c['type'] === 'set_model' && c['provider'] === 'p' && c['modelId'] === 'm2')).toBe(true)
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'ready' && s.model === 'p/m2')).toBe(true)
+    })
     host.dispose()
   })
 

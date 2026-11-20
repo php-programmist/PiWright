@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { useLang, useT } from '../lib/i18n'
@@ -128,6 +128,20 @@ function SessionDot({ hostId, dot }: { hostId: string; dot: import('../../../sha
   return <span className={`dot ${cls}${off ? ' dot-off' : ''}`} />
 }
 
+const WORKTREE_ICON = (
+  <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="4.5" cy="3.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    <circle cx="11.5" cy="4.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    <path
+      d="M4.5 5.5v9M11.5 6.5v.9c0 1.6-1.2 2.6-2.8 2.6H4.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+    />
+  </svg>
+)
+
 function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): React.JSX.Element {
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
@@ -149,11 +163,16 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const attentionCount = useMemo(() => active.filter((r) => r.dot === 'confirm' || r.dot === 'question').length, [active])
   const toggleExpanded = useSessionsStore((s) => s.toggleExpanded)
   const removeProject = useSessionsStore((s) => s.removeProject)
+  const renameProject = useSessionsStore((s) => s.renameProject)
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
   const setShowAll = useSessionsStore((s) => s.setShowAll)
   const t = useT()
   const [renaming, setRenaming] = useState(false)
   const [renameText, setRenameText] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [projRenaming, setProjRenaming] = useState(false)
+  const [projRenameText, setProjRenameText] = useState('')
+  const menuRef = useRef<HTMLSpanElement | null>(null)
   const [subOpen, setSubOpen] = useState<Record<string, boolean>>({})
   const [wtCreating, setWtCreating] = useState(false)
   const [wtName, setWtName] = useState('')
@@ -222,17 +241,122 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }, [row.history])
   const visible = row.showAllHistory ? topLevel : topLevel.slice(0, HISTORY_PREVIEW_LIMIT)
 
+  const projectName = row.project.name ?? dirName(row.project.dir)
+
+  const startProjRename = (): void => {
+    setProjRenameText(projectName)
+    setProjRenaming(true)
+  }
+
+  const submitProjRename = async (): Promise<void> => {
+    setProjRenaming(false)
+    await renameProject(row.project, projRenameText)
+  }
+
+  const removeProjectWithConfirm = async (): Promise<void> => {
+    const answer = window.confirm(
+      t('Remove project "{name}" from the list?\n\nThe folder and its sessions stay on disk. You can add it back anytime.', {
+        name: projectName
+      })
+    )
+    if (!answer) return
+    await removeProject(row.project)
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent): void => {
+      if (menuRef.current !== null && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
+
   return (
     <div className="project">
       <div className="project-row">
         <button className="expand" onClick={() => toggleExpanded(key)}>{expanded ? '▾' : '▸'}</button>
-        <span className="project-name" title={row.project.dir}>{dirName(row.project.dir)}</span>
+        {projRenaming ? (
+          <input
+            className="project-rename"
+            autoFocus
+            value={projRenameText}
+            onChange={(e) => setProjRenameText(e.target.value)}
+            onBlur={() => void submitProjRename()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submitProjRename()
+              if (e.key === 'Escape') setProjRenaming(false)
+            }}
+          />
+        ) : (
+          <span className="project-name" title={row.project.dir}>{projectName}</span>
+        )}
         <span className="kind-badge">{kindLabel(row.project.kind)}</span>
         <span className="spacer" />
-        <button className="icon" title={t('Session history')} onClick={() => { if (!expanded) toggleExpanded(key); void refreshHistory(row.project) }}>⟲</button>
-        <button className="icon" title={t('New worktree')} onClick={() => setWtCreating(true)}>⎇</button>
+        <button className="icon" title={t('New worktree')} onClick={() => setWtCreating(true)}>{WORKTREE_ICON}</button>
         <button className="icon" title={t('New session')} onClick={() => void newSession()}>+</button>
-        <button className="icon remove" title={t('Remove project')} onClick={() => void removeProject(row.project)}>×</button>
+        <span className="menu-wrap" ref={menuRef}>
+          <button className="icon" title={t('Project menu')} onClick={() => setMenuOpen((v) => !v)}>⋯</button>
+          {menuOpen && (
+            <div className="project-menu">
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setMenuOpen(false)
+                  startProjRename()
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M11.2 2.3l2.5 2.5L5.5 13H3v-2.5z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+                {t('Rename')}
+              </button>
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setMenuOpen(false)
+                  void window.piwright.revealProject(row.project)
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M2 4.5c0-.6.4-1 1-1h3l1.5 1.5H13c.6 0 1 .4 1 1v6c0 .6-.4 1-1 1H3c-.6 0-1-.4-1-1z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                </svg>
+                {t('Show in folder')}
+              </button>
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item danger"
+                onClick={() => {
+                  setMenuOpen(false)
+                  void removeProjectWithConfirm()
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8.5h4.8l.6-8.5M6.8 7v3.5M9.2 7v3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {t('Remove project')}
+              </button>
+            </div>
+          )}
+        </span>
       </div>
       {!expanded && unreadCount + busyCount + attentionCount > 0 && (
         <div className="project-badges">

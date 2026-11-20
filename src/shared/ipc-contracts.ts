@@ -15,6 +15,8 @@ export interface ProjectEntry {
   kind: BackendMode
   /** native — каталог Windows; wsl — UNC `\\wsl.localhost\<distro>\…` или путь внутри WSL. */
   dir: string
+  /** Отображаемое имя (алиас); пусто/undefined — имя каталога. */
+  name?: string
 }
 
 export interface Settings {
@@ -403,6 +405,8 @@ export interface PiwrightApi {
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>
+  /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
+  revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
   abort(hostId: string): Promise<PromptResult>
   /** Очистить очередь целиком, тексты вернутся в cleared. */
@@ -481,6 +485,7 @@ export const SESSIONS_CLOSE_CHANNEL = 'sessions:close'
 export const SESSIONS_RENAME_CHANNEL = 'sessions:rename'
 export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'
+export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'

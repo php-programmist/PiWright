@@ -248,6 +248,74 @@ body {
   font-size: 12px;
 }
 
+.project-rename {
+  flex: 1;
+  min-width: 0;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+/* Иконки строки проекта и настроек — крупнее, чтобы различались (2x базового 12.5px). */
+.project-row .expand,
+.project-row .icon,
+.panel-foot .icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.project-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  min-width: 190px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.project-menu-item:hover {
+  background: var(--hover-strong);
+}
+
+.project-menu-item.danger {
+  color: var(--red);
+}
+
+.project-menu-sep {
+  border-top: 1px solid var(--border);
+  margin: 4px 2px;
+}
+
 .dot.idle {
   background: var(--green);
 }

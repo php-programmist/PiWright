@@ -85,6 +85,46 @@ describe('PiHost', () => {
     host.dispose()
   })
 
+  it('caches model catalog per backend kind and seeds new sessions before start', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-1',
+          sessionFile: 'C:\\proj\\a.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') {
+        return { models: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'high'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          currentChild?.emitData('{"type":"agent_start"}\n')
+          currentChild?.emitData('{"type":"agent_settled","aborted":false}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { piHost } = makePiHost([child])
+    expect(piHost.hasCatalog('native')).toBe(false)
+    const first = piHost.create(PROJECT)
+    await first.prompt('ping')
+    expect(piHost.hasCatalog('native')).toBe(true)
+    const second = piHost.create(PROJECT)
+    const idle = second.lastStatus()
+    expect(idle?.state).toBe('idle')
+    expect(idle?.models.length).toBe(1)
+    expect(idle?.thinkingLevels).toEqual(['off', 'high'])
+    second.dispose()
+    first.dispose()
+  })
+
   it('statuses() returns last status per host, close() removes the host', async () => {
     const child = scriptedChild('C:\\proj\\a.jsonl')
     const { piHost } = makePiHost([child])

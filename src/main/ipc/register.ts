@@ -1,6 +1,6 @@
 /** Регистрация IPC-каналов: настройки, проекты, сессии (список/история/новая/открыть/закрыть/
  *  переименовать), prompt/abort/модель/thinking, диалоги расширений. */
-import { dialog } from 'electron'
+import { dialog, shell } from 'electron'
 import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { IpcMain } from 'electron'
@@ -36,6 +36,7 @@ import {
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
+  PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
   SESSIONS_HISTORY_CHANNEL,
@@ -89,6 +90,7 @@ import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-se
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath, checkSessionPath, readSessionHeader } from '../sessions/session-catalog'
 import { readSessionTranscript } from '../sessions/transcript'
 import { worktreeNameFromCwd } from '../../shared/worktree'
+import { buildWslUncPath, stripWslUncPrefix } from '../pi/backends/shell'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
 function isDialogAnswer(value: unknown): value is DialogAnswer {
@@ -102,7 +104,8 @@ function isDialogAnswer(value: unknown): value is DialogAnswer {
 function isProjectEntry(value: unknown): value is ProjectEntry {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const entry = value as Record<string, unknown>
-  return (entry['kind'] === 'native' || entry['kind'] === 'wsl') && typeof entry['dir'] === 'string'
+  if (!((entry['kind'] === 'native' || entry['kind'] === 'wsl') && typeof entry['dir'] === 'string')) return false
+  return entry['name'] === undefined || typeof entry['name'] === 'string'
 }
 
 function host(piHost: PiHost, hostId: unknown): SessionHost | null {
@@ -203,7 +206,22 @@ export function registerIpc(
 
   ipcMain.handle(SESSIONS_NEW_CHANNEL, (_event, project: unknown) => {
     if (!isProjectEntry(project)) throw new Error('Invalid project')
-    return { hostId: piHost.create(project).id }
+    const created = piHost.create(project)
+    // Кэша каталога ещё нет — поднимаем сессию сразу, чтобы модель/thinking были видны до первого промпта.
+    if (!piHost.hasCatalog(project.kind)) void created.ensureStarted().catch(() => {})
+    return { hostId: created.id }
+  })
+
+  ipcMain.handle(PROJECTS_REVEAL_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    let target = project.dir
+    if (project.kind === 'wsl' && stripWslUncPrefix(target) !== null) {
+      const distro = settings.get().wslDistro.trim() || (await listWslDistros())[0]
+      if (distro === undefined) return { ok: false, error: 'WSL distro not found' }
+      target = buildWslUncPath(distro, stripWslUncPrefix(target)!)
+    }
+    shell.showItemInFolder(target)
+    return { ok: true, error: null }
   })
 
   ipcMain.handle(SESSIONS_OPEN_CHANNEL, async (_event, project: unknown, sessionFile: unknown) => {

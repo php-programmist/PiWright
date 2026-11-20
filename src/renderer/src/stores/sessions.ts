@@ -40,6 +40,7 @@ interface SessionsState {
   setActive: (hostId: string | null) => void
   addProject: (project: ProjectEntry) => Promise<void>
   removeProject: (project: ProjectEntry) => Promise<void>
+  renameProject: (project: ProjectEntry, name: string) => Promise<void>
   toggleExpanded: (key: string) => void
   refreshHistory: (project: ProjectEntry) => Promise<void>
   setShowAll: (key: string, showAll: boolean) => void
@@ -141,6 +142,20 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       settings,
       projects: state.projects.filter((p) => projectKey(p.project) !== projectKey(project))
     }))
+  },
+
+  renameProject: async (project, name) => {
+    const trimmed = name.trim()
+    const projects = get().projects.map((p) =>
+      projectKey(p.project) === projectKey(project)
+        ? { ...p, project: { ...p.project, name: trimmed.length > 0 ? trimmed : undefined } }
+        : p
+    )
+    const settings = await window.piwright.setSettings({ projects: projects.map((p) => p.project) })
+    set({ settings, projects: sortProjects(settings.projects.map((p) => {
+      const existing = projects.find((x) => projectKey(x.project) === projectKey(p))
+      return existing ?? { project: p, history: [], historyLoading: false, showAllHistory: false }
+    })) })
   },
 
   toggleExpanded: (key) => {
