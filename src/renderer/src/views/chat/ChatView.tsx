@@ -86,6 +86,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
   const toggleToolsHidden = useChatStore((s) => s.toggleToolsHidden)
   const toggleMuted = useChatStore((s) => s.toggleMuted)
+  const toggleTelegram = useSessionsStore((s) => s.toggleTelegram)
+  const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
@@ -354,6 +356,23 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
               />
             </svg>
           )}
+        </button>
+        <button
+          className="icon"
+          title={telegramEnabled ? t('Disable Telegram notifications for this session') : t('Enable Telegram notifications for this session')}
+          style={telegramEnabled ? { color: 'var(--accent)' } : undefined}
+          onClick={() => activeHostId !== null && toggleTelegram(activeHostId)}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M21.5 3.5L2.8 10.7c-.8.3-.8 1.4 0 1.7l4.6 1.6 1.8 5.5c.2.7 1.1.9 1.6.3l2.6-2.9 4.7 3.4c.6.4 1.4.1 1.6-.6l3-14.7c.2-.9-.7-1.7-1.6-1.4z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+            <path d="M7.4 14l11.3-8.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
         </button>
         <button
           className="icon"

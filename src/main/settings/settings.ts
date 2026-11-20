@@ -3,7 +3,7 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { NotificationSettings, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 
 /** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: 'en',
   panels: {},
   expandedProjects: {},
+  terminalTabs: {},
   notifications: DEFAULT_NOTIFICATIONS,
   projects: []
 }
@@ -83,6 +84,40 @@ export function mergeExpandedProjects(value: unknown): Record<string, boolean> {
   return out
 }
 
+/** Лимит вкладок терминала на проект (санитайзер). */
+export const TERMINAL_TABS_MAX = 16
+
+/** terminalTabs из файла/settings:set поверх дефолтов: строковые ключи, валидные profileId,
+ *  опциональные строковые label, активный индекс в границах. */
+export function mergeTerminalTabs(value: unknown): Record<string, TerminalTabsSnapshot> {
+  const out: Record<string, TerminalTabsSnapshot> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const rawTabs = (raw as Record<string, unknown>)['tabs']
+    if (!Array.isArray(rawTabs)) continue
+    const tabs: SavedTerminalTab[] = []
+    for (const item of rawTabs) {
+      if (tabs.length >= TERMINAL_TABS_MAX) break
+      if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+      const profileId = (item as Record<string, unknown>)['profileId']
+      if (typeof profileId !== 'string' || !TERMINAL_PROFILE_IDS.includes(profileId as never)) continue
+      const label = (item as Record<string, unknown>)['label']
+      const tab: SavedTerminalTab = { profileId: profileId as SavedTerminalTab['profileId'] }
+      if (typeof label === 'string' && label.trim().length > 0) tab.label = label.trim().slice(0, 60)
+      tabs.push(tab)
+    }
+    if (tabs.length === 0) continue
+    const snapshot: TerminalTabsSnapshot = { tabs }
+    const activeIndex = (raw as Record<string, unknown>)['activeIndex']
+    if (typeof activeIndex === 'number' && Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < tabs.length) {
+      snapshot.activeIndex = activeIndex
+    }
+    out[key] = snapshot
+  }
+  return out
+}
+
 function isPosixPath(path: string): boolean {
   return path.startsWith('/') || path.startsWith('~/')
 }
@@ -122,6 +157,7 @@ export class SettingsService {
       const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
       merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
       merged.expandedProjects = mergeExpandedProjects((raw as Partial<Settings>)['expandedProjects'])
+      merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

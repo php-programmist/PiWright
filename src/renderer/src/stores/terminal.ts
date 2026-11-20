@@ -1,12 +1,21 @@
 import { create } from 'zustand'
-import type { ProjectEntry, TerminalProfile, TerminalProfileId } from '../../../shared/ipc-contracts'
+import type {
+  ProjectEntry,
+  Settings,
+  TerminalProfile,
+  TerminalProfileId,
+  TerminalTabsSnapshot
+} from '../../../shared/ipc-contracts'
+import { setTerminalTabs } from '../../../shared/terminal-tabs'
 import { disposeEntry } from '../views/terminal/term-registry'
-import { projectKey } from './sessions'
+import { projectKey, useSessionsStore } from './sessions'
 
 interface TermTab {
   id: string
   profileId: TerminalProfileId
   label: string
+  /** Юзерское имя вкладки (переименование); undefined — имя профиля. */
+  customLabel?: string
   dead: boolean
 }
 
@@ -30,9 +39,15 @@ interface TerminalState {
   setProject: (project: ProjectEntry | null) => void
   toggleOpen: () => void
   setHeight: (height: number) => void
-  spawn: (project: ProjectEntry, profileId?: TerminalProfileId) => Promise<void>
+  /** Создаёт вкладку; возвращает id (null — ошибка). opts.persist=false — без записи в настройки (восстановление). */
+  spawn: (project: ProjectEntry, profileId?: TerminalProfileId, opts?: { persist?: boolean }) => Promise<string | null>
   close: (id: string) => Promise<void>
   activate: (id: string) => void
+  /** Юзерское переименование вкладки; пустая строка — вернуть имя профиля. */
+  rename: (id: string, label: string) => void
+  /** Первое появление проекта в доке: восстановить сохранённые вкладки или создать дефолтную. */
+  ensureTabs: (project: ProjectEntry) => void
+  restoreTabs: (project: ProjectEntry, snapshot: TerminalTabsSnapshot) => Promise<void>
   applyExit: (id: string, code: number) => void
   setError: (error: string | null) => void
 }
@@ -63,6 +78,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       }
       set({ profiles: result.profiles, defaultProfileId: result.defaultProfileId })
     })
+    if (get().open) get().ensureTabs(project)
   },
 
   toggleOpen: () => set((state) => ({ open: !state.open })),
@@ -70,11 +86,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   setHeight: (height) =>
     set({ height: Math.min(Math.max(height, TERMINAL_DOCK_MIN), window.innerHeight - TERMINAL_DOCK_MAX_RESERVE) }),
 
-  spawn: async (project, profileId) => {
+  spawn: async (project, profileId, opts) => {
     const result = await window.piwright.termCreate(project, profileId ?? null)
     if (!result.ok || result.terminal === null) {
       set({ error: result.error })
-      return
+      return null
     }
     const info = result.terminal
     const key = projectKey(project)
@@ -87,6 +103,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         projects: { ...state.projects, [key]: { ids: [...current.ids, info.id], activeId: info.id } }
       }
     })
+    if (opts?.persist !== false) persistTabs(get)
+    return info.id
   },
 
   close: async (id) => {
@@ -104,6 +122,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       delete terms[id]
       return { terms, projects: { ...state.projects, [key]: { ids, activeId } } }
     })
+    persistTabs(get)
   },
 
   activate: (id) => {
@@ -114,13 +133,86 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       if (current === undefined) return state
       return { projects: { ...state.projects, [key]: { ...current, activeId: id } } }
     })
+    persistTabs(get)
+  },
+
+  rename: (id, label) => {
+    const tab = get().terms[id]
+    if (tab === undefined) return
+    const customLabel = label.trim()
+    set((state) => ({
+      terms: { ...state.terms, [id]: { ...tab, customLabel: customLabel.length > 0 ? customLabel : undefined } }
+    }))
+    persistTabs(get)
+  },
+
+  ensureTabs: (project) => {
+    const key = projectKey(project)
+    if (get().projects[key] !== undefined) return
+    const saved = useSessionsStore.getState().settings?.terminalTabs?.[key]
+    if (saved === undefined || saved.tabs.length === 0) {
+      void get().spawn(project)
+      return
+    }
+    void get().restoreTabs(project, saved)
+  },
+
+  restoreTabs: async (project, snapshot) => {
+    const key = projectKey(project)
+    const ids: string[] = []
+    for (const saved of snapshot.tabs) {
+      if (projectKey(project) !== get().projectKey) return
+      const id = await get().spawn(project, saved.profileId, { persist: false })
+      if (id === null) continue
+      ids.push(id)
+      if (saved.label !== undefined) {
+        set((state) => {
+          const tab = state.terms[id]
+          if (tab === undefined) return state
+          return { terms: { ...state.terms, [id]: { ...tab, customLabel: saved.label } } }
+        })
+      }
+    }
+    if (ids.length === 0 || projectKey(project) !== get().projectKey) return
+    const activeId = ids[Math.min(snapshot.activeIndex ?? 0, ids.length - 1)] ?? null
+    set((state) => {
+      const current = state.projects[key]
+      if (current === undefined) return state
+      return { projects: { ...state.projects, [key]: { ...current, activeId } } }
+    })
   },
 
   applyExit: (id) => {
     const tab = get().terms[id]
     if (tab === undefined) return
     set((state) => ({ terms: { ...state.terms, [id]: { ...tab, dead: true } } }))
+    persistTabs(get)
   },
 
   setError: (error) => set({ error })
 }))
+
+/** Снимок живых вкладок активного проекта → settings.terminalTabs (мёртвые не сохраняются). */
+function persistTabs(get: () => TerminalState): void {
+  const state = get()
+  const key = state.projectKey
+  if (key === null) return
+  const current = state.projects[key]
+  if (current === undefined) return
+  const alive = current.ids.map((id) => state.terms[id]).filter((t) => t !== undefined && !t.dead)
+  const tabs = alive.map((t) => (t.customLabel !== undefined ? { profileId: t.profileId, label: t.customLabel } : { profileId: t.profileId }))
+  const activeIndex = current.activeId !== null ? alive.findIndex((t) => t.id === current.activeId) : -1
+  const snapshot: TerminalTabsSnapshot = {
+    tabs,
+    ...(activeIndex >= 0 ? { activeIndex } : {})
+  }
+  const settings = useSessionsStore.getState().settings
+  if (settings === null) return
+  const patch: Partial<Settings> =
+    tabs.length > 0
+      ? setTerminalTabs(settings, key, snapshot)
+      : { terminalTabs: Object.fromEntries(Object.entries(settings.terminalTabs).filter(([k]) => k !== key)) }
+  void window.piwright.setSettings(patch).then((saved) => {
+    useSessionsStore.getState().setSettings(saved)
+  })
+}

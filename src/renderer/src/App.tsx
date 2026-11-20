@@ -14,7 +14,7 @@ import { SettingsView } from './views/settings/SettingsView'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
-import { useSessionsStore, projectKey } from './stores/sessions'
+import { useSessionsStore } from './stores/sessions'
 import { useTerminalStore } from './stores/terminal'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { applyAppearance } from './lib/appearance'
@@ -71,14 +71,12 @@ export function App(): React.JSX.Element {
   const toggleTerm = (): void => {
     useTerminalStore.getState().toggleOpen()
     persistPanel('terminal', { open: useTerminalStore.getState().open })
-    // Первое открытие терминала на проекте — сразу дефолтный терминал бэкенда проекта (фича 36).
+    // Первое открытие терминала на проекте: сохранённые вкладки (фича 37) или дефолтная (фича 36).
     if (!useTerminalStore.getState().open) return
     const st = useSessionsStore.getState()
     const project = st.active.find((r) => r.hostId === st.activeHostId)?.project ?? null
     if (project === null) return
-    if (useTerminalStore.getState().projects[projectKey(project)] === undefined) {
-      void useTerminalStore.getState().spawn(project)
-    }
+    useTerminalStore.getState().ensureTabs(project)
   }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
 

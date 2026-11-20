@@ -549,7 +549,8 @@ body {
   gap: 8px;
 }
 
-.form-actions button {
+.form-actions button,
+.settings-row button.primary {
   border-radius: 4px;
   border: 1px solid var(--border-strong);
   background: transparent;
@@ -560,7 +561,8 @@ body {
   font-size: 12px;
 }
 
-.form-actions button.primary {
+.form-actions button.primary,
+.settings-row button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -590,6 +592,28 @@ body {
 
 .copy-title {
   font-size: 12.5px;
+}
+
+.ghost {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+.ghost:disabled {
+  color: var(--disabled);
+  border-color: var(--border);
+  cursor: default;
 }
 
 .ghost.danger {
@@ -2567,6 +2591,18 @@ body {
 .term-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.term-rename {
+  width: 110px;
+  min-width: 0;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 12px;
 }
 
 .term-close:hover {

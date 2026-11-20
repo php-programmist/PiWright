@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects } from '../src/main/settings/settings'
+import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects, mergeTerminalTabs } from '../src/main/settings/settings'
 
 async function tempSettings(initial: unknown): Promise<SettingsService> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-settings-'))
@@ -81,5 +81,23 @@ describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () =>
     expect(mergeExpandedProjects({ a: false, b: 'x', c: true })).toEqual({ a: false, c: true })
     expect(mergeExpandedProjects(null)).toEqual({})
     expect(mergeExpandedProjects(['x'])).toEqual({})
+  })
+
+  it('terminalTabs are kept from file and sanitized by mergeTerminalTabs', async () => {
+    const service = await tempSettings({
+      terminalTabs: {
+        'native\u0000C:\\x': { tabs: [{ profileId: 'powershell', label: '  Build  ' }, { profileId: 'wsl' }], activeIndex: 1 },
+        bad: { tabs: [{ profileId: 'nope' }, 'x'] },
+        empty: { tabs: [] },
+        notabs: {}
+      }
+    })
+    expect(service.get().terminalTabs).toEqual({
+      'native\u0000C:\\x': { tabs: [{ profileId: 'powershell', label: 'Build' }, { profileId: 'wsl' }], activeIndex: 1 }
+    })
+    expect(mergeTerminalTabs(null)).toEqual({})
+    expect(mergeTerminalTabs({ k: { tabs: [{ profileId: 'powershell' }], activeIndex: 5 } })).toEqual({
+      k: { tabs: [{ profileId: 'powershell' }] }
+    })
   })
 })

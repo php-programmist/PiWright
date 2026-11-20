@@ -55,7 +55,8 @@ export class RemoteSession {
   readonly id = newRemoteSessionId()
   readonly sockets: RemoteSocket[] = []
   readonly widgetLines = new Map<string, string[]>()
-  /** Тоггл уведомлений этой сессии в Telegram: своё у каждой сессии, живёт в памяти. */
+  /** Тоггл уведомлений этой сессии в Telegram: своё у каждой сессии, живёт в памяти.
+   *  Дефолт false — включается явно иконкой в шапке чата (как в jb-pi). */
   telegramEnabled: boolean
   /** Идёт ход: ведётся по сырым строкам (agent_start/agent_settled), как в jb-pi —
    *  тап срабатывает до обновления статуса хоста. */
@@ -67,7 +68,7 @@ export class RemoteSession {
     readonly host: SessionHost,
     readonly tap: (line: string) => void
   ) {
-    this.telegramEnabled = true
+    this.telegramEnabled = false
     this.streaming = host.streaming
     this.unread = false
   }
@@ -189,6 +190,15 @@ export class RemoteBridge {
     if (remote === undefined) return
     remote.telegramEnabled = enabled
     this.broadcastSessions()
+  }
+
+  /** Тоггл из UI ПК (иконка в шапке чата): сессия ищется по hostId. */
+  setTelegramEnabledByHost(hostId: string, enabled: boolean): boolean {
+    const remote = this.sessionsByHost.get(hostId)
+    if (remote === undefined) return false
+    remote.telegramEnabled = enabled
+    this.broadcastSessions()
+    return true
   }
 
   /** Ответ на диалог от любого клиента; false — уже ответили раньше. */

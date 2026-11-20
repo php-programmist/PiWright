@@ -12,6 +12,8 @@ export interface SessionRow {
   sessionId: string | null
   /** Файл сессии (backend-путь) — по нему ищутся сессии субагентов. */
   sessionFile: string | null
+  /** Telegram-уведомления сессии (иконка в шапке чата, флаг в RemoteBridge). */
+  telegram: boolean
 }
 
 /** Проект панели: строка + его история (подгружается лениво). */
@@ -38,6 +40,8 @@ interface SessionsState {
   applyStatus: (status: import('../../../shared/ipc-contracts').PiStatus) => void
   forgetHost: (hostId: string) => void
   setActive: (hostId: string | null) => void
+  /** Тоггл telegram-уведомлений сессии (оптимистично, флаг живёт в main). */
+  toggleTelegram: (hostId: string) => void
   addProject: (project: ProjectEntry) => Promise<void>
   removeProject: (project: ProjectEntry) => Promise<void>
   renameProject: (project: ProjectEntry, name: string) => Promise<void>
@@ -84,7 +88,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         dot: s.dot,
         state: s.state,
         sessionId: s.sessionId,
-        sessionFile: s.sessionFile
+        sessionFile: s.sessionFile,
+        telegram: s.telegram ?? false
       })),
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
@@ -107,7 +112,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         dot: status.dot,
         state: status.state,
         sessionId: status.sessionId,
-        sessionFile: status.sessionFile
+        sessionFile: status.sessionFile,
+        telegram: state.active.find((r) => r.hostId === status.hostId)?.telegram ?? status.telegram ?? false
       })
       return { active }
     })
@@ -121,6 +127,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   setActive: (hostId) => set({ activeHostId: hostId, transcript: null }),
+
+  toggleTelegram: (hostId) => {
+    const row = get().active.find((r) => r.hostId === hostId)
+    if (row === undefined) return
+    const enabled = !row.telegram
+    set((state) => ({ active: state.active.map((r) => (r.hostId === hostId ? { ...r, telegram: enabled } : r)) }))
+    void window.piwright.setSessionTelegram(hostId, enabled)
+  },
 
   addProject: async (project) => {
     const settings = await window.piwright.setSettings({ projects: [...get().projects.map((p) => p.project), project] })

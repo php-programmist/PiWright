@@ -21,6 +21,8 @@
     "src/shared/**/*.ts",
     "src/renderer/src/stores/chat.ts",
     "src/renderer/src/stores/sessions.ts",
+    "src/renderer/src/stores/terminal.ts",
+    "src/renderer/src/views/terminal/term-registry.ts",
     "src/renderer/src/global.d.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts",

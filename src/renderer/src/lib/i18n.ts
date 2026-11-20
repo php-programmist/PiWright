@@ -59,6 +59,8 @@ const RU: Record<string, string> = {
   "Deliver before the agent's next step instead of after the turn": 'Доставить до следующего шага агента, а не после хода',
   'Unmute sounds for this session': 'Включить звук для этой сессии',
   'Mute sounds for this session': 'Выключить звук для этой сессии',
+  'Enable Telegram notifications for this session': 'Включить уведомления Telegram для этой сессии',
+  'Disable Telegram notifications for this session': 'Выключить уведомления Telegram для этой сессии',
   'Show tool blocks': 'Показать тул-блоки',
   'Hide tool blocks': 'Скрыть тул-блоки',
   'Ask Pi (Enter to send, Shift+Enter for newline)': 'Спросить pi (Enter — отправить, Shift+Enter — новая строка)',
@@ -149,6 +151,7 @@ const RU: Record<string, string> = {
   'New terminal (default profile)': 'Новый терминал (профиль по умолчанию)',
   'Profile for new terminal': 'Профиль нового терминала',
   'Close terminal': 'Закрыть терминал',
+  'Rename terminal': 'Переименовать терминал (двойной клик)',
 
   // Настройки — общие
   'saved': 'сохранено',

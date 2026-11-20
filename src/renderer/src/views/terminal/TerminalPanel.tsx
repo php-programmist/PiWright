@@ -1,6 +1,6 @@
 /** Терминальный док — горизонтальная область внизу экрана (референс PHPStudio/PHPStorm):
  *  теснит чат и правые панели, проекты и вертикальный тулбар не трогает. */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalStore } from '../../stores/terminal'
 import { useSessionsStore } from '../../stores/sessions'
@@ -51,7 +51,19 @@ export function TerminalPanel(): React.JSX.Element {
   const spawn = useTerminalStore((s) => s.spawn)
   const closeTab = useTerminalStore((s) => s.close)
   const activate = useTerminalStore((s) => s.activate)
+  const rename = useTerminalStore((s) => s.rename)
   const t = useT()
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameText, setRenameText] = useState('')
+
+  const startRename = (id: string, current: string): void => {
+    setRenamingId(id)
+    setRenameText(current)
+  }
+  const submitRename = (): void => {
+    if (renamingId !== null) rename(renamingId, renameText)
+    setRenamingId(null)
+  }
 
   useEffect(() => {
     useTerminalStore.getState().setProject(project)
@@ -80,6 +92,7 @@ export function TerminalPanel(): React.JSX.Element {
     return ids.map((id) => {
       const tab = terms[id]
       if (tab === undefined) return id
+      if (tab.customLabel !== undefined) return tab.customLabel
       const n = counters.get(tab.profileId) ?? 0
       counters.set(tab.profileId, n + 1)
       return n === 0 ? tab.label : `${tab.label} ${n + 1}`
@@ -107,7 +120,31 @@ export function TerminalPanel(): React.JSX.Element {
               className={`term-tab${id === activeId ? ' active' : ''}${tab?.dead === true ? ' dead' : ''}`}
               onClick={() => activate(id)}
             >
-              <span className="term-tab-name">{tabLabels[index]}</span>
+              {renamingId === id ? (
+                <input
+                  className="term-rename"
+                  value={renameText}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitRename()
+                    if (e.key === 'Escape') setRenamingId(null)
+                  }}
+                  onChange={(e) => setRenameText(e.target.value)}
+                  onBlur={submitRename}
+                />
+              ) : (
+                <span
+                  className="term-tab-name"
+                  title={t('Rename terminal')}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    startRename(id, tabLabels[index])
+                  }}
+                >
+                  {tabLabels[index]}
+                </span>
+              )}
               <button
                 className="icon term-close"
                 title={t('Close terminal')}

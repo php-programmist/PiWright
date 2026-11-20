@@ -273,7 +273,7 @@ export function McpView({ onClose }: { onClose: () => void }): React.JSX.Element
         <button className="ghost" onClick={() => setImportOpen((v) => !v)}>
           {t('Import JSON')}
         </button>
-        <button onClick={() => setEditing(emptyDraft())}>{t('+ Add server')}</button>
+        <button className="ghost" onClick={() => setEditing(emptyDraft())}>{t('+ Add server')}</button>
         <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
       </header>
       <div className="center-tabs">
@@ -298,7 +298,7 @@ export function McpView({ onClose }: { onClose: () => void }): React.JSX.Element
           />
           {importError !== null && <div className="settings-error">{importError}</div>}
           <div className="settings-row">
-            <button onClick={() => void runImport()} disabled={importText.trim().length === 0}>
+            <button className="primary" onClick={() => void runImport()} disabled={importText.trim().length === 0}>
               {t('Import')}
             </button>
             <button
@@ -401,7 +401,7 @@ export function McpView({ onClose }: { onClose: () => void }): React.JSX.Element
           </label>
           {importError !== null && <div className="settings-error">{importError}</div>}
           <div className="settings-row">
-            <button onClick={() => void submitDraft()}>{t('Save server')}</button>
+            <button className="primary" onClick={() => void submitDraft()}>{t('Save server')}</button>
             <button
               className="ghost"
               onClick={() => {

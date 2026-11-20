@@ -60,6 +60,7 @@ import {
   TELEGRAM_SET_TOKEN_CHANNEL,
   TELEGRAM_TEST_CHANNEL,
   TELEGRAM_TOKEN_STATUS_CHANNEL,
+  TELEGRAM_TOGGLE_SESSION_CHANNEL,
   TERM_CLOSE_CHANNEL,
   TERM_CREATE_CHANNEL,
   TERM_INPUT_CHANNEL,
@@ -77,7 +78,7 @@ import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
@@ -191,13 +192,21 @@ export function registerIpc(
       if (raw['expandedProjects'] !== null && typeof raw['expandedProjects'] === 'object' && !Array.isArray(raw['expandedProjects'])) {
         safe.expandedProjects = mergeExpandedProjects(raw['expandedProjects'])
       }
+      if (raw['terminalTabs'] !== null && typeof raw['terminalTabs'] === 'object' && !Array.isArray(raw['terminalTabs'])) {
+        safe.terminalTabs = mergeTerminalTabs(raw['terminalTabs'])
+      }
     }
     const next = settings.set(safe)
     notifications?.onSettingsChanged(next)
     return next
   })
 
-  ipcMain.handle(SESSIONS_LIST_CHANNEL, () => ({ active: piHost.statuses() }))
+  ipcMain.handle(SESSIONS_LIST_CHANNEL, () => {
+    notifications?.bridge.syncSessions()
+    return {
+      active: piHost.statuses().map((s) => ({ ...s, telegram: notifications?.bridge.telegramEnabledFor(s.hostId) ?? false }))
+    }
+  })
 
   ipcMain.handle(SESSIONS_HISTORY_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return []
@@ -504,6 +513,12 @@ export function registerIpc(
     const id = typeof chatId === 'string' ? chatId : ''
     const key = typeof token === 'string' && token.trim().length > 0 ? token : (notifications?.tokenStore.read() ?? '')
     return { error: await sendTestTelegram(id, key) }
+  })
+
+  ipcMain.handle(TELEGRAM_TOGGLE_SESSION_CHANNEL, (_event, hostId: unknown, enabled: unknown) => {
+    if (typeof hostId !== 'string' || typeof enabled !== 'boolean') return { ok: false, error: 'Invalid arguments' }
+    const done = notifications?.bridge.setTelegramEnabledByHost(hostId, enabled) ?? false
+    return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
   })
 
   ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })

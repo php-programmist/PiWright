@@ -85,7 +85,7 @@ describe('RemoteBridge', () => {
     bridge['onOpen'](socket)
     const frame = JSON.parse(socket.lines[0]) as { type: string; sessions: { status: string; project: string; title: string }[] }
     expect(frame.type).toBe('sessions')
-    expect(frame.sessions[0]).toMatchObject({ title: 'fix auth', project: 'api', status: 'busy', telegram: true })
+    expect(frame.sessions[0]).toMatchObject({ title: 'fix auth', project: 'api', status: 'busy', telegram: false })
   })
 
   it('attach sends attached + snapshot + todos, dialog lines are replayed', async () => {
@@ -168,18 +168,28 @@ describe('RemoteBridge', () => {
     expect(JSON.parse(phone.lines[phone.lines.length - 1])).toMatchObject({ type: 'error' })
   })
 
-  it('telegram toggle from phone updates the flag', () => {
+  it('telegram toggle from phone updates the flag (default off, включается явно)', () => {
     const host = fakeHost()
     const { bridge } = bridgeWith([host])
     bridge.syncSessions()
     const remote = [...bridge['sessions'].values()][0]
+    expect(remote.telegramEnabled).toBe(false)
     const socket = fakeSocket(1)
-    bridge['onText'](socket, JSON.stringify({ type: 'telegram', enabled: false }))
-    expect(remote.telegramEnabled).toBe(true)
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    bridge['onText'](socket, JSON.stringify({ type: 'telegram', enabled: true }))
+    expect(remote.telegramEnabled).toBe(true)
     bridge['onText'](socket, JSON.stringify({ type: 'telegram', enabled: false }))
     expect(remote.telegramEnabled).toBe(false)
     expect(bridge.telegramEnabledFor(remote.host.id)).toBe(false)
+  })
+
+  it('setTelegramEnabledByHost toggles by hostId (иконка в шапке чата)', () => {
+    const host = fakeHost()
+    const { bridge } = bridgeWith([host])
+    bridge.syncSessions()
+    expect(bridge.setTelegramEnabledByHost(host.id, true)).toBe(true)
+    expect(bridge.telegramEnabledFor(host.id)).toBe(true)
+    expect(bridge.setTelegramEnabledByHost('no-such-host', true)).toBe(false)
   })
 
   it('visibility frames drive isPhoneVisible', () => {

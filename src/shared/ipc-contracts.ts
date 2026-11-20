@@ -45,6 +45,8 @@ export interface Settings {
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
   expandedProjects: Record<string, boolean>
+  /** Вкладки терминала на проект (ключ projectKey) — переименованные вкладки переоткрываются после перезапуска. */
+  terminalTabs: Record<string, TerminalTabsSnapshot>
   /** Звуки, telegram и remote-мост (вкладка Notifications). */
   notifications: NotificationSettings
   projects: ProjectEntry[]
@@ -75,6 +77,18 @@ export interface PanelPrefs {
 
 export type PanelName = 'git' | 'files' | 'terminal'
 
+/** Сохранённая вкладка терминала: профиль + юзерское имя (пусто/undefined — имя профиля). */
+export interface SavedTerminalTab {
+  profileId: TerminalProfileId
+  label?: string
+}
+
+/** Снимок вкладок терминала проекта: порядок + активная вкладка (индекс в tabs). */
+export interface TerminalTabsSnapshot {
+  tabs: SavedTerminalTab[]
+  activeIndex?: number
+}
+
 /** Кружок статуса сессии: разрешение важнее вопроса, вопрос — важнее идущего хода. */
 export type SessionDot = 'confirm' | 'question' | 'busy' | 'idle'
 
@@ -98,6 +112,8 @@ export interface PiStatus {
   title: string
   /** Кружок статуса: confirm > question > busy > idle. */
   dot: SessionDot
+  /** Telegram-флаг сессии (RemoteBridge, в памяти; включается иконкой в шапке чата). */
+  telegram?: boolean
 }
 
 /** Событие сессии: renderer маршрутизирует по hostId, сырые кадры pi наружу не идут. */
@@ -268,6 +284,8 @@ export interface PendingDialog {
 }
 
 export type TerminalProfileId = 'powershell' | 'gitbash' | 'wsl'
+
+export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'gitbash', 'wsl']
 
 export interface TerminalProfile {
   id: TerminalProfileId
@@ -449,6 +467,8 @@ export interface PiwrightApi {
   setTelegramToken(token: string): Promise<{ ok: boolean; error: string | null }>
   telegramTokenStatus(): Promise<{ configured: boolean }>
   telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
+  /** Тоггл telegram-уведомлений сессии (иконка в шапке чата, флаг в RemoteBridge). */
+  setSessionTelegram(hostId: string, enabled: boolean): Promise<{ ok: boolean; error: string | null }>
   remoteStatus(): Promise<RemoteStatus>
   /** Занят ли TCP-порт на 0.0.0.0 (как его биндит remote-мост). */
   remoteCheckPort(port: number): Promise<{ busy: boolean }>
@@ -520,6 +540,7 @@ export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
 export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'
 export const TELEGRAM_TOKEN_STATUS_CHANNEL = 'telegram:token-status'
 export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
+export const TELEGRAM_TOGGLE_SESSION_CHANNEL = 'telegram:toggle-session'
 export const REMOTE_STATUS_CHANNEL = 'remote:status'
 export const REMOTE_CHECK_PORT_CHANNEL = 'remote:check-port'
 export const MODELS_LIST_CHANNEL = 'models:list'
