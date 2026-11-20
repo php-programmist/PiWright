@@ -8,7 +8,7 @@ import {
 } from '../src/shared/ask-questions'
 import type { AskQuestionItem } from '../src/shared/ask-questions'
 
-/** Порт AskQuestionTest.kt (без заметок): splitRecommended, deriveAnswer, encodeAskAnswers. */
+/** Порт AskQuestionTest.kt: splitRecommended, deriveAnswer, encodeAskAnswers (+ заметки). */
 
 const QUESTION: AskQuestionItem = {
   header: 'Auth',
@@ -36,7 +36,8 @@ describe('deriveAskAnswer', () => {
       questionIndex: 0,
       question: 'Which auth?',
       label: 'Option A (Recommended)',
-      preview: '**A** preview'
+      preview: '**A** preview',
+      notes: null
     })
   })
 
@@ -47,7 +48,7 @@ describe('deriveAskAnswer', () => {
       customActive: true,
       customText: '  my own  '
     })
-    expect(answer).toEqual({ kind: 'custom', questionIndex: 0, question: 'Which auth?', text: 'my own' })
+    expect(answer).toEqual({ kind: 'custom', questionIndex: 0, question: 'Which auth?', text: 'my own', notes: null })
   })
 
   it('multi keeps only known labels and own text', () => {
@@ -63,7 +64,8 @@ describe('deriveAskAnswer', () => {
       questionIndex: 1,
       question: 'Which auth?',
       selected: ['Option B'],
-      ownText: 'own'
+      ownText: 'own',
+      notes: null
     })
   })
 
@@ -71,6 +73,32 @@ describe('deriveAskAnswer', () => {
     expect(deriveAskAnswer(QUESTION, 2, { ...emptyChoice(), chatMarked: true })).toEqual({
       kind: 'chat',
       questionIndex: 2,
+      question: 'Which auth?'
+    })
+  })
+
+  it('attaches a trimmed note to option, custom and multi answers', () => {
+    const multi: AskQuestionItem = { ...QUESTION, multiSelect: true }
+    expect(deriveAskAnswer(QUESTION, 0, { ...emptyChoice(), selected: 'Option B', note: '  keep the token  ' })).toMatchObject({
+      kind: 'option',
+      notes: 'keep the token'
+    })
+    expect(
+      deriveAskAnswer(QUESTION, 0, { ...emptyChoice(), customActive: true, customText: 'own', note: 'note' })
+    ).toMatchObject({ kind: 'custom', notes: 'note' })
+    expect(
+      deriveAskAnswer(multi, 0, { ...emptyChoice(), multi: ['Option B'], note: 'note' })
+    ).toMatchObject({ kind: 'multi', notes: 'note' })
+  })
+
+  it('blank note becomes null, chat drops the note', () => {
+    expect(deriveAskAnswer(QUESTION, 0, { ...emptyChoice(), selected: 'Option B', note: '   ' })).toMatchObject({
+      kind: 'option',
+      notes: null
+    })
+    expect(deriveAskAnswer(QUESTION, 0, { ...emptyChoice(), chatMarked: true, note: 'note' })).toEqual({
+      kind: 'chat',
+      questionIndex: 0,
       question: 'Which auth?'
     })
   })
@@ -93,9 +121,9 @@ describe('encodeAskAnswers', () => {
   it('encodes option, custom, multi and chat answers', () => {
     const json = JSON.parse(
       encodeAskAnswers([
-        { kind: 'option', questionIndex: 0, question: 'q0', label: 'A', preview: 'p' },
-        { kind: 'custom', questionIndex: 1, question: 'q1', text: 'own' },
-        { kind: 'multi', questionIndex: 2, question: 'q2', selected: ['A', 'B'], ownText: null },
+        { kind: 'option', questionIndex: 0, question: 'q0', label: 'A', preview: 'p', notes: null },
+        { kind: 'custom', questionIndex: 1, question: 'q1', text: 'own', notes: null },
+        { kind: 'multi', questionIndex: 2, question: 'q2', selected: ['A', 'B'], ownText: null, notes: null },
         { kind: 'chat', questionIndex: 3, question: 'q3' }
       ])
     )
@@ -112,8 +140,19 @@ describe('encodeAskAnswers', () => {
 
   it('omits preview and own answer when absent', () => {
     const json = JSON.parse(
-      encodeAskAnswers([{ kind: 'multi', questionIndex: 0, question: 'q', selected: ['A'], ownText: 'x' }])
+      encodeAskAnswers([{ kind: 'multi', questionIndex: 0, question: 'q', selected: ['A'], ownText: 'x', notes: null }])
     )
     expect(json.answers[0]).toEqual({ questionIndex: 0, question: 'q', kind: 'multi', selected: ['A'], answer: 'x' })
+  })
+
+  it('emits notes only when present', () => {
+    const json = JSON.parse(
+      encodeAskAnswers([
+        { kind: 'option', questionIndex: 0, question: 'q0', label: 'A', preview: null, notes: 'my note' },
+        { kind: 'custom', questionIndex: 1, question: 'q1', text: 'own', notes: null }
+      ])
+    )
+    expect(json.answers[0]).toEqual({ questionIndex: 0, question: 'q0', kind: 'option', answer: 'A', notes: 'my note' })
+    expect(json.answers[1]).toEqual({ questionIndex: 1, question: 'q1', kind: 'custom', answer: 'own' })
   })
 })

@@ -10,8 +10,8 @@ import {
 import { useT } from '../lib/i18n'
 import type { AskChoice, AskQuestionItem, AskQuestionRequest } from '../../../shared/ask-questions'
 
-/** Инлайн-карточка опроса `ask_question` (порт `ui/QuestionPanel.kt` без заметок):
- *  вопросы стопкой, у каждого — варианты, «Свой вариант», пометка «Нужно пояснение».
+/** Инлайн-карточка опроса `ask_question` (порт `ui/QuestionPanel.kt`):
+ *  вопросы стопкой, у каждого — варианты, «Свой вариант», заметка, пометка «Нужно пояснение».
  *  После отправки — квитанция по каждому вопросу. */
 export function AskQuestionCard({
   request,
@@ -52,6 +52,7 @@ export function AskQuestionCard({
   const answers = deriveAskAnswers(request.questions, choices)
   const answeredCount = answers.filter((a) => a.kind !== 'chat').length
   const chatCount = answers.filter((a) => a.kind === 'chat').length
+  const noteCount = answers.filter((a) => a.kind !== 'chat' && a.notes !== null).length
 
   const submit = (): void => {
     if (answers.length === 0) return
@@ -67,6 +68,7 @@ export function AskQuestionCard({
         <span className="ask-counter">
           {t('{count} answered', { count: answeredCount })}
           {chatCount > 0 ? t(' · {count} to chat', { count: chatCount }) : ''}
+          {noteCount > 0 ? t(' · {count} with note', { count: noteCount }) : ''}
         </span>
         <span className="spacer" />
         <button className="ask-cancel" onClick={() => onAnswer({ kind: 'cancelled' })}>
@@ -183,13 +185,28 @@ function QuestionView({
           <Markdown text={preview} />
         </div>
       )}
-      <button
-        type="button"
-        className={`ask-chat-toggle ${choice.chatMarked ? 'marked' : ''}`}
-        onClick={() => update(index, { chatMarked: !choice.chatMarked })}
-      >
-        {choice.chatMarked ? t('Clarify in chat') : t('Needs clarification')}
-      </button>
+      {choice.noteOpen && (
+        <input
+          autoFocus
+          type="text"
+          className="ask-note-input"
+          placeholder={t('Note to answer…')}
+          value={choice.note}
+          onChange={(e) => update(index, { note: e.target.value })}
+        />
+      )}
+      <div className="ask-actions">
+        <button type="button" className="ask-chat-toggle" onClick={() => update(index, { noteOpen: !choice.noteOpen })}>
+          ✎ {t('Add note')}
+        </button>
+        <button
+          type="button"
+          className={`ask-chat-toggle ${choice.chatMarked ? 'marked' : ''}`}
+          onClick={() => update(index, { chatMarked: !choice.chatMarked })}
+        >
+          {choice.chatMarked ? `◆ ${t('Clarify in chat')}` : `◇ ${t('Needs clarification')}`}
+        </button>
+      </div>
     </div>
   )
 }

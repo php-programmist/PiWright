@@ -100,6 +100,9 @@ const RU: Record<string, string> = {
   'Why: {reason}': 'Почему: {reason}',
   'Own answer': 'Свой вариант',
   'Type your own answer…': 'Введите свой ответ…',
+  'Add note': 'Добавить заметку',
+  'Note to answer…': 'Заметка к ответу…',
+  ' · {count} with note': ' · с заметкой: {count}',
   'Needs clarification': 'Нужно пояснение',
   'Clarify in chat': 'Пояснить в чате',
 
