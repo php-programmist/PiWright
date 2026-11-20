@@ -1,0 +1,37 @@
+/** Раздача событий сессий в Telegram: turn_end / dialog_open (confirm → permission) / ошибки.
+ *  Гейт: чекбоксы события в настройках × telegram-флаг сессии × телефон не на переднем плане. */
+import { basename } from 'node:path'
+import type { PiEventMessage } from '../../shared/ipc-contracts'
+import type { RemoteNotifyKind } from './telegram'
+import { sendTelegramNotification } from './telegram'
+import type { TelegramTokenStore } from './token-store'
+import type { PiHost } from '../pi/pi-host'
+import type { RemoteBridge } from '../remote/bridge'
+
+export class NotificationHub {
+  constructor(
+    private readonly getSettings: () => import('../../shared/ipc-contracts').Settings,
+    private readonly tokenStore: TelegramTokenStore,
+    private readonly piHost: PiHost,
+    private readonly bridge: () => RemoteBridge | null
+  ) {}
+
+  onEvent(message: PiEventMessage): void {
+    const event = message.event
+    let kind: RemoteNotifyKind | null = null
+    if (event.type === 'turn_end') kind = 'turnEnd'
+    else if (event.type === 'dialog_open') kind = event.dialog.kind === 'confirm' ? 'permission' : 'question'
+    else if (event.type === 'notify' && event.isError) kind = 'error'
+    if (kind === null) return
+
+    const settings = this.getSettings()
+    if (!settings.notifications.telegram.events[kind]) return
+    const bridge = this.bridge()
+    if (bridge !== null && (bridge.isPhoneVisible() || !bridge.telegramEnabledFor(message.hostId))) return
+    const token = this.tokenStore.read()
+    if (token === null) return
+    const status = this.piHost.get(message.hostId)?.lastStatus()
+    if (status === null || status === undefined) return
+    sendTelegramNotification(settings.notifications.telegram.chatId, token, basename(status.project.dir) || status.project.dir, status.title, kind)
+  }
+}

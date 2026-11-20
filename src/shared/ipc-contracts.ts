@@ -34,7 +34,25 @@ export interface Settings {
   singleLineTools: boolean
   /** Состояние правых панелей — переживает перезапуск. */
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
+  /** Звуки, telegram и remote-мост (вкладка Notifications). */
+  notifications: NotificationSettings
   projects: ProjectEntry[]
+}
+
+/** Путь к звуковому файлу (wav/aif/aiff/au); пусто — звук выключен. */
+export interface NotificationSounds {
+  completion: string
+  await: string
+  error: string
+}
+
+export interface NotificationSettings {
+  sounds: NotificationSounds
+  telegram: {
+    chatId: string
+    events: { turnEnd: boolean; permission: boolean; question: boolean; error: boolean }
+  }
+  remote: { enabled: boolean; port: number }
 }
 
 export interface PanelPrefs {
@@ -239,6 +257,66 @@ export interface AttachmentResult {
   ref: string
 }
 
+/** Звуковой файл для проигрывания в renderer (Audio + data URL). */
+export interface SoundReadResult {
+  ok: boolean
+  error: string | null
+  mime: string
+  base64: string
+}
+
+/** Состояние remote-моста (вкладка Notifications). */
+export interface RemoteStatus {
+  running: boolean
+  port: number
+  pin: string
+  lanAddresses: string[]
+}
+
+/** Скоуп mcp.json: юзерский каталог агента бэкенда или `.pi/mcp.json` проекта. */
+export type McpScope = 'user' | 'project'
+
+export interface McpServerEntry {
+  name: string
+  config: Record<string, unknown>
+}
+
+export interface McpListResult {
+  ok: boolean
+  error: string | null
+  file: string
+  exists: boolean
+  servers: McpServerEntry[]
+}
+
+export interface McpOpResult {
+  ok: boolean
+  error: string | null
+}
+
+/** Живая проверка MCP-сервера: initialize + tools/list. */
+export interface McpProbeResult {
+  ok: boolean
+  error: string | null
+  toolCount: number
+  serverError: string | null
+}
+
+export interface SkillEntry {
+  name: string
+  description: string
+  /** Хост-путь SKILL.md (Windows/UNC). */
+  path: string
+  source: 'user' | 'project'
+  enabled: boolean
+}
+
+export interface SkillsListResult {
+  ok: boolean
+  error: string | null
+  skills: SkillEntry[]
+}
+
 export interface PiwrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
@@ -274,6 +352,19 @@ export interface PiwrightApi {
   putAttachment(project: ProjectEntry, name: string, base64: string): Promise<AttachmentResult>
   /** Диалог выбора файла → копия в `.pi/attachments/`. */
   chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
+  soundsRead(path: string): Promise<SoundReadResult>
+  soundsChoose(): Promise<{ ok: boolean; error: string | null; path: string }>
+  setTelegramToken(token: string): Promise<{ ok: boolean; error: string | null }>
+  telegramTokenStatus(): Promise<{ configured: boolean }>
+  telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
+  remoteStatus(): Promise<RemoteStatus>
+  mcpList(project: ProjectEntry, scope: McpScope): Promise<McpListResult>
+  mcpSave(project: ProjectEntry, scope: McpScope, servers: McpServerEntry[]): Promise<McpOpResult>
+  mcpProbe(project: ProjectEntry, scope: McpScope, name: string): Promise<McpProbeResult>
+  mcpReveal(project: ProjectEntry, scope: McpScope): Promise<McpOpResult>
+  skillsList(project: ProjectEntry): Promise<SkillsListResult>
+  skillsToggle(project: ProjectEntry, path: string, enabled: boolean): Promise<McpOpResult>
+  skillsReveal(project: ProjectEntry, source: 'user' | 'project'): Promise<McpOpResult>
   termProfiles(project: ProjectEntry): Promise<TerminalProfilesResult>
   termCreate(project: ProjectEntry, profileId: TerminalProfileId | null): Promise<TerminalCreateResult>
   termClose(id: string): Promise<TerminalOpResult>
@@ -318,6 +409,19 @@ export const FILES_WATCH_CHANNEL = 'files:watch'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'
 export const ATTACHMENTS_CHOOSE_CHANNEL = 'attachments:choose'
+export const SOUNDS_READ_CHANNEL = 'sounds:read'
+export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
+export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'
+export const TELEGRAM_TOKEN_STATUS_CHANNEL = 'telegram:token-status'
+export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
+export const REMOTE_STATUS_CHANNEL = 'remote:status'
+export const MCP_LIST_CHANNEL = 'mcp:list'
+export const MCP_SAVE_CHANNEL = 'mcp:save'
+export const MCP_PROBE_CHANNEL = 'mcp:probe'
+export const MCP_REVEAL_CHANNEL = 'mcp:reveal'
+export const SKILLS_LIST_CHANNEL = 'skills:list'
+export const SKILLS_TOGGLE_CHANNEL = 'skills:toggle'
+export const SKILLS_REVEAL_CHANNEL = 'skills:reveal'
 export const TERM_PROFILES_CHANNEL = 'term:profiles'
 export const TERM_CREATE_CHANNEL = 'term:create'
 export const TERM_CLOSE_CHANNEL = 'term:close'

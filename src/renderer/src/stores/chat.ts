@@ -42,6 +42,8 @@ export interface HostChat {
   /** Виджеты расширений (todo): key → строки. */
   widgets: Record<string, string[]>
   toolsHidden: boolean
+  /** Звуки этой сессии выключены (кнопка-колокольчик в шапке; не персистится). */
+  muted: boolean
 }
 
 interface ChatState {
@@ -52,6 +54,7 @@ interface ChatState {
   addUserMessage: (hostId: string, text: string) => void
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
   toggleToolsHidden: (hostId: string) => void
+  toggleMuted: (hostId: string) => void
   resetTranscript: (hostId: string) => void
 }
 
@@ -93,7 +96,8 @@ function emptyHostChat(): HostChat {
     usageTotals: null,
     extensionStatuses: {},
     widgets: {},
-    toolsHidden: false
+    toolsHidden: false,
+    muted: false
   }
 }
 
@@ -361,6 +365,12 @@ export const useChatStore = create<ChatState>((set) => ({
       const host = state.hosts[hostId]
       if (host === undefined) return state
       return { hosts: { ...state.hosts, [hostId]: { ...host, toolsHidden: !host.toolsHidden } } }
+    }),
+  toggleMuted: (hostId) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, muted: !host.muted } } }
     }),
   resetTranscript: (hostId) => {
     resetBuffers(hostId)

@@ -38,6 +38,7 @@ export class PiConnection {
   private closed = false
   private disconnected = false
   private readonly stderrTail: string[] = []
+  private readonly rawSinks = new Set<(line: string) => void>()
 
   constructor(
     private readonly spawner: PiSpawner,
@@ -100,6 +101,13 @@ export class PiConnection {
   }
 
   private handleLine(line: string): void {
+    for (const sink of this.rawSinks) {
+      try {
+        sink(line)
+      } catch {
+        // sink не должен ронять чтение stdout
+      }
+    }
     const message = parseInbound(line)
     if (message === null) return
     if (message.kind === 'response') {
@@ -132,6 +140,20 @@ export class PiConnection {
 
   respondExtensionUi(id: string, fields: PiJsonObject): void {
     this.send(encodeExtensionUiResponse(id, fields))
+  }
+
+  /** Приёмник сырых строк stdout (remote-мост); вызывается до парсинга. */
+  addRawSink(sink: (line: string) => void): void {
+    this.rawSinks.add(sink)
+  }
+
+  removeRawSink(sink: (line: string) => void): void {
+    this.rawSinks.delete(sink)
+  }
+
+  /** Сырая строка в stdin pi (пересланный кадр телефона с переписанным id). */
+  sendRaw(line: string): void {
+    this.send(line)
   }
 
   private send(line: string): void {

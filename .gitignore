@@ -28,8 +28,11 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# LSP (машинно-специфичный)
+# LSP (пїЅпїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
 .pi-lsp.json
 
 # playwright-cli (snapshots, session artifacts)
 .playwright-cli/
+
+# Р›РѕРєР°Р»СЊРЅС‹Рµ РёРЅСЃС‚СЂСѓРєС†РёРё Р°РіРµРЅС‚Р°
+AGENTS.md

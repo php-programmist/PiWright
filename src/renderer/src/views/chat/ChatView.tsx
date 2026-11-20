@@ -74,6 +74,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
   const toggleToolsHidden = useChatStore((s) => s.toggleToolsHidden)
+  const toggleMuted = useChatStore((s) => s.toggleMuted)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
@@ -157,6 +158,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const queuedCount = queue.steering.length + queue.followUp.length
   const modelKey = status.model
   const toolsHidden = chat?.toolsHidden ?? false
+  const muted = chat?.muted ?? false
   const visibleEntries = toolsHidden ? entries.filter((e) => e.kind !== 'tool') : entries
   const ctxPercent =
     contextUsage !== null && contextUsage.size > 0 ? Math.min(100, Math.max(0, Math.round((contextUsage.used / contextUsage.size) * 100))) : null
@@ -227,6 +229,42 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {text}
           </span>
         ))}
+        <button
+          className="icon"
+          title={muted ? 'Unmute sounds for this session' : 'Mute sounds for this session'}
+          onClick={() => toggleMuted(activeHostId)}
+        >
+          {muted ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M11 5L6 9H2v6h4l5 4V5z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <line x1="16" y1="9" x2="22" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1="22" y1="9" x2="16" y2="15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M11 5L6 9H2v6h4l5 4V5z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
+        </button>
         <button
           className="icon"
           title={toolsHidden ? 'Show tool blocks' : 'Hide tool blocks'}

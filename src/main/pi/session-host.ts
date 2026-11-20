@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
 import type { DialogResult, PiStatus, PromptResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject } from '../../shared/protocol-types'
-import type { PiHandshakeResult } from '../../shared/protocol-types'
+import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
 import type { PiBackend } from './backends/types'
 import { PiConnection } from './connection'
 import { createPiBackend } from './backends/factory'
@@ -55,6 +55,7 @@ export class SessionHost {
   private desiredThinkingLevel: string | null = null
   private desiredSessionName: string | null = null
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
+  private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   private readonly installAskExtension: (project: ProjectEntry, settings: Settings) => Promise<string | null>
 
@@ -99,6 +100,41 @@ export class SessionHost {
   /** Последний статус — стартовая выдача панели для уже запущенных сессий. */
   lastStatus(): PiStatus | null {
     return this.lastStatusData
+  }
+
+  /** Идёт ход (agent_start…agent_settled) — для remote-моста при регистрации. */
+  get streaming(): boolean {
+    return this.lastState === 'streaming'
+  }
+
+  /** Заголовок для remote-моста (имя → первый текст → «New Chat»). */
+  get displayTitle(): string {
+    return this.title
+  }
+
+  /** Remote-мост: сырые строки stdout pi; переживают рестарт процесса — как в jb-pi. */
+  addRemoteTap(tap: (line: string) => void): void {
+    this.remoteTaps.add(tap)
+    this.conn?.addRawSink(tap)
+  }
+
+  removeRemoteTap(tap: (line: string) => void): void {
+    this.remoteTaps.delete(tap)
+    this.conn?.removeRawSink(tap)
+  }
+
+  /** Сырая строка в stdin pi (кадр телефона с переписанным id). */
+  sendRemoteLine(line: string): void {
+    this.conn?.sendRaw(line)
+  }
+
+  /** RPC-запрос от моста; reject — процесс не жив. */
+  requestRemote(type: string, fields?: PiJsonObject | null): Promise<PiResponse> {
+    return this.conn !== null ? this.conn.request(type, fields) : Promise.reject(new Error('pi connection is not running'))
+  }
+
+  respondRemoteUi(id: string, fields: PiJsonObject): void {
+    this.conn?.respondExtensionUi(id, fields)
   }
 
   private emit(event: UiEvent): void {
@@ -190,6 +226,7 @@ export class SessionHost {
       translator.contextWindow = handshake.model?.contextWindow ?? 0
       this.conn = conn
       this.translator = translator
+      for (const tap of this.remoteTaps) conn.addRawSink(tap)
       if (handshake.sessionTokens !== null) {
         this.emit({ type: 'session_stats', tokens: handshake.sessionTokens })
       }

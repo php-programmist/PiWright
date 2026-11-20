@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron'
 import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
@@ -8,12 +8,18 @@ import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { SettingsService } from './settings/settings'
+import { TelegramTokenStore } from './notifications/token-store'
+import { NotificationHub } from './notifications/hub'
+import { RemoteAuth, generatePin } from './remote/auth'
+import { RemoteBridge } from './remote/bridge'
 
 let mainWindow: BrowserWindow | null = null
 let piHost: PiHost | null = null
 let gitService: GitService | null = null
 let fileService: FileService | null = null
 let terminalService: TerminalService | null = null
+let bridge: RemoteBridge | null = null
+let hub: NotificationHub | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -43,18 +49,34 @@ app.whenReady().then(() => {
   fileService = new FileService({
     onChanged: (project, path) => mainWindow?.webContents.send(FILES_CHANGED_CHANNEL, { project, path })
   })
+  const tokenStore = new TelegramTokenStore(
+    app.getPath('userData'),
+    (value) => safeStorage.encryptString(value),
+    (buffer) => safeStorage.decryptString(buffer)
+  )
   piHost = new PiHost(
     () => settings.get(),
     {
       onStatus: (status) => mainWindow?.webContents.send(PI_STATUS_CHANNEL, status),
-      onEvent: (message) => mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
+      onEvent: (message) => {
+        mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
+        hub?.onEvent(message)
+      }
     }
   )
+  const auth = new RemoteAuth(generatePin())
+  bridge = new RemoteBridge(() => settings.get(), piHost, auth)
+  bridge.applySettings(settings.get())
+  hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
   terminalService = new TerminalService({
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
-  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService)
+  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, {
+    tokenStore,
+    bridge,
+    onSettingsChanged: (next) => bridge?.applySettings(next)
+  })
   startAutoUpdater(() => settings.get().updateUrl)
   createWindow()
   app.on('activate', () => {

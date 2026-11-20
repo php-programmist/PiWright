@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
@@ -7,6 +7,8 @@ import { FileViewer } from './views/files/FileViewer'
 import { TerminalPanel } from './views/terminal/TerminalPanel'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
+import { McpView } from './views/mcp/McpView'
+import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
 import { useChatStore } from './stores/chat'
 import { useFilesStore } from './stores/files'
@@ -15,6 +17,7 @@ import { useSessionsStore } from './stores/sessions'
 import { useTerminalStore } from './stores/terminal'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { applyAppearance } from './lib/appearance'
+import { playNotificationSound } from './lib/sounds'
 
 export function App(): React.JSX.Element {
   const applyEvent = useChatStore((s) => s.applyEvent)
@@ -29,6 +32,7 @@ export function App(): React.JSX.Element {
   const viewerOpen = useFilesStore((s) => s.viewerOpen)
   const termOpen = useTerminalStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
+  const [centerView, setCenterView] = useState<'chat' | 'mcp' | 'skills'>('chat')
   const hydratedRef = useRef(false)
   const theme = settings?.theme ?? 'dark'
   const chatFontSize = settings?.chatFontSize ?? 14
@@ -60,6 +64,16 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const offEvent = window.piwright.onPiEvent((message) => {
       applyEvent(message)
+      const event = message.event
+      if (event.type === 'turn_end' || event.type === 'dialog_open' || event.type === 'turn_error' || (event.type === 'notify' && event.isError)) {
+        const kind = event.type === 'turn_end' ? 'completion' : event.type === 'dialog_open' ? 'await' : 'error'
+        playNotificationSound(
+          message.hostId,
+          kind,
+          useSessionsStore.getState().settings?.notifications.sounds,
+          useChatStore.getState().hosts[message.hostId]?.muted ?? false
+        )
+      }
       if (message.event.type !== 'turn_end') return
       const row = useSessionsStore.getState().active.find((r) => r.hostId === message.hostId)
       if (row !== undefined) void useGitStore.getState().refreshStatus(row.project, true)
@@ -97,7 +111,9 @@ export function App(): React.JSX.Element {
         <div className="layout">
           <SessionsPanel />
           <div className="chat-column">
-            <ChatView chat={chat ?? null} />
+            {centerView === 'chat' && <ChatView chat={chat ?? null} />}
+            {centerView === 'mcp' && <McpView />}
+            {centerView === 'skills' && <SkillsView />}
             {diffOpen && <DiffOverlay />}
             {viewerOpen && <FileViewer />}
           </div>
@@ -135,6 +151,33 @@ export function App(): React.JSX.Element {
                     strokeLinejoin="round"
                   />
                   <line x1="8.5" y1="11" x2="12" y2="11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+              </button>
+              <button
+                className={centerView === 'mcp' ? 'active' : ''}
+                title="MCP servers"
+                onClick={() => setCenterView((v) => (v === 'mcp' ? 'chat' : 'mcp'))}
+              >
+                <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="1.5" y="1.5" width="13" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <rect x="1.5" y="9.5" width="13" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <circle cx="4.2" cy="4" r="0.9" fill="currentColor" />
+                  <circle cx="4.2" cy="12" r="0.9" fill="currentColor" />
+                </svg>
+              </button>
+              <button
+                className={centerView === 'skills' ? 'active' : ''}
+                title="Skills"
+                onClick={() => setCenterView((v) => (v === 'skills' ? 'chat' : 'skills'))}
+              >
+                <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M8 1.5l1.6 3.6 3.9.4-2.9 2.6.8 3.9L8 10.1l-3.4 1.9.8-3.9L2.5 5.5l3.9-.4z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
             </div>

@@ -20,6 +20,11 @@ import {
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
   GIT_UNSTAGE_CHANNEL,
+  MCP_LIST_CHANNEL,
+  MCP_PROBE_CHANNEL,
+  MCP_REVEAL_CHANNEL,
+  MCP_SAVE_CHANNEL,
+  REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
@@ -36,6 +41,14 @@ import {
   SESSION_SET_THINKING_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
+  SKILLS_LIST_CHANNEL,
+  SKILLS_REVEAL_CHANNEL,
+  SKILLS_TOGGLE_CHANNEL,
+  SOUNDS_CHOOSE_CHANNEL,
+  SOUNDS_READ_CHANNEL,
+  TELEGRAM_SET_TOKEN_CHANNEL,
+  TELEGRAM_TEST_CHANNEL,
+  TELEGRAM_TOKEN_STATUS_CHANNEL,
   TERM_CLOSE_CHANNEL,
   TERM_CREATE_CHANNEL,
   TERM_INPUT_CHANNEL,
@@ -51,8 +64,14 @@ import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeNotifications } from '../settings/settings'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
+import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
+import { sendTestTelegram } from '../notifications/telegram'
+import type { TelegramTokenStore } from '../notifications/token-store'
+import type { RemoteBridge } from '../remote/bridge'
+import { listMcpServers, probeMcpServer, revealMcpFile, saveMcpServers } from '../mcp/mcp-config'
+import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-service'
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
@@ -83,7 +102,21 @@ function isProfileId(value: unknown): value is TerminalProfileId {
   return value === 'powershell' || value === 'gitbash' || value === 'wsl'
 }
 
-export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService, files: FileService, terminals: TerminalService): void {
+export interface NotificationServices {
+  tokenStore: TelegramTokenStore
+  bridge: RemoteBridge
+  onSettingsChanged: (settings: Settings) => void
+}
+
+export function registerIpc(
+  ipcMain: IpcMain,
+  settings: SettingsService,
+  piHost: PiHost,
+  git: GitService,
+  files: FileService,
+  terminals: TerminalService,
+  notifications?: NotificationServices
+): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
@@ -126,8 +159,13 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
         const projects = raw['projects'].filter(isProjectEntry)
         safe.projects = projects
       }
+      if (raw['notifications'] !== null && typeof raw['notifications'] === 'object' && !Array.isArray(raw['notifications'])) {
+        safe.notifications = mergeNotifications(raw['notifications'])
+      }
     }
-    return settings.set(safe)
+    const next = settings.set(safe)
+    notifications?.onSettingsChanged(next)
+    return next
   })
 
   ipcMain.handle(SESSIONS_LIST_CHANNEL, () => ({ active: piHost.statuses() }))
@@ -320,6 +358,71 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
   ipcMain.handle(ATTACHMENTS_CHOOSE_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '' }
     return chooseAttachment(project)
+  })
+
+  ipcMain.handle(SOUNDS_READ_CHANNEL, (_event, path: unknown) => {
+    return readSoundFile(typeof path === 'string' ? path : '')
+  })
+
+  ipcMain.handle(SOUNDS_CHOOSE_CHANNEL, () => chooseSoundFile())
+
+  ipcMain.handle(TELEGRAM_SET_TOKEN_CHANNEL, (_event, token: unknown) => {
+    if (typeof token !== 'string') return { ok: false, error: 'Invalid token' }
+    notifications?.tokenStore.write(token)
+    return { ok: true, error: null }
+  })
+
+  ipcMain.handle(TELEGRAM_TOKEN_STATUS_CHANNEL, () => ({ configured: (notifications?.tokenStore.read() ?? null) !== null }))
+
+  ipcMain.handle(TELEGRAM_TEST_CHANNEL, async (_event, chatId: unknown, token: unknown) => {
+    const id = typeof chatId === 'string' ? chatId : ''
+    const key = typeof token === 'string' && token.trim().length > 0 ? token : (notifications?.tokenStore.read() ?? '')
+    return { error: await sendTestTelegram(id, key) }
+  })
+
+  ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })
+
+  ipcMain.handle(MCP_LIST_CHANNEL, async (_event, project: unknown, scope: unknown) => {
+    if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project')) {
+      return { ok: false, error: 'Invalid request', file: '', exists: false, servers: [] }
+    }
+    return listMcpServers(project, scope, settings.get())
+  })
+
+  ipcMain.handle(MCP_SAVE_CHANNEL, async (_event, project: unknown, scope: unknown, servers: unknown) => {
+    if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project') || !Array.isArray(servers)) {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return saveMcpServers(project, scope, settings.get(), servers)
+  })
+
+  ipcMain.handle(MCP_PROBE_CHANNEL, async (_event, project: unknown, scope: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project') || typeof name !== 'string') {
+      return { ok: false, error: 'Invalid request', toolCount: 0, serverError: null }
+    }
+    return probeMcpServer(project, scope, settings.get(), name)
+  })
+
+  ipcMain.handle(MCP_REVEAL_CHANNEL, async (_event, project: unknown, scope: unknown) => {
+    if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project')) return { ok: false, error: 'Invalid request' }
+    return revealMcpFile(project, scope, settings.get())
+  })
+
+  ipcMain.handle(SKILLS_LIST_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', skills: [] }
+    return listSkills(project, settings.get())
+  })
+
+  ipcMain.handle(SKILLS_TOGGLE_CHANNEL, async (_event, project: unknown, path: unknown, enabled: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string' || typeof enabled !== 'boolean') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return toggleSkill(project, settings.get(), path, enabled)
+  })
+
+  ipcMain.handle(SKILLS_REVEAL_CHANNEL, async (_event, project: unknown, source: unknown) => {
+    if (!isProjectEntry(project) || (source !== 'user' && source !== 'project')) return { ok: false, error: 'Invalid request' }
+    return revealSkillsFolder(project, settings.get(), source)
   })
 
   ipcMain.handle(TERM_PROFILES_CHANNEL, async (_event, project: unknown) => {

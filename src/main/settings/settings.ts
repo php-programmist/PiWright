@@ -3,7 +3,18 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { NotificationSettings, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+
+/** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
+export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
+  sounds: {
+    completion: 'C:\\Windows\\Media\\Windows Notify System Generic.wav',
+    await: 'C:\\Windows\\Media\\Windows Notify.wav',
+    error: 'C:\\Windows\\Media\\Windows Exclamation.wav'
+  },
+  telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true } },
+  remote: { enabled: false, port: 7690 }
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   wslDistro: '',
@@ -16,12 +27,48 @@ export const DEFAULT_SETTINGS: Settings = {
   chatFontSize: 14,
   singleLineTools: false,
   panels: {},
+  notifications: DEFAULT_NOTIFICATIONS,
   projects: []
 }
 
 /** Границы размера шрифта чата (санитайзер settings:set). */
 export const CHAT_FONT_SIZE_MIN = 10
 export const CHAT_FONT_SIZE_MAX = 24
+
+/** notifications из файла/settings:set поверх дефолтов; битые ветки заменяются дефолтом целиком. */
+export function mergeNotifications(value: unknown): NotificationSettings {
+  const out: NotificationSettings = {
+    sounds: { ...DEFAULT_NOTIFICATIONS.sounds },
+    telegram: { chatId: '', events: { ...DEFAULT_NOTIFICATIONS.telegram.events } },
+    remote: { ...DEFAULT_NOTIFICATIONS.remote }
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  const raw = value as Record<string, unknown>
+  if (raw['sounds'] !== null && typeof raw['sounds'] === 'object' && !Array.isArray(raw['sounds'])) {
+    const sounds = raw['sounds'] as Record<string, unknown>
+    for (const key of ['completion', 'await', 'error'] as const) {
+      if (typeof sounds[key] === 'string') out.sounds[key] = sounds[key]
+    }
+  }
+  if (raw['telegram'] !== null && typeof raw['telegram'] === 'object' && !Array.isArray(raw['telegram'])) {
+    const tg = raw['telegram'] as Record<string, unknown>
+    if (typeof tg['chatId'] === 'string') out.telegram.chatId = tg['chatId']
+    if (tg['events'] !== null && typeof tg['events'] === 'object' && !Array.isArray(tg['events'])) {
+      const events = tg['events'] as Record<string, unknown>
+      for (const key of ['turnEnd', 'permission', 'question', 'error'] as const) {
+        if (typeof events[key] === 'boolean') out.telegram.events[key] = events[key]
+      }
+    }
+  }
+  if (raw['remote'] !== null && typeof raw['remote'] === 'object' && !Array.isArray(raw['remote'])) {
+    const remote = raw['remote'] as Record<string, unknown>
+    if (typeof remote['enabled'] === 'boolean') out.remote.enabled = remote['enabled']
+    if (typeof remote['port'] === 'number' && Number.isFinite(remote['port'])) {
+      out.remote.port = Math.min(65535, Math.max(1, Math.round(remote['port'])))
+    }
+  }
+  return out
+}
 
 function isPosixPath(path: string): boolean {
   return path.startsWith('/') || path.startsWith('~/')
@@ -60,6 +107,7 @@ export class SettingsService {
       const raw: unknown = JSON.parse(readFileSync(this.filePath, 'utf8'))
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_SETTINGS }
       const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
+      merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101014">
+<title>pi remote</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="row">
+    <div id="tabs" class="tabs" role="tablist" aria-label="Сессии"></div>
+    <button id="newSession" class="ghost" title="Новая сессия">+</button>
+    <span id="dot" class="dot" title="связь с ПК"></span>
+  </div>
+  <div class="row sub">
+    <span id="project"></span>
+    <span id="model"></span>
+    <span id="context"></span>
+  </div>
+</header>
+
+<main id="stream" aria-live="polite"></main>
+
+<button id="readExit" class="read-exit" hidden title="Выйти из режима чтения"></button>
+
+<div id="dialogs"></div>
+
+<div id="createOverlay" hidden>
+  <form id="createForm">
+    <h2>Новая сессия</h2>
+    <label for="createName">Имя</label>
+    <input id="createName" type="text" maxlength="100" placeholder="New Chat" autocomplete="off">
+    <label for="createProject" id="createProjectRow" hidden>Проект</label>
+    <select id="createProject" hidden></select>
+    <label for="createModel">Модель</label>
+    <select id="createModel"></select>
+    <label for="createThinking" id="createThinkingRow">Мышление</label>
+    <select id="createThinking"></select>
+    <div class="row">
+      <button type="button" id="createCancel" class="ghost">Отмена</button>
+      <button type="submit" id="createSubmit">Создать</button>
+    </div>
+  </form>
+</div>
+
+<footer>
+  <div id="todo" class="todo" hidden></div>
+  <div id="queue"></div>
+  <div id="chips" hidden></div>
+  <textarea id="input" rows="1" placeholder="Сообщение…" autocomplete="off"></textarea>
+  <div class="row">
+    <button id="attach" class="ghost" title="Прикрепить картинку">📎</button>
+    <button id="tgNotify" class="ghost" title="Уведомления в Telegram выключены"></button>
+    <button id="hideTools" class="ghost" title="Скрыть блоки инструментов"></button>
+    <button id="readMode" class="ghost" title="Режим чтения"></button>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+    <button id="stop" class="ghost" hidden>Stop</button>
+    <button id="steer" class="ghost" hidden>Steer</button>
+    <button id="send">Send</button>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

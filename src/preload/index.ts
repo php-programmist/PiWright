@@ -8,6 +8,19 @@ import {
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_WATCH_CHANNEL,
+  MCP_LIST_CHANNEL,
+  MCP_PROBE_CHANNEL,
+  MCP_REVEAL_CHANNEL,
+  MCP_SAVE_CHANNEL,
+  REMOTE_STATUS_CHANNEL,
+  SOUNDS_CHOOSE_CHANNEL,
+  SOUNDS_READ_CHANNEL,
+  SKILLS_LIST_CHANNEL,
+  SKILLS_REVEAL_CHANNEL,
+  SKILLS_TOGGLE_CHANNEL,
+  TELEGRAM_SET_TOKEN_CHANNEL,
+  TELEGRAM_TEST_CHANNEL,
+  TELEGRAM_TOKEN_STATUS_CHANNEL,
   GIT_BRANCHES_CHANNEL,
   GIT_CHECKOUT_CHANNEL,
   GIT_COMMIT_CHANNEL,
@@ -45,7 +58,15 @@ import {
   TERM_RESIZE_CHANNEL
 } from '../shared/ipc-contracts'
 import type { DialogAnswer } from '../shared/agent-events'
-import type { BackendMode, PiwrightApi, ProjectEntry, Settings, TerminalProfileId } from '../shared/ipc-contracts'
+import type {
+  BackendMode,
+  McpScope,
+  McpServerEntry,
+  PiwrightApi,
+  ProjectEntry,
+  Settings,
+  TerminalProfileId
+} from '../shared/ipc-contracts'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   const listener = (_event: IpcRendererEvent, value: T): void => cb(value)
@@ -89,6 +110,19 @@ const api: PiwrightApi = {
   filesWatch: (project, paths) => ipcRenderer.invoke(FILES_WATCH_CHANNEL, project, paths),
   putAttachment: (project, name, base64) => ipcRenderer.invoke(ATTACHMENTS_PUT_CHANNEL, project, name, base64),
   chooseAttachment: (project) => ipcRenderer.invoke(ATTACHMENTS_CHOOSE_CHANNEL, project),
+  soundsRead: (path) => ipcRenderer.invoke(SOUNDS_READ_CHANNEL, path),
+  soundsChoose: () => ipcRenderer.invoke(SOUNDS_CHOOSE_CHANNEL),
+  setTelegramToken: (token) => ipcRenderer.invoke(TELEGRAM_SET_TOKEN_CHANNEL, token),
+  telegramTokenStatus: () => ipcRenderer.invoke(TELEGRAM_TOKEN_STATUS_CHANNEL),
+  telegramTest: (chatId, token) => ipcRenderer.invoke(TELEGRAM_TEST_CHANNEL, chatId, token),
+  remoteStatus: () => ipcRenderer.invoke(REMOTE_STATUS_CHANNEL),
+  mcpList: (project, scope: McpScope) => ipcRenderer.invoke(MCP_LIST_CHANNEL, project, scope),
+  mcpSave: (project, scope: McpScope, servers: McpServerEntry[]) => ipcRenderer.invoke(MCP_SAVE_CHANNEL, project, scope, servers),
+  mcpProbe: (project, scope: McpScope, name) => ipcRenderer.invoke(MCP_PROBE_CHANNEL, project, scope, name),
+  mcpReveal: (project, scope: McpScope) => ipcRenderer.invoke(MCP_REVEAL_CHANNEL, project, scope),
+  skillsList: (project) => ipcRenderer.invoke(SKILLS_LIST_CHANNEL, project),
+  skillsToggle: (project, path, enabled) => ipcRenderer.invoke(SKILLS_TOGGLE_CHANNEL, project, path, enabled),
+  skillsReveal: (project, source) => ipcRenderer.invoke(SKILLS_REVEAL_CHANNEL, project, source),
   termProfiles: (project) => ipcRenderer.invoke(TERM_PROFILES_CHANNEL, project),
   termCreate: (project, profileId: TerminalProfileId | null) => ipcRenderer.invoke(TERM_CREATE_CHANNEL, project, profileId),
   termClose: (id: string) => ipcRenderer.invoke(TERM_CLOSE_CHANNEL, id),
