@@ -2,7 +2,7 @@
  *  wsl — `wsl.exe -d <distro> --cd <wslCwd> --exec bash -lic 'git …'` (порт схемы спавна
  *  `exec/WslShell.kt`). Сообщение коммита генерирует одноразовый `PiConnection` с
  *  `--no-session` (файл сессии не создаётся, история не засоряется). */
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
@@ -59,16 +59,17 @@ const OK: GitOpResult = { ok: true, error: null }
 export class GitService {
   constructor(private readonly getSettings: () => Settings) {}
 
-  /** Прогон git на стороне бэкенда: native — прямой spawn, wsl — bash -lic внутри дистрибутива. */
-  private async exec(project: ProjectEntry, args: string[], timeoutMs: number): Promise<ExecResult> {
+  /** Прогон git на стороне бэкенда: native — прямой spawn, wsl — bash -lic внутри дистрибутива.
+   *  cwd — рабочий каталог git (по умолчанию каталог проекта; вложенные репо — их подкаталог). */
+  private async exec(project: ProjectEntry, args: string[], timeoutMs: number, cwd = project.dir): Promise<ExecResult> {
     const settings = this.getSettings()
     let child: ChildProcess
     if (project.kind === 'native') {
-      child = spawn('git', args, { cwd: project.dir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn('git', args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     } else {
       const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
       if (distro === undefined) throw new Error('No WSL distro available. Set it in settings.')
-      const wslCwd = await wslPathFor(distro, project.dir)
+      const wslCwd = await wslPathFor(distro, cwd)
       child = spawn('wsl.exe', buildWslSpawnArgs(distro, wslCwd, buildBashCommand('git', args)), {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
@@ -111,30 +112,85 @@ export class GitService {
     })
   }
 
-  private async run(project: ProjectEntry, args: string[], timeoutMs = GIT_TIMEOUT_MS): Promise<ExecResult> {
+  private async run(project: ProjectEntry, args: string[], timeoutMs = GIT_TIMEOUT_MS, cwd?: string): Promise<ExecResult> {
     try {
-      return await this.exec(project, args, timeoutMs)
+      return await this.exec(project, args, timeoutMs, cwd)
     } catch (err) {
       return { code: -1, stdout: '', stderr: err instanceof Error ? err.message : String(err) }
     }
   }
 
+  /** Прямые подкаталоги проекта со своим .git-КАТАЛОГОМ — вложенные репозитории (баг 8).
+   *  .git-файл — submodule, его внешний git и так показывает сам. */
+  private async nestedRepos(project: ProjectEntry): Promise<string[]> {
+    let children
+    try {
+      children = await readdir(project.dir, { withFileTypes: true })
+    } catch {
+      return []
+    }
+    const names: string[] = []
+    for (const child of children) {
+      if (!child.isDirectory() || child.name.startsWith('.')) continue
+      try {
+        if ((await stat(join(project.dir, child.name, '.git'))).isDirectory()) names.push(child.name)
+      } catch {
+        // нет .git — не репозиторий
+      }
+    }
+    return names
+  }
+
+  /** Разложить пути по репозиториям: путь с префиксом вложенного репо уходит в его каталог. */
+  private async groupByRepo(project: ProjectEntry, paths: string[]): Promise<Map<string, string[]>> {
+    const nested = await this.nestedRepos(project)
+    const groups = new Map<string, string[]>()
+    for (const path of paths) {
+      const name = nested.find((n) => path.startsWith(`${n}/`))
+      const dir = name !== undefined ? join(project.dir, name) : project.dir
+      const rel = name !== undefined ? path.slice(name.length + 1) : path
+      const group = groups.get(dir)
+      if (group === undefined) groups.set(dir, [rel])
+      else group.push(rel)
+    }
+    return groups
+  }
+
   async status(project: ProjectEntry): Promise<GitStatusResult> {
-    const result = await this.run(project, ['status', '--porcelain=v2', '--branch'])
+    const result = await this.run(project, ['status', '--porcelain=v2', '--branch', '-uall'])
     if (result.code !== 0) return { ok: false, error: errorOf(result, ['status']), status: null }
-    return { ok: true, error: null, status: parseStatusOutput(result.stdout) }
+    const status = parseStatusOutput(result.stdout)
+    // Внешний git игнорирует/схлопывает вложенные репозитории — досматриваем каждый сам (баг 8);
+    // его собственная untracked-запись на каталог вложенного репо (`? spec/`) — лишняя.
+    const nested = await this.nestedRepos(project)
+    status.entries = status.entries.filter((e) => !nested.includes(e.path))
+    for (const name of nested) {
+      const dir = join(project.dir, name)
+      const sub = await this.run(project, ['status', '--porcelain=v2', '-uall'], GIT_TIMEOUT_MS, dir)
+      if (sub.code !== 0) continue
+      for (const entry of parseStatusOutput(sub.stdout).entries) {
+        status.entries.push({
+          ...entry,
+          path: `${name}/${entry.path}`,
+          origPath: entry.origPath !== null ? `${name}/${entry.origPath}` : null,
+          repoRoot: dir
+        })
+      }
+    }
+    status.entries.sort((a, b) => a.path.localeCompare(b.path))
+    return { ok: true, error: null, status }
   }
 
   /** Содержимое HEAD-версии файла; untracked/новых файлов в HEAD нет — пусто. */
-  async headFile(project: ProjectEntry, path: string): Promise<string> {
-    const result = await this.run(project, ['show', `HEAD:${path}`])
+  async headFile(project: ProjectEntry, path: string, repoDir = project.dir): Promise<string> {
+    const result = await this.run(project, ['show', `HEAD:${path}`], GIT_TIMEOUT_MS, repoDir)
     return result.code === 0 ? result.stdout : ''
   }
 
   /** Файл на диске (хост-путь: Windows-каталог или UNC WSL); удалён — пусто. */
-  private async diskFile(project: ProjectEntry, path: string): Promise<string> {
+  private async diskFile(repoDir: string, path: string): Promise<string> {
     try {
-      return await readFile(join(project.dir, ...path.split('/')), 'utf8')
+      return await readFile(join(repoDir, ...path.split('/')), 'utf8')
     } catch {
       return ''
     }
@@ -144,27 +200,51 @@ export class GitService {
     const status = await this.status(project)
     if (!status.ok || status.status === null) return { ok: false, error: status.error, original: '', modified: '' }
     const entry = status.status.entries.find((e) => e.path === path)
-    const original = entry !== undefined && (entry.untracked || entry.index === 'A') ? '' : await this.headFile(project, path)
-    const modified = await this.diskFile(project, path)
+    const repoDir = entry?.repoRoot ?? project.dir
+    // У вложенного репо первый сегмент пути — имя подкаталога, внутри репо путь короче.
+    const rel = entry?.repoRoot !== undefined ? path.slice(path.indexOf('/') + 1) : path
+    const original = entry !== undefined && (entry.untracked || entry.index === 'A') ? '' : await this.headFile(project, rel, repoDir)
+    const modified = await this.diskFile(repoDir, rel)
     const clean = (text: string): string => (text.includes('\0') ? BINARY_PLACEHOLDER : text)
     return { ok: true, error: null, original: clean(original), modified: clean(modified) }
   }
 
   async stage(project: ProjectEntry, paths: string[]): Promise<GitOpResult> {
     if (paths.length === 0) return { ok: false, error: 'No files to stage' }
-    const result = await this.run(project, ['add', '--', ...paths])
-    return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['add']) }
+    for (const [dir, rels] of await this.groupByRepo(project, paths)) {
+      const result = await this.run(project, ['add', '--', ...rels], GIT_TIMEOUT_MS, dir)
+      if (result.code !== 0) return { ok: false, error: errorOf(result, ['add']) }
+    }
+    return OK
   }
 
   async unstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult> {
     if (paths.length === 0) return { ok: false, error: 'No files to unstage' }
-    const result = await this.run(project, ['restore', '--staged', '--', ...paths])
-    return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['restore']) }
+    for (const [dir, rels] of await this.groupByRepo(project, paths)) {
+      const result = await this.run(project, ['restore', '--staged', '--', ...rels], GIT_TIMEOUT_MS, dir)
+      if (result.code !== 0) return { ok: false, error: errorOf(result, ['restore']) }
+    }
+    return OK
   }
 
+  /** Индексы репозиториев независимы: коммит с одним сообщением — в каждом репо со staged-файлами. */
   async commit(project: ProjectEntry, message: string): Promise<GitOpResult> {
-    const result = await this.run(project, ['commit', '-m', message])
-    return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['commit']) }
+    const status = await this.status(project)
+    if (!status.ok || status.status === null) return { ok: false, error: status.error }
+    const dirs = new Set<string>()
+    for (const entry of status.status.entries) {
+      if (entry.index !== '.') dirs.add(entry.repoRoot ?? project.dir)
+    }
+    if (dirs.size === 0) {
+      // Каноничная ошибка git «nothing added to commit» — как и раньше из главного репо.
+      const result = await this.run(project, ['commit', '-m', message])
+      return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['commit']) }
+    }
+    for (const dir of dirs) {
+      const result = await this.run(project, ['commit', '-m', message], GIT_TIMEOUT_MS, dir)
+      if (result.code !== 0) return { ok: false, error: errorOf(result, ['commit']) }
+    }
+    return OK
   }
 
   async push(project: ProjectEntry): Promise<GitOpResult> {
@@ -269,12 +349,23 @@ export class GitService {
     return { ok: false, error: message, uncommitted: isUncommittedChangesError(message) }
   }
 
-  /** Сообщение коммита: `git diff --staged` → промпт → одноразовый pi (RPC, без сессии и
-   *  расширений) → текст ответа. Ход завершается по `agent_settled`. */
+  /** Сообщение коммита: `git diff --staged` всех репо со staged-файлами → промпт → одноразовый pi
+   *  (RPC, без сессии и расширений) → текст ответа. Ход завершается по `agent_settled`. */
   async generateCommitMessage(project: ProjectEntry): Promise<GitMessageResult> {
-    const diff = await this.run(project, ['diff', '--staged'])
-    if (diff.code !== 0) return { ok: false, error: errorOf(diff, ['diff']), message: '' }
-    if (diff.stdout.trim().length === 0) return { ok: false, error: 'No staged changes', message: '' }
+    const status = await this.status(project)
+    if (!status.ok || status.status === null) return { ok: false, error: status.error, message: '' }
+    const dirs = new Set<string>()
+    for (const entry of status.status.entries) {
+      if (entry.index !== '.') dirs.add(entry.repoRoot ?? project.dir)
+    }
+    const parts: string[] = []
+    for (const dir of dirs.size > 0 ? dirs : [project.dir]) {
+      const diff = await this.run(project, ['diff', '--staged'], GIT_TIMEOUT_MS, dir)
+      if (diff.code !== 0) return { ok: false, error: errorOf(diff, ['diff']), message: '' }
+      if (diff.stdout.trim().length > 0) parts.push(diff.stdout)
+    }
+    const combined = parts.join('\n')
+    if (combined.trim().length === 0) return { ok: false, error: 'No staged changes', message: '' }
 
     const created = await createPiBackend(project, this.getSettings())
     if (created.backend === null) return { ok: false, error: created.error, message: '' }
@@ -317,7 +408,7 @@ export class GitService {
           const args = ['--mode', 'rpc', '--no-session', '--no-extensions', '--no-tools', '--no-mcp']
           await conn.start({ cwd: project.dir, args })
           await conn.request('get_state')
-          const response = await conn.request('prompt', { message: buildCommitPrompt(diff.stdout) })
+          const response = await conn.request('prompt', { message: buildCommitPrompt(combined) })
           if (!response.success) finish({ ok: false, error: `prompt failed: ${response.error ?? 'no details'}`, message: '' })
         } catch (err) {
           finish({ ok: false, error: err instanceof Error ? err.message : String(err), message: '' })

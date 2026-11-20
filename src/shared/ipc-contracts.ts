@@ -114,6 +114,8 @@ export interface PiStatus {
   dot: SessionDot
   /** Telegram-флаг сессии (RemoteBridge, в памяти; включается иконкой в шапке чата). */
   telegram?: boolean
+  /** Сессия расшарена на телефон глобусом (RemoteBridge, в памяти). */
+  shared?: boolean
 }
 
 /** Событие сессии: renderer маршрутизирует по hostId, сырые кадры pi наружу не идут. */
@@ -178,13 +180,15 @@ export interface SessionTranscriptResult {
 }
 
 /** Файл в `git status --porcelain=v2`: index — статус в индексе, worktree — в рабочем дереве
- *  ('.' — без изменений, '?' — untracked). Путь относительно корня репо, слэши вперёд. */
+ *  ('.' — без изменений, '?' — untracked). Путь относительно корня репо, слэши вперёд.
+ *  repoRoot — корень вложенного репозитория (баг 8); undefined — сам каталог проекта. */
 export interface GitFileEntry {
   path: string
   origPath: string | null
   index: string
   worktree: string
   untracked: boolean
+  repoRoot?: string
 }
 
 export interface GitStatus {
@@ -469,6 +473,8 @@ export interface PiwrightApi {
   telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
   /** Тоггл telegram-уведомлений сессии (иконка в шапке чата, флаг в RemoteBridge). */
   setSessionTelegram(hostId: string, enabled: boolean): Promise<{ ok: boolean; error: string | null }>
+  /** Тоггл шаринга сессии на телефон (глобус в шапке чата, jb-pi). */
+  shareSession(hostId: string, shared: boolean): Promise<{ ok: boolean; error: string | null }>
   remoteStatus(): Promise<RemoteStatus>
   /** Занят ли TCP-порт на 0.0.0.0 (как его биндит remote-мост). */
   remoteCheckPort(port: number): Promise<{ busy: boolean }>
@@ -543,6 +549,7 @@ export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
 export const TELEGRAM_TOGGLE_SESSION_CHANNEL = 'telegram:toggle-session'
 export const REMOTE_STATUS_CHANNEL = 'remote:status'
 export const REMOTE_CHECK_PORT_CHANNEL = 'remote:check-port'
+export const REMOTE_SHARE_SESSION_CHANNEL = 'remote:share-session'
 export const MODELS_LIST_CHANNEL = 'models:list'
 export const MODELS_SAVE_CHANNEL = 'models:save'
 export const MODELS_REVEAL_CHANNEL = 'models:reveal'

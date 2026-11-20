@@ -1,5 +1,8 @@
 /** Состояние правых панелей (git/files/terminal) переживает перезапуск: hydrate — один раз при
- *  загрузке настроек, persist — из компонентов (клик по кнопке панели, mouseup ресайза). */
+ *  загрузке настроек, persist — из компонентов (клик по кнопке панели, mouseup ресайза).
+ *  Git и Files взаимоисключающие (фича 24): гонка двух параллельных setSettings перетирала
+ *  merge (в файле оказывались обе панели открытыми) — запись сериализуется цепочкой,
+ *  hydrate наводит эксклюзивность (обе открыты → остаётся git). */
 import type { PanelName, PanelPrefs, Settings } from '../../../shared/ipc-contracts'
 import { mergePanelPrefs } from '../../../shared/panel-prefs'
 import { useSessionsStore } from './sessions'
@@ -7,12 +10,17 @@ import { useGitStore } from './git'
 import { useFilesStore } from './files'
 import { useTerminalStore } from './terminal'
 
+let persistChain: Promise<void> = Promise.resolve()
+
 export function persistPanel(panel: PanelName, patch: PanelPrefs): void {
-  const settings = useSessionsStore.getState().settings
-  if (settings === null) return
-  void window.piwright.setSettings(mergePanelPrefs(settings, panel, patch)).then((saved) => {
-    useSessionsStore.getState().setSettings(saved)
-  })
+  persistChain = persistChain
+    .then(async () => {
+      const settings = useSessionsStore.getState().settings
+      if (settings === null) return
+      const saved = await window.piwright.setSettings(mergePanelPrefs(settings, panel, patch))
+      useSessionsStore.getState().setSettings(saved)
+    })
+    .catch(() => {})
 }
 
 export function hydratePanels(settings: Settings): void {
@@ -24,4 +32,9 @@ export function hydratePanels(settings: Settings): void {
       ...(terminal.open !== undefined ? { open: terminal.open } : {}),
       ...(terminal.height !== undefined ? { height: terminal.height } : {})
     })
+  // Эксклюзивность git/files: обе открыты в сохранённых настройках → остаётся git.
+  if ((git?.open ?? false) && (files?.open ?? false)) {
+    useFilesStore.setState({ open: false })
+    persistPanel('files', { open: false })
+  }
 }

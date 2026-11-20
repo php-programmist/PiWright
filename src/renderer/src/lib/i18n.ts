@@ -61,6 +61,8 @@ const RU: Record<string, string> = {
   'Mute sounds for this session': 'Выключить звук для этой сессии',
   'Enable Telegram notifications for this session': 'Включить уведомления Telegram для этой сессии',
   'Disable Telegram notifications for this session': 'Выключить уведомления Telegram для этой сессии',
+  'Share this session with a phone on the same Wi-Fi': 'Расшарить эту сессию телефону в той же Wi-Fi сети',
+  'Stop sharing this session with the phone': 'Убрать шаринг этой сессии с телефона',
   'Show tool blocks': 'Показать тул-блоки',
   'Hide tool blocks': 'Скрыть тул-блоки',
   'Ask Pi (Enter to send, Shift+Enter for newline)': 'Спросить pi (Enter — отправить, Shift+Enter — новая строка)',

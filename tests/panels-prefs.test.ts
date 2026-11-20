@@ -1,28 +1,51 @@
-import { describe, expect, it } from 'vitest'
-import { mergePanelPrefs } from '../src/shared/panel-prefs'
-import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
-import type { Settings } from '../src/shared/ipc-contracts'
+/** Панели git/files/terminal: hydrate наводит эксклюзивность git/files (обе открыты → git),
+ *  persist сериализуется — быстрые тогглы не теряют патчи друг друга (баг 9). */
+import { describe, expect, it, vi } from 'vitest'
+import { hydratePanels, persistPanel } from '../src/renderer/src/stores/panels-prefs'
+import { useGitStore } from '../src/renderer/src/stores/git'
+import { useFilesStore } from '../src/renderer/src/stores/files'
+import { useSessionsStore } from '../src/renderer/src/stores/sessions'
+import type { PanelPrefs, Settings } from '../src/shared/ipc-contracts'
 
-const BASE: Settings = {
-  ...DEFAULT_SETTINGS,
-  panels: { git: { open: true, width: 340 } }
+function settingsWith(panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }): Settings {
+  return { panels } as unknown as Settings
 }
 
-describe('mergePanelPrefs', () => {
-  it('merges patch into one panel, keeping others', () => {
-    const patch = mergePanelPrefs(BASE, 'git', { width: 500 })
-    expect(patch.panels?.git).toEqual({ open: true, width: 500 })
-    expect(patch.panels?.files).toBeUndefined()
+describe('panels prefs', () => {
+  it('hydrate оставляет открытой только git, если в настройках открыты обе', async () => {
+    const setSettings = vi.fn().mockImplementation(async (patch: Settings) => patch)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+    useSessionsStore.setState({ settings: settingsWith({ git: { open: true }, files: { open: true } }) })
+    const saved = settingsWith({ git: { open: true }, files: { open: true } })
+    hydratePanels(saved)
+    expect(useGitStore.getState().open).toBe(true)
+    expect(useFilesStore.getState().open).toBe(false)
+    await vi.waitFor(() => expect(setSettings).toHaveBeenCalledTimes(1))
+    const patch = setSettings.mock.calls[0][0] as Settings
+    expect(patch.panels?.files).toMatchObject({ open: false })
+    vi.unstubAllGlobals()
   })
 
-  it('does not mutate source settings', () => {
-    mergePanelPrefs(BASE, 'files', { open: true })
-    expect(BASE.panels.files).toBeUndefined()
-    expect(BASE.panels.git?.width).toBe(340)
+  it('hydrate не трогает панели, когда открыта одна', () => {
+    vi.stubGlobal('window', { piwright: { setSettings: vi.fn() } })
+    useGitStore.setState({ open: false })
+    useFilesStore.setState({ open: false })
+    hydratePanels(settingsWith({ git: { open: true }, files: { open: false } }))
+    expect(useGitStore.getState().open).toBe(true)
+    expect(useFilesStore.getState().open).toBe(false)
+    vi.unstubAllGlobals()
   })
 
-  it('creates panel entry from empty panels', () => {
-    const patch = mergePanelPrefs({ ...DEFAULT_SETTINGS }, 'terminal', { open: true })
-    expect(patch.panels?.terminal).toEqual({ open: true })
+  it('быстрые persist не перетирают патчи: вторая запись строится от результата первой', async () => {
+    const setSettings = vi.fn().mockImplementation(async (patch: Settings) => patch)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+    useSessionsStore.setState({ settings: settingsWith({ git: { open: false }, files: { open: false } }) })
+    persistPanel('git', { open: true })
+    persistPanel('files', { open: true })
+    await vi.waitFor(() => expect(setSettings).toHaveBeenCalledTimes(2))
+    const second = setSettings.mock.calls[1][0] as Settings
+    expect(second.panels?.git).toMatchObject({ open: true })
+    expect(second.panels?.files).toMatchObject({ open: true })
+    vi.unstubAllGlobals()
   })
 })

@@ -87,7 +87,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const toggleToolsHidden = useChatStore((s) => s.toggleToolsHidden)
   const toggleMuted = useChatStore((s) => s.toggleMuted)
   const toggleTelegram = useSessionsStore((s) => s.toggleTelegram)
+  const toggleShare = useSessionsStore((s) => s.toggleShare)
   const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
+  const shared = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.shared ?? false)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
@@ -103,6 +105,25 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => () => {
     atBottomMap.delete(activeHostRef.current)
   }, [])
+
+  // Чип адреса/PIN у расшаренной сессии: сервер мог подняться только что — поллим статус.
+  const [remoteInfo, setRemoteInfo] = useState<Awaited<ReturnType<typeof window.piwright.remoteStatus>> | null>(null)
+  useEffect(() => {
+    if (!shared) return
+    let alive = true
+    const fetchInfo = (): void => {
+      void window.piwright.remoteStatus().then((info) => {
+        if (alive) setRemoteInfo(info)
+      })
+    }
+    fetchInfo()
+    const timer = setInterval(fetchInfo, 2000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  }, [shared])
+  const remoteStatusInfo = shared ? remoteInfo : null
 
   useEffect(() => {
     autoScrollRef.current = true
@@ -321,6 +342,32 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             </svg>
           </button>
         )}
+        {shared && remoteStatusInfo !== null && remoteStatusInfo.running && (
+          <span
+            className="remote-chip"
+            title={remoteStatusInfo.lanAddresses
+              .slice(1)
+              .map((a) => `http://${a}:${remoteStatusInfo.port}/`)
+              .join('\n')}
+          >
+            {remoteStatusInfo.lanAddresses.length > 0
+              ? `http://${remoteStatusInfo.lanAddresses[0]}:${remoteStatusInfo.port}/`
+              : `port ${remoteStatusInfo.port}`}{' '}
+            · PIN {remoteStatusInfo.pin}
+          </span>
+        )}
+        <button
+          className="icon"
+          title={shared ? t('Stop sharing this session with the phone') : t('Share this session with a phone on the same Wi-Fi')}
+          style={shared ? { color: 'var(--accent)' } : undefined}
+          onClick={() => activeHostId !== null && toggleShare(activeHostId)}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            <ellipse cx="12" cy="12" rx="4" ry="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            <path d="M3.5 9h17M3.5 15h17" fill="none" stroke="currentColor" strokeWidth="1.6" />
+          </svg>
+        </button>
         <button
           className="icon"
           title={muted ? t('Unmute sounds for this session') : t('Mute sounds for this session')}

@@ -1,6 +1,6 @@
-﻿/** GitService РїСЂРѕС‚РёРІ СЂРµР°Р»СЊРЅРѕРіРѕ РІСЂРµРјРµРЅРЅРѕРіРѕ СЂРµРїРѕР·РёС‚РѕСЂРёСЏ (native-Р±СЌРєРµРЅРґ, РЅР°СЃС‚РѕСЏС‰РёР№ git CLI). */
+﻿/** GitService против реального временного репозитория (native-бэкенд, настоящий git CLI). */
 import { execSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -162,5 +162,75 @@ describe('GitService against a real repository', () => {
     } finally {
       rmSync(notARepo, { recursive: true, force: true })
     }
+  })
+})
+
+describe('GitService with a nested repository (bug 8)', () => {
+  let outer: string
+  let project: ProjectEntry
+
+  function gitIn(dir: string, command: string): void {
+    execSync(command, { cwd: dir, stdio: 'pipe' })
+  }
+
+  beforeAll(() => {
+    outer = mkdtempSync(join(tmpdir(), 'piwright-git-nested-'))
+    project = { kind: 'native', dir: outer }
+    gitIn(outer, 'git init -q -b main')
+    gitIn(outer, 'git config user.email test@test')
+    gitIn(outer, 'git config user.name test')
+    writeFileSync(join(outer, 'root.txt'), 'root')
+    gitIn(outer, 'git add .')
+    gitIn(outer, 'git commit -q -m init')
+    const nested = join(outer, 'spec')
+    mkdirSync(nested)
+    gitIn(nested, 'git init -q -b main')
+    gitIn(nested, 'git config user.email test@test')
+    gitIn(nested, 'git config user.name test')
+    writeFileSync(join(nested, 'inner.txt'), 'inner')
+    gitIn(nested, 'git add .')
+    gitIn(nested, 'git commit -q -m init')
+  }, 30_000)
+
+  afterAll(() => {
+    rmSync(outer, { recursive: true, force: true })
+  })
+
+  it('status merges entries of the nested repository with prefixed paths', async () => {
+    writeFileSync(join(outer, 'root.txt'), 'changed')
+    writeFileSync(join(outer, 'spec', 'inner.txt'), 'changed')
+    writeFileSync(join(outer, 'spec', 'new.txt'), 'new')
+    const result = await git.status(project)
+    expect(result.ok).toBe(true)
+    const paths = result.status?.entries.map((e) => [e.path, e.repoRoot])
+    expect(paths).toContainEqual(['root.txt', undefined])
+    expect(paths).toContainEqual(['spec/inner.txt', join(outer, 'spec')])
+    expect(paths).toContainEqual(['spec/new.txt', join(outer, 'spec')])
+    // схлопнутая untracked-запись внешнего git на вложенный репо отфильтрована
+    expect(paths?.some(([path]) => path === 'spec')).toBe(false)
+  })
+
+  it('fileDiff routes to the nested repository', async () => {
+    const result = await git.fileDiff(project, 'spec/inner.txt')
+    expect(result.ok).toBe(true)
+    expect(result.original).toBe('inner')
+    expect(result.modified).toBe('changed')
+  })
+
+  it('stage, unstage and commit route to the nested repository', async () => {
+    expect((await git.stage(project, ['spec/new.txt', 'root.txt'])).ok).toBe(true)
+    let status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'spec/new.txt')).toMatchObject({ index: 'A' })
+    expect(status.status?.entries.find((e) => e.path === 'root.txt')).toMatchObject({ index: 'M' })
+
+    expect((await git.unstage(project, ['root.txt'])).ok).toBe(true)
+    status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'root.txt')).toMatchObject({ index: '.' })
+
+    expect((await git.commit(project, 'nested commit')).ok).toBe(true)
+    status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'spec/new.txt')).toBeUndefined()
+    const log = execSync('git log --oneline -n 1', { cwd: join(outer, 'spec'), encoding: 'utf8' })
+    expect(log).toContain('nested commit')
   })
 })

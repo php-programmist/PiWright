@@ -85,6 +85,8 @@ export class RemoteSession {
 export class RemoteBridge {
   private readonly sessions = new Map<string, RemoteSession>()
   private readonly sessionsByHost = new Map<string, RemoteSession>()
+  /** hostId сессий, расшаренных глобусом в шапке чата (jb-pi: per-tab share); в памяти. */
+  private readonly sharedHostIds = new Set<string>()
   private readonly socketSessions = new Map<number, string>()
   private readonly allSockets = new Set<RemoteSocket>()
   private readonly pendingUi = new Map<string, PendingUi>()
@@ -100,15 +102,19 @@ export class RemoteBridge {
 
   // ------------------------------------------------------------- lifecycle
 
-  /** Синхронизация реестра с живыми сессиями: новые — регистрируются, мёртвые — снимаются. */
+  /** Синхронизация реестра с живыми сессиями: расшаренные — регистрируются, мёртвые и
+   *  расшаренные — снимаются. */
   syncSessions(): void {
     const statuses = this.piHost.statuses()
     const live = new Set(statuses.map((s) => s.hostId))
     for (const [hostId, remote] of this.sessionsByHost) {
-      if (!live.has(hostId)) this.unregister(remote)
+      if (!live.has(hostId) || !this.sharedHostIds.has(hostId)) {
+        this.unregister(remote)
+        if (!live.has(hostId)) this.sharedHostIds.delete(hostId)
+      }
     }
     for (const status of statuses) {
-      if (this.sessionsByHost.has(status.hostId)) continue
+      if (!this.sharedHostIds.has(status.hostId) || this.sessionsByHost.has(status.hostId)) continue
       const host = this.piHost.get(status.hostId)
       if (host === null) continue
       const remote = new RemoteSession(host, (line) => this.handleLine(remote, line))
@@ -199,6 +205,22 @@ export class RemoteBridge {
     remote.telegramEnabled = enabled
     this.broadcastSessions()
     return true
+  }
+
+  /** Тоггл шаринга сессии на телефон (глобус в шапке чата, jb-pi): регистрирует/снимает сессию.
+   *  false — host не найден. Сервер поднимается настройкой (или первым шарингом из renderer'а). */
+  setSharedByHost(hostId: string, shared: boolean): boolean {
+    if (this.piHost.get(hostId) === null) return false
+    if (shared) this.sharedHostIds.add(hostId)
+    else this.sharedHostIds.delete(hostId)
+    this.syncSessions()
+    this.broadcastSessions()
+    return true
+  }
+
+  /** Расшарена ли сессия на телефон (флаг в списке сессий renderer'а). */
+  sharedFor(hostId: string): boolean {
+    return this.sharedHostIds.has(hostId)
   }
 
   /** Ответ на диалог от любого клиента; false — уже ответили раньше. */

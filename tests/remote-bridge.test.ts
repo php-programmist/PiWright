@@ -67,20 +67,36 @@ function bridgeWith(hosts: SessionHost[]): { bridge: RemoteBridge; auth: RemoteA
   return { bridge: new RemoteBridge(settings, fakePiHost(hosts), auth), auth }
 }
 
+/** Мост с расшаренной первой сессией (шаринг теперь явный — глобус в шапке чата). */
+function sharedBridge(hosts: SessionHost[]): { bridge: RemoteBridge; auth: RemoteAuth } {
+  const created = bridgeWith(hosts)
+  if (hosts.length > 0) {
+    const hostId = (hosts[0] as unknown as { id: string }).id
+    expect(created.bridge.setSharedByHost(hostId, true)).toBe(true)
+  }
+  return created
+}
+
 describe('RemoteBridge', () => {
-  it('syncSessions registers and unregisters hosts, taps raw lines', () => {
+  it('сессия не видна телефону, пока её не расшарили глобусом; unshare снимает', () => {
     const host = fakeHost()
     const { bridge } = bridgeWith([host])
     bridge.syncSessions()
+    expect((host as unknown as { remoteTaps: unknown[] }).remoteTaps).toHaveLength(0)
+    expect(bridge.sharedFor('host-1')).toBe(false)
+    expect(bridge.setSharedByHost('host-1', true)).toBe(true)
+    expect(bridge.sharedFor('host-1')).toBe(true)
     expect((host as unknown as { remoteTaps: unknown[] }).remoteTaps).toHaveLength(1)
     bridge.syncSessions()
     expect((host as unknown as { remoteTaps: unknown[] }).remoteTaps).toHaveLength(1)
+    expect(bridge.setSharedByHost('host-1', false)).toBe(true)
+    expect((host as unknown as { remoteTaps: unknown[] }).remoteTaps).toHaveLength(0)
+    expect(bridge.setSharedByHost('no-such-host', true)).toBe(false)
   })
 
   it('session list frame carries title/project/status/telegram', () => {
     const host = fakeHost({ streaming: true })
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const socket = fakeSocket(1)
     bridge['onOpen'](socket)
     const frame = JSON.parse(socket.lines[0]) as { type: string; sessions: { status: string; project: string; title: string }[] }
@@ -90,8 +106,7 @@ describe('RemoteBridge', () => {
 
   it('attach sends attached + snapshot + todos, dialog lines are replayed', async () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     const rawDialog = JSON.stringify({
       type: 'extension_ui_request',
@@ -115,8 +130,7 @@ describe('RemoteBridge', () => {
 
   it('phone prompt is forwarded with rewritten id; response is routed back with original id', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     const socket = fakeSocket(7)
     bridge['onOpen'](socket)
@@ -137,8 +151,7 @@ describe('RemoteBridge', () => {
 
   it('events broadcast to attached sockets, agent_start updates status to busy', () => {
     const host = fakeHost({ streaming: false })
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     const socket = fakeSocket(1)
     bridge['onOpen'](socket)
@@ -153,8 +166,7 @@ describe('RemoteBridge', () => {
 
   it('ui_response from phone answers dialog once and notifies others', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 'ui-9', method: 'confirm', title: 'run?' }))
     const phone = fakeSocket(1)
@@ -170,8 +182,7 @@ describe('RemoteBridge', () => {
 
   it('telegram toggle from phone updates the flag (default off, включается явно)', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     expect(remote.telegramEnabled).toBe(false)
     const socket = fakeSocket(1)
@@ -185,8 +196,7 @@ describe('RemoteBridge', () => {
 
   it('setTelegramEnabledByHost toggles by hostId (иконка в шапке чата)', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     expect(bridge.setTelegramEnabledByHost(host.id, true)).toBe(true)
     expect(bridge.telegramEnabledFor(host.id)).toBe(true)
     expect(bridge.setTelegramEnabledByHost('no-such-host', true)).toBe(false)
@@ -203,8 +213,7 @@ describe('RemoteBridge', () => {
 
   it('agent_settled sets unread; attach and visibility+atBottom clear it', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     const socket = fakeSocket(1)
     bridge['onOpen'](socket)
@@ -227,8 +236,7 @@ describe('RemoteBridge', () => {
 
   it('phone watching the bottom while the turn settles → no unread', () => {
     const host = fakeHost()
-    const { bridge } = bridgeWith([host])
-    bridge.syncSessions()
+    const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     const socket = fakeSocket(1)
     bridge['onOpen'](socket)

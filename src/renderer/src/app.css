@@ -1512,6 +1512,15 @@ body {
   max-width: 220px;
 }
 
+.remote-chip {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
 .todo-panel {
   border-bottom: 1px solid var(--border);
   font-size: 12px;
@@ -1948,6 +1957,12 @@ body {
   background: var(--hover);
 }
 
+/* Открытый попап: кнопка над оверлеем (иначе клик по имени ветки закрывает попап — баг 10). */
+.branch-toggle.raised {
+  position: relative;
+  z-index: 50;
+}
+
 .branch-toggle-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2126,6 +2141,46 @@ body {
   background: var(--hover);
 }
 
+.git-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 10px;
+  cursor: pointer;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.git-folder:hover {
+  background: var(--hover);
+}
+
+.git-folder-chevron {
+  color: var(--muted);
+  font-size: 10px;
+  width: 8px;
+  flex-shrink: 0;
+}
+
+.git-folder svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.git-folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-folder-count {
+  color: var(--faint);
+  font-size: 11px;
+  margin-left: auto;
+  padding-right: 6px;
+  flex-shrink: 0;
+}
+
 .git-badge {
   width: 14px;
   text-align: center;
@@ -2166,6 +2221,31 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-2);
+}
+
+/* Цвет имени по статусу (фича 41): modified — синий, new — светло-зелёный, untracked — красный. */
+.git-file-name.mod {
+  color: var(--blue);
+}
+
+.git-file-name.add {
+  color: var(--green);
+}
+
+.git-file-name.del {
+  color: var(--red);
+}
+
+.git-file-name.ren {
+  color: var(--blue);
+}
+
+.git-file-name.unt {
+  color: var(--red);
+}
+
+.git-file-name.conflict {
+  color: var(--red);
 }
 
 .git-commit {

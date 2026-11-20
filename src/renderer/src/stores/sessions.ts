@@ -14,6 +14,8 @@ export interface SessionRow {
   sessionFile: string | null
   /** Telegram-уведомления сессии (иконка в шапке чата, флаг в RemoteBridge). */
   telegram: boolean
+  /** Сессия расшарена на телефон глобусом (RemoteBridge, в памяти). */
+  shared: boolean
 }
 
 /** Проект панели: строка + его история (подгружается лениво). */
@@ -42,6 +44,8 @@ interface SessionsState {
   setActive: (hostId: string | null) => void
   /** Тоггл telegram-уведомлений сессии (оптимистично, флаг живёт в main). */
   toggleTelegram: (hostId: string) => void
+  /** Тоггл шаринга сессии на телефон (глобус; первый шаринг поднимает мост). */
+  toggleShare: (hostId: string) => void
   addProject: (project: ProjectEntry) => Promise<void>
   removeProject: (project: ProjectEntry) => Promise<void>
   renameProject: (project: ProjectEntry, name: string) => Promise<void>
@@ -89,7 +93,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         state: s.state,
         sessionId: s.sessionId,
         sessionFile: s.sessionFile,
-        telegram: s.telegram ?? false
+        telegram: s.telegram ?? false,
+        shared: s.shared ?? false
       })),
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
@@ -113,7 +118,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         state: status.state,
         sessionId: status.sessionId,
         sessionFile: status.sessionFile,
-        telegram: state.active.find((r) => r.hostId === status.hostId)?.telegram ?? status.telegram ?? false
+        telegram: state.active.find((r) => r.hostId === status.hostId)?.telegram ?? status.telegram ?? false,
+        shared: state.active.find((r) => r.hostId === status.hostId)?.shared ?? status.shared ?? false
       })
       return { active }
     })
@@ -134,6 +140,21 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     const enabled = !row.telegram
     set((state) => ({ active: state.active.map((r) => (r.hostId === hostId ? { ...r, telegram: enabled } : r)) }))
     void window.piwright.setSessionTelegram(hostId, enabled)
+  },
+
+  toggleShare: (hostId) => {
+    const row = get().active.find((r) => r.hostId === hostId)
+    if (row === undefined) return
+    const shared = !row.shared
+    set((state) => ({ active: state.active.map((r) => (r.hostId === hostId ? { ...r, shared } : r)) }))
+    // Первый шаринг поднимает мост (решение юзера: сервер — на первую remote-вкладку; не гасится).
+    const settings = get().settings
+    if (shared && settings !== null && !settings.notifications.remote.enabled) {
+      void window.piwright
+        .setSettings({ notifications: { ...settings.notifications, remote: { ...settings.notifications.remote, enabled: true } } })
+        .then((saved) => get().setSettings(saved))
+    }
+    void window.piwright.shareSession(hostId, shared)
   },
 
   addProject: async (project) => {

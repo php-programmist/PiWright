@@ -31,6 +31,7 @@ import {
   MODELS_REVEAL_CHANNEL,
   MODELS_SAVE_CHANNEL,
   REMOTE_CHECK_PORT_CHANNEL,
+  REMOTE_SHARE_SESSION_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
   SESSION_QUEUE_CLEAR_CHANNEL,
@@ -204,7 +205,11 @@ export function registerIpc(
   ipcMain.handle(SESSIONS_LIST_CHANNEL, () => {
     notifications?.bridge.syncSessions()
     return {
-      active: piHost.statuses().map((s) => ({ ...s, telegram: notifications?.bridge.telegramEnabledFor(s.hostId) ?? false }))
+      active: piHost.statuses().map((s) => ({
+        ...s,
+        telegram: notifications?.bridge.telegramEnabledFor(s.hostId) ?? false,
+        shared: notifications?.bridge.sharedFor(s.hostId) ?? false
+      }))
     }
   })
 
@@ -521,11 +526,21 @@ export function registerIpc(
     return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
   })
 
+  ipcMain.handle(REMOTE_SHARE_SESSION_CHANNEL, (_event, hostId: unknown, shared: unknown) => {
+    if (typeof hostId !== 'string' || typeof shared !== 'boolean') return { ok: false, error: 'Invalid arguments' }
+    const done = notifications?.bridge.setSharedByHost(hostId, shared) ?? false
+    return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
+  })
+
   ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })
 
   ipcMain.handle(REMOTE_CHECK_PORT_CHANNEL, async (_event, port: unknown) => {
     const p = typeof port === 'number' && Number.isFinite(port) ? Math.round(port) : NaN
     if (p < 1 || p > 65535) return { busy: true }
+    // Порт, который уже слушает собственный мост piwright, для проверки НЕ занят (баг 7):
+    // внешний конфликт исключён — сокет держим мы сами.
+    const info = notifications?.bridge.connectionInfo()
+    if (info !== undefined && info.running && info.port === p) return { busy: false }
     return { busy: await isPortBusy(p) }
   })
 
