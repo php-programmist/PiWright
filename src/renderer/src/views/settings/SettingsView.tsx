@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ModelsTab } from './ModelsTab'
 import { useSessionsStore } from '../../stores/sessions'
 import type { NotificationSounds, Settings, Theme } from '../../../../shared/ipc-contracts'
 
@@ -181,7 +182,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
             </>
           )}
           {tab === 'notifications' && <NotificationsTab draft={draft} update={update} />}
-          {tab === 'models' && <div className="panel-hint">Model management will appear later.</div>}
+          {tab === 'models' && <ModelsTab />}
         </div>
       </div>
     </div>

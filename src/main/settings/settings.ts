@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatFontSize: 14,
   singleLineTools: false,
   panels: {},
+  expandedProjects: {},
   notifications: DEFAULT_NOTIFICATIONS,
   projects: []
 }
@@ -70,6 +71,16 @@ export function mergeNotifications(value: unknown): NotificationSettings {
   return out
 }
 
+/** expandedProjects из файла/settings:set поверх дефолтов: только строковые ключи и boolean-значения. */
+export function mergeExpandedProjects(value: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, flag] of Object.entries(value as Record<string, unknown>)) {
+    if (key.length > 0 && typeof flag === 'boolean') out[key] = flag
+  }
+  return out
+}
+
 function isPosixPath(path: string): boolean {
   return path.startsWith('/') || path.startsWith('~/')
 }
@@ -108,6 +119,7 @@ export class SettingsService {
       if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return { ...DEFAULT_SETTINGS }
       const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
       merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
+      merged.expandedProjects = mergeExpandedProjects((raw as Partial<Settings>)['expandedProjects'])
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

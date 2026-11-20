@@ -44,6 +44,8 @@ export interface HostChat {
   toolsHidden: boolean
   /** Звуки этой сессии выключены (кнопка-колокольчик в шапке; не персистится). */
   muted: boolean
+  /** Ход завершился, а сессия не долистана/работала в фоне — зелёная точка в панели. */
+  unread: boolean
 }
 
 interface ChatState {
@@ -55,6 +57,8 @@ interface ChatState {
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
   toggleToolsHidden: (hostId: string) => void
   toggleMuted: (hostId: string) => void
+  markUnread: (hostId: string) => void
+  markRead: (hostId: string) => void
   resetTranscript: (hostId: string) => void
 }
 
@@ -73,6 +77,10 @@ const buffers = new Map<string, HostBuffers>()
 /** Сколько только что отправленных сообщений ещё не вернулось эхом (`user_message`) —
  *  их уже показали в ленте. Остальные эхо — доставки из очереди, их рисуем при доставке. */
 const ownEchoes = new Map<string, number>()
+
+/** «На дне» ленты по hostId — пишет ChatView, читает App на turn_end (вне reactive-стора:
+ *  скролл частый, ререндер не нужен). Нет записи = сессия не видна (фон). */
+export const atBottomMap = new Map<string, boolean>()
 
 function newId(): number {
   return nextEntryId++
@@ -97,7 +105,8 @@ function emptyHostChat(): HostChat {
     extensionStatuses: {},
     widgets: {},
     toolsHidden: false,
-    muted: false
+    muted: false,
+    unread: false
   }
 }
 
@@ -371,6 +380,18 @@ export const useChatStore = create<ChatState>((set) => ({
       const host = state.hosts[hostId]
       if (host === undefined) return state
       return { hosts: { ...state.hosts, [hostId]: { ...host, muted: !host.muted } } }
+    }),
+  markUnread: (hostId) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined || host.unread) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, unread: true } } }
+    }),
+  markRead: (hostId) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined || !host.unread) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, unread: false } } }
     }),
   resetTranscript: (hostId) => {
     resetBuffers(hostId)

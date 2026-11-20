@@ -10,7 +10,7 @@ import { ChatView } from './views/chat/ChatView'
 import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
-import { useChatStore } from './stores/chat'
+import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
 import { useSessionsStore } from './stores/sessions'
@@ -75,6 +75,8 @@ export function App(): React.JSX.Element {
         )
       }
       if (message.event.type !== 'turn_end') return
+      const watching = useSessionsStore.getState().activeHostId === message.hostId && atBottomMap.get(message.hostId) === true
+      if (!watching) useChatStore.getState().markUnread(message.hostId)
       const row = useSessionsStore.getState().active.find((r) => r.hostId === message.hostId)
       if (row !== undefined) void useGitStore.getState().refreshStatus(row.project, true)
     })

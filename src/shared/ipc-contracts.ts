@@ -34,6 +34,8 @@ export interface Settings {
   singleLineTools: boolean
   /** Состояние правых панелей — переживает перезапуск. */
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
+  /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
+  expandedProjects: Record<string, boolean>
   /** Звуки, telegram и remote-мост (вкладка Notifications). */
   notifications: NotificationSettings
   projects: ProjectEntry[]
@@ -265,6 +267,20 @@ export interface SoundReadResult {
   base64: string
 }
 
+/** Содержимое models.json бэкенда (raw JSON; схема — docs pi). */
+export interface ModelsListResult {
+  ok: boolean
+  error: string | null
+  file: string
+  exists: boolean
+  doc: unknown
+}
+
+export interface ModelsOpResult {
+  ok: boolean
+  error: string | null
+}
+
 /** Состояние remote-моста (вкладка Notifications). */
 export interface RemoteStatus {
   running: boolean
@@ -358,6 +374,9 @@ export interface PiwrightApi {
   telegramTokenStatus(): Promise<{ configured: boolean }>
   telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
   remoteStatus(): Promise<RemoteStatus>
+  modelsList(backend: BackendMode): Promise<ModelsListResult>
+  modelsSave(backend: BackendMode, doc: unknown): Promise<ModelsOpResult>
+  modelsReveal(backend: BackendMode): Promise<ModelsOpResult>
   mcpList(project: ProjectEntry, scope: McpScope): Promise<McpListResult>
   mcpSave(project: ProjectEntry, scope: McpScope, servers: McpServerEntry[]): Promise<McpOpResult>
   mcpProbe(project: ProjectEntry, scope: McpScope, name: string): Promise<McpProbeResult>
@@ -415,6 +434,9 @@ export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'
 export const TELEGRAM_TOKEN_STATUS_CHANNEL = 'telegram:token-status'
 export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
 export const REMOTE_STATUS_CHANNEL = 'remote:status'
+export const MODELS_LIST_CHANNEL = 'models:list'
+export const MODELS_SAVE_CHANNEL = 'models:save'
+export const MODELS_REVEAL_CHANNEL = 'models:reveal'
 export const MCP_LIST_CHANNEL = 'mcp:list'
 export const MCP_SAVE_CHANNEL = 'mcp:save'
 export const MCP_PROBE_CHANNEL = 'mcp:probe'

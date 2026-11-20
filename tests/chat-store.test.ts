@@ -162,6 +162,20 @@ describe('chat store transcript', () => {
     expect(entries()).toHaveLength(1)
   })
 
+  it('unread flag marks and clears per host', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
+    expect(useChatStore.getState().hosts[HOST]?.unread).toBe(false)
+    store.markUnread(HOST)
+    expect(useChatStore.getState().hosts[HOST]?.unread).toBe(true)
+    store.markUnread(HOST)
+    store.markRead(HOST)
+    expect(useChatStore.getState().hosts[HOST]?.unread).toBe(false)
+    store.markRead(HOST)
+    store.markUnread('unknown-host')
+    expect(useChatStore.getState().hosts['unknown-host']).toBeUndefined()
+  })
+
   it('translated edit-turn fixture builds the full transcript', () => {
     const store = useChatStore.getState()
     for (const event of translateFixture()) store.applyEvent({ hostId: HOST, event })

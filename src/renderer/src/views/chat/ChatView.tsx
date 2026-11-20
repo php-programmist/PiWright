@@ -3,7 +3,7 @@ import { DialogCard } from '../../components/DialogCard'
 import { Markdown } from '../../components/Markdown'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
-import { useChatStore } from '../../stores/chat'
+import { useChatStore, atBottomMap } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
@@ -82,20 +82,33 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const pendingImagesRef = useRef<string[]>([])
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
 
+  const activeHostRef = useRef(activeHostId ?? '')
+  useEffect(() => {
+    activeHostRef.current = activeHostId ?? ''
+  }, [activeHostId])
+  useEffect(() => () => {
+    atBottomMap.delete(activeHostRef.current)
+  }, [])
+
   useEffect(() => {
     autoScrollRef.current = true
     pendingImagesRef.current = []
   }, [activeHostId])
 
   useEffect(() => {
-    if (!autoScrollRef.current) return
+    if (!autoScrollRef.current || activeHostId === null) return
+    atBottomMap.set(activeHostId, true)
+    useChatStore.getState().markRead(activeHostId)
     bottomRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
-  }, [entries, streaming])
+  }, [entries, streaming, activeHostId])
 
   const handleScroll = (): void => {
     const el = transcriptRef.current
-    if (el === null) return
-    autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+    if (el === null || activeHostId === null) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+    autoScrollRef.current = atBottom
+    atBottomMap.set(activeHostId, atBottom)
+    if (atBottom) useChatStore.getState().markRead(activeHostId)
   }
 
   if (activeHostId === null || status === null) {

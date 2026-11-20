@@ -77,6 +77,7 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       })),
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
+      expanded: { ...state.expanded, ...settings.expandedProjects },
       projects: sortProjects(settings.projects.map((project) => {
         const existing = state.projects.find((p) => projectKey(p.project) === projectKey(project))
         return existing ?? { project, history: [], historyLoading: false, showAllHistory: false }
@@ -131,8 +132,11 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     }))
   },
 
-  toggleExpanded: (key) =>
-    set((state) => ({ expanded: { ...state.expanded, [key]: !(state.expanded[key] ?? false) } })),
+  toggleExpanded: (key) => {
+    const expanded = { ...get().expanded, [key]: !(get().expanded[key] ?? false) }
+    set({ expanded })
+    void window.piwright.setSettings({ expandedProjects: expanded })
+  },
 
   refreshHistory: async (project) => {
     const key = projectKey(project)

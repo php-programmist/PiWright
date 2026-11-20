@@ -65,12 +65,24 @@ function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; su
   )
 }
 
+function SessionDot({ hostId, dot }: { hostId: string; dot: import('../../../shared/ipc-contracts').SessionDot }): React.JSX.Element {
+  const unread = useChatStore((s) => s.hosts[hostId]?.unread ?? false)
+  const cls = DOT_CLASS[dot] ?? 'idle'
+  const off = dot === 'idle' && !unread
+  return <span className={`dot ${cls}${off ? ' dot-off' : ''}`} />
+}
+
 function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): React.JSX.Element {
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const activeAll = useSessionsStore((s) => s.active)
   const active = useMemo(() => activeAll.filter((r) => projectKey(r.project) === key), [activeAll, key])
+  const unreadCount = useChatStore((s) =>
+    active.reduce((n, r) => (r.dot === 'idle' && (s.hosts[r.hostId]?.unread ?? false) ? n + 1 : n), 0)
+  )
+  const busyCount = useMemo(() => active.filter((r) => r.dot === 'busy').length, [active])
+  const attentionCount = useMemo(() => active.filter((r) => r.dot === 'confirm' || r.dot === 'question').length, [active])
   const toggleExpanded = useSessionsStore((s) => s.toggleExpanded)
   const removeProject = useSessionsStore((s) => s.removeProject)
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
@@ -122,6 +134,13 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
         <button className="icon" title="New session" onClick={() => void newSession()}>+</button>
         <button className="icon remove" title="Remove project" onClick={() => void removeProject(row.project)}>×</button>
       </div>
+      {!expanded && unreadCount + busyCount + attentionCount > 0 && (
+        <div className="project-badges">
+          {unreadCount > 0 && <span className="proj-badge green" title="Unread turns">{unreadCount}</span>}
+          {busyCount > 0 && <span className="proj-badge busy" title="Working">{busyCount}</span>}
+          {attentionCount > 0 && <span className="proj-badge attention" title="Need your answer">{attentionCount}</span>}
+        </div>
+      )}
       {expanded && (
         <div className="project-children">
           {active.map((s) => (
@@ -130,7 +149,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
               className={`session-row${s.hostId === activeHostId ? ' current' : ''}`}
               onClick={() => useSessionsStore.getState().setActive(s.hostId)}
             >
-              <span className={`dot ${DOT_CLASS[s.dot] ?? 'idle'}`} />
+              <SessionDot hostId={s.hostId} dot={s.dot} />
               {renaming ? (
                 <input
                   autoFocus

@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SettingsService, DEFAULT_SETTINGS } from '../src/main/settings/settings'
+import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects } from '../src/main/settings/settings'
 
 async function tempSettings(initial: unknown): Promise<SettingsService> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-settings-'))
@@ -73,5 +73,13 @@ describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () =>
     await fs.writeFile(file, '{broken', 'utf8')
     const service = new SettingsService(file)
     expect(service.get().projects).toEqual([])
+  })
+
+  it('expandedProjects are kept from file and sanitized by mergeExpandedProjects', async () => {
+    const service = await tempSettings({ expandedProjects: { 'native\u0000C:\\x': true, bad: 'nope', '': true } })
+    expect(service.get().expandedProjects).toEqual({ 'native\u0000C:\\x': true })
+    expect(mergeExpandedProjects({ a: false, b: 'x', c: true })).toEqual({ a: false, c: true })
+    expect(mergeExpandedProjects(null)).toEqual({})
+    expect(mergeExpandedProjects(['x'])).toEqual({})
   })
 })

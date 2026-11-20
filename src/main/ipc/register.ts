@@ -24,6 +24,9 @@ import {
   MCP_PROBE_CHANNEL,
   MCP_REVEAL_CHANNEL,
   MCP_SAVE_CHANNEL,
+  MODELS_LIST_CHANNEL,
+  MODELS_REVEAL_CHANNEL,
+  MODELS_SAVE_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
@@ -64,13 +67,14 @@ import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeNotifications } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications } from '../settings/settings'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
 import type { TelegramTokenStore } from '../notifications/token-store'
 import type { RemoteBridge } from '../remote/bridge'
 import { listMcpServers, probeMcpServer, revealMcpFile, saveMcpServers } from '../mcp/mcp-config'
+import { listModels, revealModelsFile, saveModels } from '../models/models-service'
 import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-service'
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
@@ -161,6 +165,9 @@ export function registerIpc(
       }
       if (raw['notifications'] !== null && typeof raw['notifications'] === 'object' && !Array.isArray(raw['notifications'])) {
         safe.notifications = mergeNotifications(raw['notifications'])
+      }
+      if (raw['expandedProjects'] !== null && typeof raw['expandedProjects'] === 'object' && !Array.isArray(raw['expandedProjects'])) {
+        safe.expandedProjects = mergeExpandedProjects(raw['expandedProjects'])
       }
     }
     const next = settings.set(safe)
@@ -381,6 +388,23 @@ export function registerIpc(
   })
 
   ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })
+
+  ipcMain.handle(MODELS_LIST_CHANNEL, async (_event, backend: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl') {
+      return { ok: false, error: 'Invalid request', file: '', exists: false, doc: null }
+    }
+    return listModels(backend, settings.get())
+  })
+
+  ipcMain.handle(MODELS_SAVE_CHANNEL, async (_event, backend: unknown, doc: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl') return { ok: false, error: 'Invalid request' }
+    return saveModels(backend, settings.get(), doc)
+  })
+
+  ipcMain.handle(MODELS_REVEAL_CHANNEL, async (_event, backend: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl') return { ok: false, error: 'Invalid request' }
+    return revealModelsFile(backend, settings.get())
+  })
 
   ipcMain.handle(MCP_LIST_CHANNEL, async (_event, project: unknown, scope: unknown) => {
     if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project')) {
