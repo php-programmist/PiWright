@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,10 +11,10 @@ async function tempSettings(initial: unknown): Promise<SettingsService> {
   return new SettingsService(file)
 }
 
-describe('SettingsService (projects + миграция)', () => {
+describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () => {
   it('fresh file yields defaults with no projects', async () => {
     const service = await tempSettings(null)
-    expect(service.get()).toEqual({ wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] })
+    expect(service.get()).toEqual({ wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] })
   })
 
   it('legacy backend/projectDir migrate into one project', async () => {
@@ -41,7 +41,7 @@ describe('SettingsService (projects + миграция)', () => {
     expect(service.get().projects).toEqual([{ kind: 'native', dir: 'C:\\new' }])
   })
 
-  it('legacy piPath migrates by format: Windows → native, POSIX → wsl', async () => {
+  it('legacy piPath migrates by format: Windows в†’ native, POSIX в†’ wsl', async () => {
     const native = await tempSettings({ backend: 'native', piPath: 'C:\\tools\\pi.cmd', projectDir: 'C:\\x' })
     expect(native.get().piPathNative).toBe('C:\\tools\\pi.cmd')
     expect(native.get().piPathWsl).toBe('')

@@ -8,7 +8,7 @@ import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 function handshakeData(sessionFile: string): Record<string, unknown> {

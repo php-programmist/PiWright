@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalStore } from '../../stores/terminal'
 import { useSessionsStore } from '../../stores/sessions'
+import { persistPanel } from '../../stores/panels-prefs'
 import { attach, detach, fit } from './term-registry'
 import type { TerminalProfileId } from '../../../../shared/ipc-contracts'
 
@@ -61,6 +62,7 @@ export function TerminalPanel(): React.JSX.Element {
       window.removeEventListener('mouseup', up)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
+      persistPanel('terminal', { width: useTerminalStore.getState().width })
     }
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'

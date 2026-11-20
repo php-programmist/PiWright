@@ -11,6 +11,8 @@ export const DEFAULT_SETTINGS: Settings = {
   piPathWsl: '',
   piExtraArgs: '',
   updateUrl: '',
+  selectorPlacement: 'top',
+  panels: {},
   projects: []
 }
 

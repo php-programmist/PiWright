@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
+import { persistPanel } from '../../stores/panels-prefs'
 import type { GitFileEntry } from '../../../../shared/ipc-contracts'
 
 const BADGE_CLASS: Record<string, string> = {
@@ -92,6 +93,7 @@ export function GitPanel(): React.JSX.Element {
       window.removeEventListener('mouseup', up)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
+      persistPanel('git', { width: useGitStore.getState().width })
     }
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'

@@ -21,8 +21,19 @@ export interface Settings {
   piExtraArgs: string
   /** URL фида обновлений (generic-провайдер electron-updater); пусто — проверка выключена. */
   updateUrl: string
+  /** Где сидят выбор модели/thinking и Stop: в шапке чата или над полем ввода. */
+  selectorPlacement: 'top' | 'bottom'
+  /** Состояние правых панелей — переживает перезапуск. */
+  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
   projects: ProjectEntry[]
 }
+
+export interface PanelPrefs {
+  open?: boolean
+  width?: number
+}
+
+export type PanelName = 'git' | 'files' | 'terminal'
 
 /** Кружок статуса сессии: разрешение важнее вопроса, вопрос — важнее идущего хода. */
 export type SessionDot = 'confirm' | 'question' | 'busy' | 'idle'

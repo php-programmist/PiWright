@@ -56,6 +56,7 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
 
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
+  const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
   const status = chat?.status ?? null
   const entries = chat?.entries ?? []
   const streaming = chat?.streaming ?? false
@@ -64,7 +65,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const applyEvent = useChatStore((s) => s.applyEvent)
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
-  const resetTranscript = useChatStore((s) => s.resetTranscript)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -109,53 +109,55 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const queuedCount = queue.steering.length + queue.followUp.length
   const modelKey = status.model
 
+  const controls = (
+    <>
+      {status.models.length > 0 && (
+        <select
+          className="model-select"
+          value={modelKey ?? ''}
+          onChange={(e) => void window.piwright.setModel(activeHostId, e.target.value)}
+        >
+          {modelKey !== null && !status.models.some((m) => `${m.provider}/${m.id}` === modelKey) && (
+            <option value={modelKey}>{modelKey}</option>
+          )}
+          {status.models.map((m) => (
+            <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      )}
+      {modelKey === null && status.model !== null && <span className="model">{status.model}</span>}
+      {status.thinkingLevels.length > 0 && (
+        <select
+          className="thinking-select"
+          value={status.thinkingLevel ?? ''}
+          onChange={(e) => void window.piwright.setThinkingLevel(activeHostId, e.target.value)}
+        >
+          {status.thinkingLevels.map((level) => (
+            <option key={level} value={level}>
+              thinking: {level}
+            </option>
+          ))}
+        </select>
+      )}
+      <button className="abort" onClick={() => void abort()} disabled={!streaming}>
+        Stop
+      </button>
+    </>
+  )
+
   return (
     <>
       <header className="header">
         <span className={`dot ${status.state}`} />
         <span className="state">{STATUS_LABEL[status.state] ?? status.state}</span>
-        {status.backend !== null && <span className="backend">{status.backend}</span>}
-        {status.models.length > 0 && (
-          <select
-            className="model-select"
-            value={modelKey ?? ''}
-            onChange={(e) => void window.piwright.setModel(activeHostId, e.target.value)}
-          >
-            {modelKey !== null && !status.models.some((m) => `${m.provider}/${m.id}` === modelKey) && (
-              <option value={modelKey}>{modelKey}</option>
-            )}
-            {status.models.map((m) => (
-              <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        )}
-        {modelKey === null && status.model !== null && <span className="model">{status.model}</span>}
-        {status.thinkingLevels.length > 0 && (
-          <select
-            className="thinking-select"
-            value={status.thinkingLevel ?? ''}
-            onChange={(e) => void window.piwright.setThinkingLevel(activeHostId, e.target.value)}
-          >
-            {status.thinkingLevels.map((level) => (
-              <option key={level} value={level}>
-                thinking: {level}
-              </option>
-            ))}
-          </select>
-        )}
+        {placement === 'top' && controls}
         {contextUsage !== null && contextUsage.size > 0 && (
           <span className="ctx-usage">{Math.round((contextUsage.used / contextUsage.size) * 100)}%</span>
         )}
         {queuedCount > 0 && <span className="queue-label">Queued: {queuedCount}</span>}
         <span className="spacer" />
-        <button className="abort" onClick={() => void abort()} disabled={!streaming}>
-          Stop
-        </button>
-        <button className="clear" onClick={() => resetTranscript(activeHostId)}>
-          clear
-        </button>
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
       <main className="transcript">
@@ -165,6 +167,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         {streaming && <div className="cursor">▍</div>}
         <div ref={bottomRef} />
       </main>
+      {placement === 'bottom' && <div className="selector-bar">{controls}</div>}
       <footer className="composer">
         <textarea
           value={input}

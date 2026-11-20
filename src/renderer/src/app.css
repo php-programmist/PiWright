@@ -647,6 +647,38 @@ body {
   cursor: default;
 }
 
+.selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-top: 1px solid #262a31;
+}
+
+.selector-bar .abort {
+  background: transparent;
+  color: #e05a5a;
+  border: 1px solid #5a2a2a;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.selector-bar .abort:disabled {
+  color: #555;
+  border-color: #262a31;
+  cursor: default;
+}
+
+.selector-bar .spacer {
+  flex: 1;
+}
+
+.selector-bar + .composer {
+  border-top: none;
+}
+
 .thinking {
   align-self: flex-start;
   max-width: 85%;
@@ -682,8 +714,7 @@ body {
 }
 
 .composer button,
-.settings button,
-.header .clear {
+.settings button {
   background: #2f6fdb;
   color: #fff;
   border: none;
@@ -695,14 +726,6 @@ body {
 .composer button:disabled {
   background: #333a44;
   color: #777;
-}
-
-.header .clear {
-  background: transparent;
-  color: #9aa3ad;
-  border: 1px solid #333a44;
-  padding: 2px 10px;
-  font-size: 12px;
 }
 
 .settings {

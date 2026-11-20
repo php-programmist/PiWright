@@ -6,7 +6,7 @@ import type { CreateBackendResult } from '../src/main/pi/backends/factory'
 import type { PiEventMessage, PiStatus, Settings } from '../src/shared/ipc-contracts'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 let currentChild: ScriptedChild | null = null

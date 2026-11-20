@@ -39,7 +39,7 @@ import {
   TERM_RESIZE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { TerminalService } from '../terminal/terminal-service'
@@ -86,6 +86,23 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
       const raw = patch as Record<string, unknown>
       for (const key of ['wslDistro', 'piPathNative', 'piPathWsl', 'piExtraArgs', 'updateUrl'] as const) {
         if (typeof raw[key] === 'string') safe[key] = raw[key]
+      }
+      if (raw['selectorPlacement'] === 'top' || raw['selectorPlacement'] === 'bottom') {
+        safe.selectorPlacement = raw['selectorPlacement']
+      }
+      if (raw['panels'] !== null && typeof raw['panels'] === 'object' && !Array.isArray(raw['panels'])) {
+        const src = raw['panels'] as Record<string, unknown>
+        const panels: Settings['panels'] = {}
+        for (const name of ['git', 'files', 'terminal'] as const) {
+          const p = src[name]
+          if (p === null || typeof p !== 'object' || Array.isArray(p)) continue
+          const entry: PanelPrefs = {}
+          const rec = p as Record<string, unknown>
+          if (typeof rec['open'] === 'boolean') entry.open = rec['open']
+          if (typeof rec['width'] === 'number' && Number.isFinite(rec['width'])) entry.width = rec['width']
+          panels[name] = entry
+        }
+        safe.panels = panels
       }
       if (Array.isArray(raw['projects'])) {
         const projects = raw['projects'].filter(isProjectEntry)

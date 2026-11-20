@@ -13,7 +13,7 @@ const enabled = process.env['PIWRIGHT_LIVE_SMOKE'] === '1'
 
 async function runSmoke(kind: 'native' | 'wsl'): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'piwright-smoke-'))
-  const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
+  const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
   const project: ProjectEntry = { kind, dir }
   const events: UiEvent[] = []
   const statuses: PiStatus[] = []

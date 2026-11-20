@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
@@ -13,6 +13,7 @@ import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
 import { useSessionsStore } from './stores/sessions'
 import { useTerminalStore } from './stores/terminal'
+import { hydratePanels, persistPanel } from './stores/panels-prefs'
 
 export function App(): React.JSX.Element {
   const applyEvent = useChatStore((s) => s.applyEvent)
@@ -22,13 +23,31 @@ export function App(): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const settingsOpen = useSessionsStore((s) => s.settingsOpen)
   const gitOpen = useGitStore((s) => s.open)
-  const toggleGit = useGitStore((s) => s.toggleOpen)
   const diffOpen = useGitStore((s) => s.selectedPath !== null)
   const filesOpen = useFilesStore((s) => s.open)
-  const toggleFiles = useFilesStore((s) => s.toggleOpen)
   const viewerOpen = useFilesStore((s) => s.viewerOpen)
   const termOpen = useTerminalStore((s) => s.open)
-  const toggleTerm = useTerminalStore((s) => s.toggleOpen)
+  const settings = useSessionsStore((s) => s.settings)
+  const hydratedRef = useRef(false)
+
+  useEffect(() => {
+    if (settings === null || hydratedRef.current) return
+    hydratedRef.current = true
+    hydratePanels(settings)
+  }, [settings])
+
+  const toggleGit = (): void => {
+    useGitStore.getState().toggleOpen()
+    persistPanel('git', { open: useGitStore.getState().open })
+  }
+  const toggleFiles = (): void => {
+    useFilesStore.getState().toggleOpen()
+    persistPanel('files', { open: useFilesStore.getState().open })
+  }
+  const toggleTerm = (): void => {
+    useTerminalStore.getState().toggleOpen()
+    persistPanel('terminal', { open: useTerminalStore.getState().open })
+  }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
 
   useEffect(() => {

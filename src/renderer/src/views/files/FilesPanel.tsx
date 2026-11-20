@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from 'react'
 import { useFilesStore } from '../../stores/files'
 import { useSessionsStore } from '../../stores/sessions'
+import { persistPanel } from '../../stores/panels-prefs'
 import type { ProjectEntry } from '../../../../shared/ipc-contracts'
 
 function TreeLevel({ project, dir, depth }: { project: ProjectEntry; dir: string; depth: number }): React.JSX.Element | null {
@@ -87,6 +88,7 @@ export function FilesPanel(): React.JSX.Element {
       window.removeEventListener('mouseup', up)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
+      persistPanel('files', { width: useFilesStore.getState().width })
     }
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'

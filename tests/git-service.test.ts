@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GitService } from '../src/main/git/git-service'
 import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 
-const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
+const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
 let dir: string
 let remote: string
 let project: ProjectEntry
