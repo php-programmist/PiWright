@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { Markdown } from '../../components/Markdown'
 import { ToolBlock } from '../../components/ToolBlock'
@@ -58,19 +58,33 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
   const status = chat?.status ?? null
-  const entries = chat?.entries ?? []
+  const entries = useMemo(() => chat?.entries ?? [], [chat])
   const streaming = chat?.streaming ?? false
   const queue = chat?.queue ?? { steering: [], followUp: [] }
   const contextUsage = chat?.contextUsage ?? null
   const applyEvent = useChatStore((s) => s.applyEvent)
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
+  const toggleToolsHidden = useChatStore((s) => s.toggleToolsHidden)
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const transcriptRef = useRef<HTMLElement | null>(null)
+  const autoScrollRef = useRef(true)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [entries.length])
+    autoScrollRef.current = true
+  }, [activeHostId])
+
+  useEffect(() => {
+    if (!autoScrollRef.current) return
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
+  }, [entries, streaming])
+
+  const handleScroll = (): void => {
+    const el = transcriptRef.current
+    if (el === null) return
+    autoScrollRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+  }
 
   if (activeHostId === null || status === null) {
     return (
@@ -108,6 +122,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   const queuedCount = queue.steering.length + queue.followUp.length
   const modelKey = status.model
+  const toolsHidden = chat?.toolsHidden ?? false
+  const visibleEntries = toolsHidden ? entries.filter((e) => e.kind !== 'tool') : entries
 
   const controls = (
     <>
@@ -157,11 +173,41 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           <span className="ctx-usage">{Math.round((contextUsage.used / contextUsage.size) * 100)}%</span>
         )}
         {queuedCount > 0 && <span className="queue-label">Queued: {queuedCount}</span>}
+        <button
+          className="icon"
+          title={toolsHidden ? 'Show tool blocks' : 'Hide tool blocks'}
+          onClick={() => toggleToolsHidden(activeHostId)}
+        >
+          {toolsHidden ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          )}
+        </button>
         <span className="spacer" />
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
-      <main className="transcript">
-        {entries.map((entry) => (
+      <main className="transcript" ref={transcriptRef} onScroll={handleScroll}>
+        {visibleEntries.map((entry) => (
           <EntryView key={entry.id} entry={entry} onAnswer={(id, answer) => void answerDialog(id, answer)} />
         ))}
         {streaming && <div className="cursor">▍</div>}

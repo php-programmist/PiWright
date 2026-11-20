@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SettingsService } from '../src/main/settings/settings'
+import { SettingsService, DEFAULT_SETTINGS } from '../src/main/settings/settings'
 
 async function tempSettings(initial: unknown): Promise<SettingsService> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-settings-'))
@@ -14,7 +14,13 @@ async function tempSettings(initial: unknown): Promise<SettingsService> {
 describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () => {
   it('fresh file yields defaults with no projects', async () => {
     const service = await tempSettings(null)
-    expect(service.get()).toEqual({ wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] })
+    expect(service.get()).toEqual({ ...DEFAULT_SETTINGS })
+  })
+
+  it('theme and chatFontSize from file are kept', async () => {
+    const service = await tempSettings({ theme: 'light', chatFontSize: 18 })
+    expect(service.get().theme).toBe('light')
+    expect(service.get().chatFontSize).toBe(18)
   })
 
   it('legacy backend/projectDir migrate into one project', async () => {

@@ -5,10 +5,11 @@ import type { SessionHostListener } from '../src/main/pi/session-host'
 import type { PiBackend } from '../src/main/pi/backends/types'
 import type { CreateBackendResult } from '../src/main/pi/backends/factory'
 import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
+const SETTINGS = { ...DEFAULT_SETTINGS }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 function handshakeData(sessionFile: string): Record<string, unknown> {

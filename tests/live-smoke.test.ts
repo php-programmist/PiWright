@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { SessionHost } from '../src/main/pi/session-host'
 import type { SessionHostListener } from '../src/main/pi/session-host'
-import type { PiStatus, ProjectEntry, Settings } from '../src/shared/ipc-contracts'
+import type { PiStatus, ProjectEntry } from '../src/shared/ipc-contracts'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { UiEvent } from '../src/shared/agent-events'
 
 /** Р–РёРІРѕР№ smoke РїСЂРѕС‚РёРІ РЅР°СЃС‚РѕСЏС‰РµРіРѕ pi: PIWRIGHT_LIVE_SMOKE=1 npx vitest run tests/live-smoke.test.ts.
@@ -13,7 +14,7 @@ const enabled = process.env['PIWRIGHT_LIVE_SMOKE'] === '1'
 
 async function runSmoke(kind: 'native' | 'wsl'): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'piwright-smoke-'))
-  const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
+  const settings = { ...DEFAULT_SETTINGS }
   const project: ProjectEntry = { kind, dir }
   const events: UiEvent[] = []
   const statuses: PiStatus[] = []

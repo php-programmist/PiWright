@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSessionsStore } from '../../stores/sessions'
-import type { Settings } from '../../../../shared/ipc-contracts'
+import type { Settings, Theme } from '../../../../shared/ipc-contracts'
 
 const AUTOSAVE_DEBOUNCE_MS = 500
+
+const CHAT_FONT_SIZES = [12, 13, 14, 16, 18]
 
 type Tab = 'general' | 'appearance' | 'models'
 
@@ -127,19 +129,44 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
             </>
           )}
           {tab === 'appearance' && (
-            <section className="settings-section">
-              <h3>Chat toolbar</h3>
-              <label>
-                model / thinking selectors and Stop button
-                <select
-                  value={draft.selectorPlacement}
-                  onChange={(e) => update({ selectorPlacement: e.target.value as 'top' | 'bottom' })}
-                >
-                  <option value="top">top — in the chat header</option>
-                  <option value="bottom">bottom — above the message input</option>
-                </select>
-              </label>
-            </section>
+            <>
+              <section className="settings-section">
+                <h3>Chat toolbar</h3>
+                <label>
+                  model / thinking selectors and Stop button
+                  <select
+                    value={draft.selectorPlacement}
+                    onChange={(e) => update({ selectorPlacement: e.target.value as 'top' | 'bottom' })}
+                  >
+                    <option value="top">top — in the chat header</option>
+                    <option value="bottom">bottom — above the message input</option>
+                  </select>
+                </label>
+              </section>
+              <section className="settings-section">
+                <h3>Theme</h3>
+                <label>
+                  color theme
+                  <select value={draft.theme} onChange={(e) => update({ theme: e.target.value as Theme })}>
+                    <option value="dark">dark</option>
+                    <option value="light">light</option>
+                  </select>
+                </label>
+                <label>
+                  chat font size
+                  <select
+                    value={String(draft.chatFontSize)}
+                    onChange={(e) => update({ chatFontSize: Number(e.target.value) })}
+                  >
+                    {CHAT_FONT_SIZES.map((size) => (
+                      <option key={size} value={String(size)}>
+                        {size} px
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+            </>
           )}
           {tab === 'models' && <div className="panel-hint">Model management will appear later.</div>}
         </div>

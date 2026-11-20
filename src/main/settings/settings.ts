@@ -12,9 +12,15 @@ export const DEFAULT_SETTINGS: Settings = {
   piExtraArgs: '',
   updateUrl: '',
   selectorPlacement: 'top',
+  theme: 'dark',
+  chatFontSize: 14,
   panels: {},
   projects: []
 }
+
+/** Границы размера шрифта чата (санитайзер settings:set). */
+export const CHAT_FONT_SIZE_MIN = 10
+export const CHAT_FONT_SIZE_MAX = 24
 
 function isPosixPath(path: string): boolean {
   return path.startsWith('/') || path.startsWith('~/')

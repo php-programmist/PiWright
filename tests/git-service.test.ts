@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GitService } from '../src/main/git/git-service'
-import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
+import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
-const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
+const settings = { ...DEFAULT_SETTINGS }
 let dir: string
 let remote: string
 let project: ProjectEntry

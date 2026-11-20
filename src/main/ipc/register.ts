@@ -47,6 +47,7 @@ import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN } from '../settings/settings'
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
@@ -89,6 +90,15 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
       }
       if (raw['selectorPlacement'] === 'top' || raw['selectorPlacement'] === 'bottom') {
         safe.selectorPlacement = raw['selectorPlacement']
+      }
+      if (raw['theme'] === 'dark' || raw['theme'] === 'light') {
+        safe.theme = raw['theme']
+      }
+      if (typeof raw['chatFontSize'] === 'number' && Number.isFinite(raw['chatFontSize'])) {
+        safe.chatFontSize = Math.min(
+          CHAT_FONT_SIZE_MAX,
+          Math.max(CHAT_FONT_SIZE_MIN, Math.round(raw['chatFontSize']))
+        )
       }
       if (raw['panels'] !== null && typeof raw['panels'] === 'object' && !Array.isArray(raw['panels'])) {
         const src = raw['panels'] as Record<string, unknown>

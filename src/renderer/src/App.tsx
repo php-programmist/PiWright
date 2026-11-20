@@ -14,6 +14,7 @@ import { useGitStore } from './stores/git'
 import { useSessionsStore } from './stores/sessions'
 import { useTerminalStore } from './stores/terminal'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
+import { applyAppearance } from './lib/appearance'
 
 export function App(): React.JSX.Element {
   const applyEvent = useChatStore((s) => s.applyEvent)
@@ -29,6 +30,12 @@ export function App(): React.JSX.Element {
   const termOpen = useTerminalStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
   const hydratedRef = useRef(false)
+  const theme = settings?.theme ?? 'dark'
+  const chatFontSize = settings?.chatFontSize ?? 14
+
+  useEffect(() => {
+    applyAppearance(theme, chatFontSize)
+  }, [theme, chatFontSize])
 
   useEffect(() => {
     if (settings === null || hydratedRef.current) return
@@ -102,7 +109,7 @@ export function App(): React.JSX.Element {
               <button className={gitOpen ? 'active' : ''} title="Git" onClick={toggleGit}>
                 <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
                   <line x1="1" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.4" />
-                  <circle cx="8" cy="8" r="3.2" fill="#171a1f" stroke="currentColor" strokeWidth="1.4" />
+                  <circle cx="8" cy="8" r="3.2" fill="var(--panel-bg)" stroke="currentColor" strokeWidth="1.4" />
                 </svg>
               </button>
               <button className={filesOpen ? 'active' : ''} title="Files" onClick={toggleFiles}>

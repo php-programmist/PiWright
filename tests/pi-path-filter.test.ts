@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { filterSettingsPiPath } from '../src/main/pi/backends/factory'
 import { deleteSessionFile, toBackendPath } from '../src/main/sessions/session-catalog'
-import type { Settings } from '../src/shared/ipc-contracts'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 
-const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', selectorPlacement: 'top', panels: {}, projects: [] }
+const SETTINGS = { ...DEFAULT_SETTINGS, wslDistro: 'Ubuntu' }
 
 describe('filterSettingsPiPath', () => {
   it('empty setting yields null (auto-resolve)', () => {

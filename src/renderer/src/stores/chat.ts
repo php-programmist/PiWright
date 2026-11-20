@@ -25,6 +25,7 @@ export interface HostChat {
   streaming: boolean
   queue: QueueState
   contextUsage: { used: number; size: number } | null
+  toolsHidden: boolean
 }
 
 interface ChatState {
@@ -34,6 +35,7 @@ interface ChatState {
   removeHost: (hostId: string) => void
   addUserMessage: (hostId: string, text: string) => void
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
+  toggleToolsHidden: (hostId: string) => void
   resetTranscript: (hostId: string) => void
 }
 
@@ -66,7 +68,7 @@ function hostBuffers(hostId: string): HostBuffers {
 }
 
 function emptyHostChat(): HostChat {
-  return { status: null, entries: [], streaming: false, queue: { steering: [], followUp: [] }, contextUsage: null }
+  return { status: null, entries: [], streaming: false, queue: { steering: [], followUp: [] }, contextUsage: null, toolsHidden: false }
 }
 
 function resetBuffers(hostId: string): void {
@@ -298,6 +300,12 @@ export const useChatStore = create<ChatState>((set) => ({
         )
       }
       return { hosts: { ...state.hosts, [hostId]: next } }
+    }),
+  toggleToolsHidden: (hostId) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, toolsHidden: !host.toolsHidden } } }
     }),
   resetTranscript: (hostId) => {
     resetBuffers(hostId)

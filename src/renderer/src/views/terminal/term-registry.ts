@@ -7,6 +7,20 @@ import { WebglAddon } from '@xterm/addon-webgl'
 
 const PENDING_LIMIT = 512 * 1024
 
+const TERM_THEMES = {
+  dark: { background: '#14161a', foreground: '#d7dce2' },
+  light: { background: '#f5f6f8', foreground: '#1f2328' }
+} as const
+
+export type TermTheme = keyof typeof TERM_THEMES
+
+let currentTheme: TermTheme = 'dark'
+
+export function applyTermTheme(theme: TermTheme): void {
+  currentTheme = theme
+  for (const { term } of entries.values()) term.options.theme = TERM_THEMES[theme]
+}
+
 interface Entry {
   term: Terminal
   fit: FitAddon
@@ -30,7 +44,7 @@ export function ensureEntry(id: string): Entry {
     scrollback: 5000,
     fontFamily: 'Consolas, "Cascadia Mono", monospace',
     fontSize: 13,
-    theme: { background: '#14161a', foreground: '#d7dce2' }
+    theme: TERM_THEMES[currentTheme]
   })
   const fit = new FitAddon()
   term.loadAddon(fit)

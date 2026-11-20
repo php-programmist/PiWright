@@ -5,6 +5,9 @@ import type { PiModelInfo } from './protocol-types'
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
 export type BackendMode = 'native' | 'wsl'
 
+/** Тема оформления приложения. */
+export type Theme = 'dark' | 'light'
+
 export interface ProjectEntry {
   kind: BackendMode
   /** native — каталог Windows; wsl — UNC `\\wsl.localhost\<distro>\…` или путь внутри WSL. */
@@ -23,6 +26,10 @@ export interface Settings {
   updateUrl: string
   /** Где сидят выбор модели/thinking и Stop: в шапке чата или над полем ввода. */
   selectorPlacement: 'top' | 'bottom'
+  /** Тема оформления: тёмная (по умолчанию) или светлая. */
+  theme: Theme
+  /** Размер шрифта ленты чата, px. */
+  chatFontSize: number
   /** Состояние правых панелей — переживает перезапуск. */
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
   projects: ProjectEntry[]

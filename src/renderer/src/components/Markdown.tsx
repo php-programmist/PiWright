@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
 import { shikiLanguage } from '../lib/tool-blocks'
+import { useSessionsStore } from '../stores/sessions'
 
 interface CodeElementProps {
   className?: string
@@ -19,18 +20,19 @@ function extractCode(children: unknown): { code: string; language: string | null
 }
 
 function CodeBlock({ code, language }: { code: string; language: string | null }): React.JSX.Element {
+  const theme = useSessionsStore((s) => s.settings?.theme ?? 'dark')
   const [html, setHtml] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    highlightCode(code, shikiLanguage(language))
+    highlightCode(code, shikiLanguage(language), theme)
       .then((result) => {
         if (!cancelled) setHtml(result)
       })
     return () => {
       cancelled = true
     }
-  }, [code, language])
+  }, [code, language, theme])
 
   if (html !== null) {
     return <div className="code-block" dangerouslySetInnerHTML={{ __html: html }} />
