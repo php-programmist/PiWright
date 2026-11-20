@@ -51,16 +51,16 @@ function ModelForm({ model, onChange }: { model: ModelEdit; onChange: (next: Mod
     <div className="model-form">
       <div className="form-grid">
         <label>
-          {t('context window')}
+          {t('Context window')}
           <input value={model.contextWindow} placeholder="131072" onChange={(e) => onChange({ ...model, contextWindow: e.target.value })} />
         </label>
         <label>
-          {t('max output tokens')}
+          {t('Max output tokens')}
           <input value={model.maxTokens} placeholder="16384" onChange={(e) => onChange({ ...model, maxTokens: e.target.value })} />
         </label>
       </div>
       <div className="form-row">
-        <span>{t('input:')}</span>
+        <span>{t('Input:')}</span>
         {INPUT_KINDS.map((kind) => (
           <label key={kind} className="settings-check inline">
             <input type="checkbox" checked={model.input.includes(kind)} onChange={() => toggleInput(kind)} />
@@ -73,12 +73,12 @@ function ModelForm({ model, onChange }: { model: ModelEdit; onChange: (next: Mod
         </label>
       </div>
       <div className="form-row">
-        <span>{t('thinking levels:')}</span>
-        {model.thinkingLevelMap.length === 0 && <span className="panel-hint">{t('none')}</span>}
+        <span>{t('Thinking levels:')}</span>
+        {model.thinkingLevelMap.length === 0 && <span className="panel-hint">{t('None')}</span>}
       </div>
       {model.thinkingLevelMap.map((entry, index) => (
         <div key={index} className="level-row">
-          <input list="model-levels" value={entry.level} placeholder={t('level')} onChange={(e) => setLevel(index, { level: e.target.value })} />
+          <input list="model-levels" value={entry.level} placeholder={t('Level')} onChange={(e) => setLevel(index, { level: e.target.value })} />
           <input value={entry.value} placeholder={t('API value (empty = null)')} onChange={(e) => setLevel(index, { value: e.target.value })} />
           <button
             className="icon remove"
@@ -93,7 +93,7 @@ function ModelForm({ model, onChange }: { model: ModelEdit; onChange: (next: Mod
         {t('+ Add level')}
       </button>
       <label>
-        {t('extra parameters (JSON)')}
+        {t('Extra parameters (JSON)')}
         <textarea
           className="extra-json"
           rows={3}
@@ -127,11 +127,11 @@ function ModelRow({
   return (
     <div className="model-row">
       <div className="model-row-head">
-        <input className="model-id" value={model.id} placeholder={t('model id')} onChange={(e) => onChange({ ...model, id: e.target.value })} />
+        <input className="model-id" value={model.id} placeholder={t('Model id')} onChange={(e) => onChange({ ...model, id: e.target.value })} />
         <input
           className="model-name"
           value={model.name}
-          placeholder={t('display name')}
+          placeholder={t('Display name')}
           onChange={(e) => onChange({ ...model, name: e.target.value })}
         />
         <button className="icon" title={open ? t('Collapse') : t('Expand')} onClick={() => setOpen(!open)}>
@@ -157,15 +157,15 @@ function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, onCopy
   return (
     <div className="provider-form">
       <label>
-        {t('name')}
+        {t('Name')}
         <input value={draft.name} disabled={!isNew} onChange={(e) => onChange({ ...draft, name: e.target.value })} />
       </label>
       <label>
         {t('API key')}
-        <input value={draft.apiKey} placeholder={t('key or $ENV_VAR')} onChange={(e) => onChange({ ...draft, apiKey: e.target.value })} />
+        <input value={draft.apiKey} placeholder={t('Key or $ENV_VAR')} onChange={(e) => onChange({ ...draft, apiKey: e.target.value })} />
       </label>
       <label>
-        {t('base URL')}
+        {t('Base URL')}
         <input value={draft.baseUrl} placeholder="https://…/v1" onChange={(e) => onChange({ ...draft, baseUrl: e.target.value })} />
       </label>
       <label>
@@ -178,7 +178,7 @@ function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, onCopy
         </datalist>
       </label>
       <div className="form-row">
-        <span>{t('models')}</span>
+        <span>{t('Models')}</span>
       </div>
       {draft.models.map((model, index) => (
         <ModelRow
@@ -231,16 +231,16 @@ function CopyPanel(props: CopyPanelProps): React.JSX.Element {
       </div>
       <label className="settings-check">
         <input type="checkbox" checked={props.isNew} onChange={(e) => props.onNew(e.target.checked)} />
-        {t('create new provider')}
+        {t('Create new provider')}
       </label>
       {props.isNew ? (
         <>
           <label>
-            {t('provider name')}
+            {t('Provider name')}
             <input value={props.newName} onChange={(e) => props.onNewName(e.target.value)} />
           </label>
           <label>
-            {t('base URL')}
+            {t('Base URL')}
             <input value={props.newBaseUrl} placeholder="https://…/v1" onChange={(e) => props.onNewBaseUrl(e.target.value)} />
           </label>
           <label>
@@ -250,9 +250,9 @@ function CopyPanel(props: CopyPanelProps): React.JSX.Element {
         </>
       ) : (
         <label>
-          {t('target provider')}
+          {t('Target provider')}
           <select value={props.targetName} onChange={(e) => props.onTargetName(e.target.value)}>
-            <option value="">{t('— pick provider —')}</option>
+            <option value="">{t('— Pick provider —')}</option>
             {props.target.providers.map((p) => (
               <option key={p.name} value={p.name}>
                 {p.name}

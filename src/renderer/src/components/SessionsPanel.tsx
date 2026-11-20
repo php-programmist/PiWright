@@ -69,7 +69,7 @@ function HistoryItem({
   }
   return (
     <div className="history-item" title={summary.title} onClick={() => void openSession()}>
-      {children.length > 0 && (
+      {children.length > 0 ? (
         <button
           className="icon sub-toggle"
           title={t('Subagent sessions')}
@@ -80,6 +80,8 @@ function HistoryItem({
         >
           {subOpen ? '▾' : '▸'}
         </button>
+      ) : (
+        <span className="sub-toggle" />
       )}
       <span className="history-title">{summary.title}</span>
       <span className="history-date">
@@ -398,7 +400,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                   onClick={() => useSessionsStore.getState().setActive(s.hostId)}
                 >
                   <SessionDot hostId={s.hostId} dot={s.dot} />
-                  {sub.length > 0 && (
+                  {sub.length > 0 ? (
                     <button
                       className="icon sub-toggle"
                       title={t('Subagent sessions')}
@@ -409,6 +411,8 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                     >
                       {subOpen[s.sessionFile!] ? '▾' : '▸'}
                     </button>
+                  ) : (
+                    <span className="sub-toggle" />
                   )}
                   {renaming ? (
                     <input

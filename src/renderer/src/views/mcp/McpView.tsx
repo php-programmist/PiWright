@@ -119,7 +119,7 @@ interface ProbeState {
   serverError: string | null
 }
 
-export function McpView(): React.JSX.Element {
+export function McpView({ onClose }: { onClose: () => void }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.project ?? null)
   const t = useT()
@@ -252,6 +252,11 @@ export function McpView(): React.JSX.Element {
   if (project === null || activeHostId === null) {
     return (
       <main className="center-view">
+        <header className="center-head">
+          <h2>{t('MCP servers')}</h2>
+          <span className="spacer" />
+          <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
+        </header>
         <div className="panel-hint">{t('Pick a session — MCP servers are per-project.')}</div>
       </main>
     )
@@ -269,6 +274,7 @@ export function McpView(): React.JSX.Element {
           {t('Import JSON')}
         </button>
         <button onClick={() => setEditing(emptyDraft())}>{t('+ Add server')}</button>
+        <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
       </header>
       <div className="center-tabs">
         <button className={scope === 'user' ? 'current' : ''} onClick={() => setScope('user')}>

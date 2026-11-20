@@ -5,7 +5,7 @@ import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
 import type { SkillEntry } from '../../../../shared/ipc-contracts'
 
-export function SkillsView(): React.JSX.Element {
+export function SkillsView({ onClose }: { onClose: () => void }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.project ?? null)
   const t = useT()
@@ -48,6 +48,11 @@ export function SkillsView(): React.JSX.Element {
   if (project === null || activeHostId === null) {
     return (
       <main className="center-view">
+        <header className="center-head">
+          <h2>{t('Skills')}</h2>
+          <span className="spacer" />
+          <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
+        </header>
         <div className="panel-hint">{t('Pick a session — skills are per-project.')}</div>
       </main>
     )
@@ -64,6 +69,7 @@ export function SkillsView(): React.JSX.Element {
         <button className="ghost" onClick={() => void window.piwright.skillsReveal(project, 'project')}>
           {t('Open project folder')}
         </button>
+        <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
       </header>
       <div className="panel-hint">
         {t(
