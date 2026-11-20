@@ -13,13 +13,13 @@ interface FilesData {
   activePath: string | null
   contents: Record<string, string>
   error: string | null
-  /** Перенос длинных строк в редакторе файлов. */
-  wordWrap: boolean
 }
 
 interface FilesState extends FilesData {
   open: boolean
   width: number
+  /** Перенос длинных строк в редакторе файлов — переживает смену проекта. */
+  wordWrap: boolean
   setProject: (project: ProjectEntry | null) => void
   toggleOpen: () => void
   setWidth: (width: number) => void
@@ -46,8 +46,7 @@ function resetState(): FilesData {
     tabs: [],
     activePath: null,
     contents: {},
-    error: null,
-    wordWrap: false
+    error: null
   }
 }
 
@@ -59,6 +58,7 @@ function projectFromKey(key: string): ProjectEntry {
 export const useFilesStore = create<FilesState>((set, get) => ({
   open: false,
   width: 280,
+  wordWrap: false,
   ...resetState(),
 
   setProject: (project) => {

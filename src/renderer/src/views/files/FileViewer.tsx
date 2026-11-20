@@ -63,9 +63,9 @@ export function FileViewer(): React.JSX.Element | null {
       )}
       <div className="file-body">
         {/\.(md|markdown)$/i.test(activePath) ? (
-          <MarkdownLive key={activePath} project={project} path={activePath} content={contents[activePath] ?? ''} />
+          <MarkdownLive key={activePath} project={project} path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
         ) : (
-          <FileEditor path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
+          <FileEditor project={project} path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
         )}
       </div>
     </div>

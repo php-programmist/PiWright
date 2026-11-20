@@ -166,9 +166,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 
   refreshHistory: async (project) => {
     const key = projectKey(project)
-    set((state) => ({
-      projects: state.projects.map((p) => (projectKey(p.project) === key ? { ...p, historyLoading: true } : p))
-    }))
+    const existing = get().projects.find((p) => projectKey(p.project) === key)
+    // история уже показана — обновляем молча, чтобы список не дёргался на лоадере
+    const silent = existing !== undefined && existing.history.length > 0
+    if (!silent) {
+      set((state) => ({
+        projects: state.projects.map((p) => (projectKey(p.project) === key ? { ...p, historyLoading: true } : p))
+      }))
+    }
     const history = await window.piwright.sessionHistory(project)
     set((state) => ({
       projects: state.projects.map((p) => (projectKey(p.project) === key ? { ...p, history, historyLoading: false } : p))

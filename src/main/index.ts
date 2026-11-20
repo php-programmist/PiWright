@@ -23,12 +23,14 @@ let bridge: RemoteBridge | null = null
 let hub: NotificationHub | null = null
 let windowStatePath = ''
 
-function createWindow(): void {
+function createWindow(bg: string): void {
   const state = loadWindowState(windowStatePath, screen.getPrimaryDisplay().workArea)
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
     title: 'Piwright',
+    backgroundColor: bg,
+    show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -36,6 +38,7 @@ function createWindow(): void {
       sandbox: true
     }
   })
+  mainWindow.once('ready-to-show', () => mainWindow?.show())
   if (state.maximized) mainWindow.maximize()
   mainWindow.on('close', () => {
     saveWindowState(windowStatePath, mainWindow as BrowserWindow)
@@ -86,9 +89,10 @@ app.whenReady().then(() => {
     onSettingsChanged: (next) => bridge?.applySettings(next)
   })
   startAutoUpdater(() => settings.get().updateUrl)
-  createWindow()
+  const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
+  createWindow(bg)
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(bg)
   })
 })
 

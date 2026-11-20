@@ -2443,6 +2443,16 @@ body {
   max-width: none;
 }
 
+.md-live.wrap pre,
+.md-live.wrap code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-live.wrap .markdown {
+  overflow-wrap: anywhere;
+}
+
 .md-block {
   border-radius: 6px;
   cursor: text;

@@ -10,9 +10,10 @@ interface MarkdownLiveProps {
   project: ProjectEntry
   path: string
   content: string
+  wordWrap: boolean
 }
 
-export function MarkdownLive({ project, path, content }: MarkdownLiveProps): React.JSX.Element {
+export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveProps): React.JSX.Element {
   const doc = useMemo(() => splitMarkdownDoc(content), [content])
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
@@ -47,7 +48,7 @@ export function MarkdownLive({ project, path, content }: MarkdownLiveProps): Rea
 
   return (
     <div
-      className="md-live"
+      className={`md-live${wordWrap ? ' wrap' : ''}`}
       onMouseDown={() => {
         if (activeRef.current !== null) commit()
       }}
@@ -60,6 +61,7 @@ export function MarkdownLive({ project, path, content }: MarkdownLiveProps): Rea
             className="md-edit"
             value={draft}
             autoFocus
+            onMouseDown={(e) => e.stopPropagation()}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {

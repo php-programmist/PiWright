@@ -14,13 +14,16 @@ async function play(path: string): Promise<void> {
     let url = cache.get(path)
     if (url === undefined) {
       const res = await window.piwright.soundsRead(path)
-      if (!res.ok) return
+      if (!res.ok) {
+        console.warn(`[sounds] не удалось прочитать ${path}: ${res.error}`)
+        return
+      }
       url = `data:${res.mime};base64,${res.base64}`
       cache.set(path, url)
     }
-    await new Audio(url).play().catch(() => {})
-  } catch {
-    // нет файла/нет аудио — молча
+    await new Audio(url).play().catch((err) => console.warn('[sounds] play failed:', err))
+  } catch (err) {
+    console.warn('[sounds] не удалось проиграть', path, err)
   }
 }
 

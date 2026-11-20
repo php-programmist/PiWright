@@ -4,7 +4,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "strict": true,
     "noUnusedLocals": true,
@@ -20,6 +20,8 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "src/renderer/src/stores/chat.ts",
+    "src/renderer/src/stores/sessions.ts",
+    "src/renderer/src/global.d.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts",
     "vitest.config.ts"
