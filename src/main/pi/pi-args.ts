@@ -1,10 +1,34 @@
 /** Аргументы запуска: RPC-режим и, при восстановлении, файл сессии. Путь (а не id) — иначе для
- *  сессии из другого каталога pi спросит подтверждение в stdin и сломает протокол. */
-export function piArgs(sessionPath?: string | null, extensionPath?: string | null): string[] {
+ *  сессии из другого каталога pi спросит подтверждение в stdin и сломает протокол.
+ *  Доп. аргументы из настроек — в конец (сплит по пробелам, двойные кавычки для путей с пробелами). */
+export function splitArgs(extra: string): string[] {
+  const args: string[] = []
+  let current = ''
+  let quoted = false
+  for (const ch of extra) {
+    if (ch === '"') {
+      quoted = !quoted
+    } else if (ch === ' ' && !quoted) {
+      if (current.length > 0) args.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  if (current.length > 0) args.push(current)
+  return args
+}
+
+export function piArgs(
+  sessionPath?: string | null,
+  extensionPath?: string | null,
+  extraArgs: string[] = []
+): string[] {
   return [
     '--mode',
     'rpc',
     ...(extensionPath ? ['-e', extensionPath] : []),
-    ...(sessionPath ? ['--session', sessionPath] : [])
+    ...(sessionPath ? ['--session', sessionPath] : []),
+    ...extraArgs
   ]
 }

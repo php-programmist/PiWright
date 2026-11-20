@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import type { ChildProcess } from 'node:child_process'
 import { PiHost } from '../src/main/pi/pi-host'
 import type { PiBackend } from '../src/main/pi/backends/types'
@@ -6,7 +6,7 @@ import type { CreateBackendResult } from '../src/main/pi/backends/factory'
 import type { PiEventMessage, PiStatus, Settings } from '../src/shared/ipc-contracts'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 let currentChild: ScriptedChild | null = null

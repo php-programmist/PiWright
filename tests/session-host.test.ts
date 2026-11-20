@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import type { ChildProcess } from 'node:child_process'
 import { SessionHost } from '../src/main/pi/session-host'
 import type { SessionHostListener } from '../src/main/pi/session-host'
@@ -8,7 +8,7 @@ import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
 
-const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
 
 function handshakeData(sessionFile: string): Record<string, unknown> {

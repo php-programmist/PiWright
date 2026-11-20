@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+﻿import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,13 +7,13 @@ import type { SessionHostListener } from '../src/main/pi/session-host'
 import type { PiStatus, ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 import type { UiEvent } from '../src/shared/agent-events'
 
-/** Живой smoke против настоящего pi: PIWRIGHT_LIVE_SMOKE=1 npx vitest run tests/live-smoke.test.ts.
- *  Полный круг «prompt → стрим → agent_settled» на обоих бэкендах (критерий фазы 1). */
+/** Р–РёРІРѕР№ smoke РїСЂРѕС‚РёРІ РЅР°СЃС‚РѕСЏС‰РµРіРѕ pi: PIWRIGHT_LIVE_SMOKE=1 npx vitest run tests/live-smoke.test.ts.
+ *  РџРѕР»РЅС‹Р№ РєСЂСѓРі В«prompt в†’ СЃС‚СЂРёРј в†’ agent_settledВ» РЅР° РѕР±РѕРёС… Р±СЌРєРµРЅРґР°С… (РєСЂРёС‚РµСЂРёР№ С„Р°Р·С‹ 1). */
 const enabled = process.env['PIWRIGHT_LIVE_SMOKE'] === '1'
 
 async function runSmoke(kind: 'native' | 'wsl'): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'piwright-smoke-'))
-  const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', projects: [] }
+  const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
   const project: ProjectEntry = { kind, dir }
   const events: UiEvent[] = []
   const statuses: PiStatus[] = []

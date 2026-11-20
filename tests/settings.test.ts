@@ -14,7 +14,7 @@ async function tempSettings(initial: unknown): Promise<SettingsService> {
 describe('SettingsService (projects + миграция)', () => {
   it('fresh file yields defaults with no projects', async () => {
     const service = await tempSettings(null)
-    expect(service.get()).toEqual({ wslDistro: '', piPathNative: '', piPathWsl: '', projects: [] })
+    expect(service.get()).toEqual({ wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] })
   })
 
   it('legacy backend/projectDir migrate into one project', async () => {

@@ -14,7 +14,7 @@ import { PiEventTranslator } from './event-translator'
 import { decodeExtensionDialog, encodeDialogAnswer } from './extension-ui'
 import { runHandshake } from './handshake'
 import { sessionStatus } from './session-status'
-import { piArgs } from './pi-args'
+import { piArgs, splitArgs } from './pi-args'
 
 export interface SessionHostListener {
   onStatus(status: PiStatus): void
@@ -172,7 +172,7 @@ export class SessionHost {
       }
     })
     try {
-      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile) })
+      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, null, splitArgs(settings.piExtraArgs)) })
       const handshake = await runHandshake(conn, {
         desiredThinkingLevel: this.desiredThinkingLevel,
         sessionName: this.desiredSessionName

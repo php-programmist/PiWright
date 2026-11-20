@@ -84,7 +84,7 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     const safe: Partial<Settings> = {}
     if (patch !== null && typeof patch === 'object' && !Array.isArray(patch)) {
       const raw = patch as Record<string, unknown>
-      for (const key of ['wslDistro', 'piPathNative', 'piPathWsl'] as const) {
+      for (const key of ['wslDistro', 'piPathNative', 'piPathWsl', 'piExtraArgs', 'updateUrl'] as const) {
         if (typeof raw[key] === 'string') safe[key] = raw[key]
       }
       if (Array.isArray(raw['projects'])) {

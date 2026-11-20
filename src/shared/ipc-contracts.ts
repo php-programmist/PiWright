@@ -17,6 +17,10 @@ export interface Settings {
   piPathNative: string
   /** Путь к pi для WSL-проектов (POSIX внутри дистрибутива). */
   piPathWsl: string
+  /** Доп. аргументы pi (оба бэкенда), сплит по пробелам, кавычки для путей с пробелами. */
+  piExtraArgs: string
+  /** URL фида обновлений (generic-провайдер electron-updater); пусто — проверка выключена. */
+  updateUrl: string
   projects: ProjectEntry[]
 }
 

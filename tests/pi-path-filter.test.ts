@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +6,7 @@ import { filterSettingsPiPath } from '../src/main/pi/backends/factory'
 import { deleteSessionFile, toBackendPath } from '../src/main/sessions/session-catalog'
 import type { Settings } from '../src/shared/ipc-contracts'
 
-const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPathNative: '', piPathWsl: '', projects: [] }
+const SETTINGS: Settings = { wslDistro: 'Ubuntu', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
 
 describe('filterSettingsPiPath', () => {
   it('empty setting yields null (auto-resolve)', () => {

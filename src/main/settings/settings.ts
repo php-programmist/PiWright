@@ -9,6 +9,8 @@ export const DEFAULT_SETTINGS: Settings = {
   wslDistro: '',
   piPathNative: '',
   piPathWsl: '',
+  piExtraArgs: '',
+  updateUrl: '',
   projects: []
 }
 

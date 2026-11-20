@@ -5,6 +5,7 @@ import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { FileService } from './files/file-service'
 import { TerminalService } from './terminal/terminal-service'
+import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { SettingsService } from './settings/settings'
 
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
   registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService)
+  startAutoUpdater(() => settings.get().updateUrl)
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

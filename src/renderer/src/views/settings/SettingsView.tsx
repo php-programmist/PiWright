@@ -86,6 +86,25 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 </label>
               </section>
               <section className="settings-section">
+                <h3>Launch</h3>
+                <label>
+                  extra pi args
+                  <input
+                    value={draft.piExtraArgs}
+                    placeholder="--no-extensions -e C:\path\to\ext"
+                    onChange={(e) => update({ piExtraArgs: e.target.value })}
+                  />
+                </label>
+                <label>
+                  update feed URL
+                  <input
+                    value={draft.updateUrl}
+                    placeholder="https://server/updates/ (empty = off)"
+                    onChange={(e) => update({ updateUrl: e.target.value })}
+                  />
+                </label>
+              </section>
+              <section className="settings-section">
                 <h3>WSL</h3>
                 <label>
                   distro

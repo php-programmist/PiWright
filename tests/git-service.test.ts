@@ -1,4 +1,4 @@
-/** GitService против реального временного репозитория (native-бэкенд, настоящий git CLI). */
+﻿/** GitService РїСЂРѕС‚РёРІ СЂРµР°Р»СЊРЅРѕРіРѕ РІСЂРµРјРµРЅРЅРѕРіРѕ СЂРµРїРѕР·РёС‚РѕСЂРёСЏ (native-Р±СЌРєРµРЅРґ, РЅР°СЃС‚РѕСЏС‰РёР№ git CLI). */
 import { execSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GitService } from '../src/main/git/git-service'
 import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 
-const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', projects: [] }
+const settings: Settings = { wslDistro: '', piPathNative: '', piPathWsl: '', piExtraArgs: '', updateUrl: '', projects: [] }
 let dir: string
 let remote: string
 let project: ProjectEntry
