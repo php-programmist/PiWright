@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { Markdown } from '../../components/Markdown'
+import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
 import { useChatStore, atBottomMap } from '../../stores/chat'
@@ -12,6 +13,7 @@ import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../sh
 import { useT } from '../../lib/i18n'
 import { splitWorktreeHostDir } from '../../../../shared/worktree'
 import type { DialogAnswer } from '../../../../shared/agent-events'
+import type { PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
@@ -129,17 +131,43 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     )
   }
 
-  const send = async (): Promise<void> => {
+  const send = async (behavior?: PromptBehavior): Promise<void> => {
     const text = input.trim()
     if (text.length === 0) return
     setInput('')
     addUserMessage(activeHostId, text)
     const images = pendingImagesRef.current
     pendingImagesRef.current = []
-    const result = await window.piwright.prompt(activeHostId, text, images)
+    const effective = streaming ? (behavior ?? 'followUp') : undefined
+    const result = await window.piwright.prompt(activeHostId, text, images, effective)
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
+  }
+
+  const restoreCleared = (cleared?: QueueTexts): void => {
+    if (cleared === undefined) return
+    const texts = [...cleared.steering, ...cleared.followUp]
+    if (texts.length === 0) return
+    setInput((v) => (v.length > 0 ? `${texts.join('\n\n')}\n\n${v}` : texts.join('\n\n')))
+  }
+
+  const clearQueue = async (): Promise<void> => {
+    const result = await window.piwright.queueClear(activeHostId)
+    if (!result.ok && result.error !== null) {
+      applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      return
+    }
+    restoreCleared(result.cleared)
+  }
+
+  const removeQueued = async (kind: keyof QueueTexts, index: number): Promise<void> => {
+    const result = await window.piwright.queueRemove(activeHostId, kind, index)
+    if (!result.ok && result.error !== null) {
+      applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      return
+    }
+    restoreCleared(result.cleared)
   }
 
   const insertAttachmentRef = (ref: string): void => {
@@ -167,7 +195,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     const result = await window.piwright.abort(activeHostId)
     if (!result.ok && result.error !== null && result.error !== 'pi connection is not running') {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      return
     }
+    restoreCleared(result.cleared)
   }
 
   const removeWorktree = async (): Promise<void> => {
@@ -264,7 +294,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {ctxPercent}%
           </span>
         )}
-        {queuedCount > 0 && <span className="queue-label">{t('Queued: {count}', { count: queuedCount })}</span>}
         {Object.entries(extensionStatuses).map(([key, text]) => (
           <span key={key} className="ext-status" title={key}>
             {text}
@@ -349,6 +378,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <span className="spacer" />
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
+      {queuedCount > 0 && <QueuePanel queue={queue} onRemove={(kind, index) => void removeQueued(kind, index)} onClearAll={() => void clearQueue()} />}
       {todoItems.length > 0 && <TodoPanel items={todoItems} />}
       <main className="transcript" ref={transcriptRef} onScroll={handleScroll}>
         {visibleEntries.map((entry) => (
@@ -401,6 +431,16 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             />
           </svg>
         </button>
+        {streaming && (
+          <button
+            className="steer"
+            title={t("Deliver before the agent's next step instead of after the turn")}
+            onClick={() => void send('steer')}
+            disabled={input.trim().length === 0}
+          >
+            {t('Steer')}
+          </button>
+        )}
         <button onClick={() => void send()} disabled={input.trim().length === 0}>
           {t('Send')}
         </button>

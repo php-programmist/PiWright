@@ -41,6 +41,8 @@ import {
   PI_EVENT_CHANNEL,
   PI_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
+  SESSION_QUEUE_CLEAR_CHANNEL,
+  SESSION_QUEUE_REMOVE_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
@@ -74,6 +76,8 @@ import type {
   McpServerEntry,
   PiwrightApi,
   ProjectEntry,
+  PromptBehavior,
+  QueueTexts,
   Settings,
   TerminalProfileId
 } from '../shared/ipc-contracts'
@@ -100,8 +104,12 @@ const api: PiwrightApi = {
   deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
     ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),
   chooseProjectDir: (kind: BackendMode) => ipcRenderer.invoke(SESSIONS_CHOOSE_DIR_CHANNEL, kind),
-  prompt: (hostId: string, text: string, images?: string[]) => ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? []),
+  prompt: (hostId: string, text: string, images?: string[], behavior?: PromptBehavior) =>
+    ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),
+  queueClear: (hostId: string) => ipcRenderer.invoke(SESSION_QUEUE_CLEAR_CHANNEL, hostId),
+  queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>
+    ipcRenderer.invoke(SESSION_QUEUE_REMOVE_CHANNEL, hostId, kind, index),
   setModel: (hostId: string, key: string) => ipcRenderer.invoke(SESSION_SET_MODEL_CHANNEL, hostId, key),
   setThinkingLevel: (hostId: string, level: string) => ipcRenderer.invoke(SESSION_SET_THINKING_CHANNEL, hostId, level),
   respondDialog: (hostId: string, id: string, answer: DialogAnswer) =>

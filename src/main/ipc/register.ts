@@ -33,6 +33,8 @@ import {
   REMOTE_CHECK_PORT_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
+  SESSION_QUEUE_CLEAR_CHANNEL,
+  SESSION_QUEUE_REMOVE_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
@@ -298,19 +300,36 @@ export function registerIpc(
     return { ok: true, dir: result.filePaths[0] }
   })
 
-  ipcMain.handle(SESSION_PROMPT_CHANNEL, async (_event, hostId: unknown, text: unknown, images: unknown) => {
+  ipcMain.handle(SESSION_PROMPT_CHANNEL, async (_event, hostId: unknown, text: unknown, images: unknown, behavior: unknown) => {
     const h = host(piHost, hostId)
     if (h === null) return { ok: false, error: 'Session not found' }
     if (typeof text !== 'string' || text.trim().length === 0) {
       return { ok: false, error: 'Message is empty' }
     }
-    return h.prompt(text, isPathList(images) ? images : [])
+    const promptBehavior = behavior === 'steer' || behavior === 'followUp' ? behavior : undefined
+    return h.prompt(text, isPathList(images) ? images : [], promptBehavior)
   })
 
   ipcMain.handle(SESSION_ABORT_CHANNEL, (_event, hostId: unknown) => {
     const h = host(piHost, hostId)
     if (h === null) return { ok: false, error: 'Session not found' }
     return h.abort()
+  })
+
+  ipcMain.handle(SESSION_QUEUE_CLEAR_CHANNEL, (_event, hostId: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found' }
+    return h.queueClear()
+  })
+
+  ipcMain.handle(SESSION_QUEUE_REMOVE_CHANNEL, (_event, hostId: unknown, kind: unknown, index: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found' }
+    if (kind !== 'steering' && kind !== 'followUp') return { ok: false, error: 'Unknown queue kind' }
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return { ok: false, error: 'Invalid queue index' }
+    }
+    return h.queueRemove(kind, index)
   })
 
   ipcMain.handle(SESSION_SET_MODEL_CHANNEL, (_event, hostId: unknown, key: unknown) => {

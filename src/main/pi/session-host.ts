@@ -3,7 +3,7 @@
  *  Порт жизненного цикла `PiSession`. Реестр хостов — `PiHost`. */
 import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
-import type { DialogResult, PiStatus, PromptResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
 import type { PiBackend } from './backends/types'
@@ -361,13 +361,70 @@ export class SessionHost {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
     try {
-      await conn.request('clear_queue')
-      this.emit({ type: 'queue_update', steering: [], followUp: [] })
+      const cleared = await this.clearQueue(conn)
       await conn.request('abort')
-      return { ok: true, error: null }
+      return { ok: true, error: null, cleared }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  }
+
+  /** clear_queue: тексты очереди наружу, renderer гасит очередь событием queue_update. */
+  async queueClear(): Promise<PromptResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    try {
+      const cleared = await this.clearQueue(conn)
+      return { ok: true, error: null, cleared }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /** Удаление одного элемента: clear_queue → убрать → остальные обратно (steer/follow_up при ходе,
+   *  иначе — тексты в cleared, renderer вернёт их в поле ввода). */
+  async queueRemove(kind: keyof QueueTexts, index: number): Promise<PromptResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    try {
+      const texts = await this.clearQueue(conn)
+      const list = [...texts[kind]]
+      if (index >= 0 && index < list.length) list.splice(index, 1)
+      const remaining: QueueTexts = {
+        steering: kind === 'steering' ? list : texts.steering,
+        followUp: kind === 'followUp' ? list : texts.followUp
+      }
+      if (!this.streaming) return { ok: true, error: null, cleared: remaining }
+      const failed: string[] = []
+      for (const text of remaining.steering) {
+        if (!(await this.requeue(conn, 'steer', text))) failed.push(text)
+      }
+      for (const text of remaining.followUp) {
+        if (!(await this.requeue(conn, 'follow_up', text))) failed.push(text)
+      }
+      return {
+        ok: true,
+        error: null,
+        cleared: { steering: failed, followUp: [] }
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  private async clearQueue(conn: PiConnection): Promise<QueueTexts> {
+    const response = await conn.request('clear_queue')
+    if (!response.success) throw new Error(`clear_queue failed: ${response.error ?? 'no details'}`)
+    const data = (typeof response.data === 'object' && response.data !== null ? response.data : {}) as Record<string, unknown>
+    const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [])
+    const cleared = { steering: strings(data['steering']), followUp: strings(data['followUp']) }
+    this.emit({ type: 'queue_update', steering: [], followUp: [] })
+    return cleared
+  }
+
+  private async requeue(conn: PiConnection, command: 'steer' | 'follow_up', text: string): Promise<boolean> {
+    const response = await conn.request(command, { message: text })
+    return response.success
   }
 
   /** Сменить модель на живой сессии; после успеха — перечитать уровни thinking. */
@@ -434,7 +491,7 @@ export class SessionHost {
     this.status(this.lastState)
   }
 
-  private async sendPrompt(text: string, images: string[]): Promise<PromptResult> {
+  private async sendPrompt(text: string, images: string[], behavior?: PromptBehavior): Promise<PromptResult> {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
     const fields: PiJsonObject = { message: text }
@@ -443,7 +500,9 @@ export class SessionHost {
       const blocks = await readAttachmentImages(this.project, images)
       if (blocks.length > 0) fields['images'] = blocks
     }
-    const response = await conn.request('prompt', fields)
+    // steer/follow_up только во время хода; ход кончился — обычный prompt (начнёт новый ход).
+    const command = behavior === 'steer' && this.streaming ? 'steer' : behavior === 'followUp' && this.streaming ? 'follow_up' : 'prompt'
+    const response = await conn.request(command, fields)
     if (!response.success) {
       const error = `${response.command} failed: ${response.error ?? 'no details'}`
       this.status('error', error)
@@ -452,10 +511,10 @@ export class SessionHost {
     return { ok: true, error: null }
   }
 
-  async prompt(text: string, images: string[] = []): Promise<PromptResult> {
+  async prompt(text: string, images: string[] = [], behavior?: PromptBehavior): Promise<PromptResult> {
     try {
       await this.ensureStarted()
-      return await this.sendPrompt(text, images)
+      return await this.sendPrompt(text, images, behavior)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }

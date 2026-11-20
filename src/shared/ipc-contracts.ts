@@ -104,9 +104,20 @@ export interface PiEventMessage {
   event: UiEvent
 }
 
+/** Как доставить сообщение во время хода: steer — до следующего шага агента, followUp — после хода. */
+export type PromptBehavior = 'steer' | 'followUp'
+
+/** Тексты очереди (steering + followUp) — ответ clear_queue и восстановление в поле ввода. */
+export interface QueueTexts {
+  steering: string[]
+  followUp: string[]
+}
+
 export interface PromptResult {
   ok: boolean
   error: string | null
+  /** Тексты, не попавшие обратно в очередь (abort/clear/remove) — renderer возвращает их в поле ввода. */
+  cleared?: QueueTexts
 }
 
 export interface DialogResult {
@@ -392,8 +403,12 @@ export interface PiwrightApi {
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>
-  prompt(hostId: string, text: string, images?: string[]): Promise<PromptResult>
+  prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
   abort(hostId: string): Promise<PromptResult>
+  /** Очистить очередь целиком, тексты вернутся в cleared. */
+  queueClear(hostId: string): Promise<PromptResult>
+  /** Убрать один элемент очереди: clear_queue + повторная постановка остальных (при ходе). */
+  queueRemove(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
   setModel(hostId: string, key: string): Promise<PromptResult>
   setThinkingLevel(hostId: string, level: string): Promise<PromptResult>
   respondDialog(hostId: string, id: string, answer: DialogAnswer): Promise<DialogResult>
@@ -468,6 +483,8 @@ export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
+export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
+export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
 export const SESSION_SET_MODEL_CHANNEL = 'session:set-model'
 export const SESSION_SET_THINKING_CHANNEL = 'session:set-thinking'
 export const SESSION_RESPOND_DIALOG_CHANNEL = 'session:respond-dialog'
