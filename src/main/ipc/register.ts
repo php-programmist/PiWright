@@ -31,12 +31,19 @@ import {
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   SETTINGS_GET_CHANNEL,
-  SETTINGS_SET_CHANNEL
+  SETTINGS_SET_CHANNEL,
+  TERM_CLOSE_CHANNEL,
+  TERM_CREATE_CHANNEL,
+  TERM_INPUT_CHANNEL,
+  TERM_PROFILES_CHANNEL,
+  TERM_RESIZE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { BackendMode, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
+import type { TerminalService } from '../terminal/terminal-service'
+import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
@@ -66,7 +73,11 @@ function isPathList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((p) => typeof p === 'string' && p.length > 0)
 }
 
-export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService, files: FileService): void {
+function isProfileId(value: unknown): value is TerminalProfileId {
+  return value === 'powershell' || value === 'gitbash' || value === 'wsl'
+}
+
+export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost: PiHost, git: GitService, files: FileService, terminals: TerminalService): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
@@ -250,6 +261,38 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
     files.setWatched(project, paths)
     return { ok: true, error: null }
+  })
+
+  ipcMain.handle(TERM_PROFILES_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) {
+      return { ok: false, error: 'Invalid project', profiles: [], defaultProfileId: null }
+    }
+    const avail = await profileAvailability(settings.get())
+    return { ok: true, error: null, ...terminals.profiles(project, avail) }
+  })
+
+  ipcMain.handle(TERM_CREATE_CHANNEL, async (_event, project: unknown, profileId: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', terminal: null }
+    const avail = await profileAvailability(settings.get())
+    const terminal = await terminals.create(project, isProfileId(profileId) ? profileId : null, avail)
+    if (terminal === null) return { ok: false, error: 'Profile is not available', terminal: null }
+    return { ok: true, error: null, terminal }
+  })
+
+  ipcMain.handle(TERM_CLOSE_CHANNEL, (_event, id: unknown) => {
+    if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Invalid request' }
+    terminals.close(id)
+    return { ok: true, error: null }
+  })
+
+  ipcMain.on(TERM_INPUT_CHANNEL, (_event, id: unknown, data: unknown) => {
+    if (typeof id !== 'string' || typeof data !== 'string') return
+    terminals.input(id, data)
+  })
+
+  ipcMain.on(TERM_RESIZE_CHANNEL, (_event, id: unknown, cols: unknown, rows: unknown) => {
+    if (typeof id !== 'string' || typeof cols !== 'number' || typeof rows !== 'number') return
+    terminals.resize(id, cols, rows)
   })
 }
 

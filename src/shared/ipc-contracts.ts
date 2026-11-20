@@ -159,6 +159,48 @@ export interface PendingDialog {
   dialog: ExtensionDialog
 }
 
+export type TerminalProfileId = 'powershell' | 'gitbash' | 'wsl'
+
+export interface TerminalProfile {
+  id: TerminalProfileId
+  label: string
+}
+
+export interface TerminalProfilesResult {
+  ok: boolean
+  error: string | null
+  profiles: TerminalProfile[]
+  defaultProfileId: TerminalProfileId | null
+}
+
+export interface TerminalInfo {
+  id: string
+  profileId: TerminalProfileId
+  label: string
+}
+
+export interface TerminalCreateResult {
+  ok: boolean
+  error: string | null
+  terminal: TerminalInfo | null
+}
+
+export interface TerminalOpResult {
+  ok: boolean
+  error: string | null
+}
+
+/** Байты из pty (node-pty декодирует UTF-8 сам). */
+export interface TermDataMessage {
+  id: string
+  data: string
+}
+
+export interface TermExitMessage {
+  id: string
+  code: number
+}
+
 export interface PiwrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
@@ -187,9 +229,16 @@ export interface PiwrightApi {
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  termProfiles(project: ProjectEntry): Promise<TerminalProfilesResult>
+  termCreate(project: ProjectEntry, profileId: TerminalProfileId | null): Promise<TerminalCreateResult>
+  termClose(id: string): Promise<TerminalOpResult>
+  termInput(id: string, data: string): void
+  termResize(id: string, cols: number, rows: number): void
   onPiEvent(cb: (message: PiEventMessage) => void): () => void
   onPiStatus(cb: (status: PiStatus) => void): () => void
   onFilesChanged(cb: (message: FileChangedMessage) => void): () => void
+  onTermData(cb: (message: TermDataMessage) => void): () => void
+  onTermExit(cb: (message: TermExitMessage) => void): () => void
 }
 
 export const SETTINGS_GET_CHANNEL = 'settings:get'
@@ -220,5 +269,12 @@ export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'
 export const FILES_WATCH_CHANNEL = 'files:watch'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
+export const TERM_PROFILES_CHANNEL = 'term:profiles'
+export const TERM_CREATE_CHANNEL = 'term:create'
+export const TERM_CLOSE_CHANNEL = 'term:close'
+export const TERM_INPUT_CHANNEL = 'term:input'
+export const TERM_RESIZE_CHANNEL = 'term:resize'
+export const TERM_DATA_CHANNEL = 'term:data'
+export const TERM_EXIT_CHANNEL = 'term:exit'
 export const PI_EVENT_CHANNEL = 'pi:event'
 export const PI_STATUS_CHANNEL = 'pi:status'

@@ -31,10 +31,17 @@ import {
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   SETTINGS_GET_CHANNEL,
-  SETTINGS_SET_CHANNEL
+  SETTINGS_SET_CHANNEL,
+  TERM_CLOSE_CHANNEL,
+  TERM_CREATE_CHANNEL,
+  TERM_DATA_CHANNEL,
+  TERM_EXIT_CHANNEL,
+  TERM_INPUT_CHANNEL,
+  TERM_PROFILES_CHANNEL,
+  TERM_RESIZE_CHANNEL
 } from '../shared/ipc-contracts'
 import type { DialogAnswer } from '../shared/agent-events'
-import type { BackendMode, PiwrightApi, ProjectEntry, Settings } from '../shared/ipc-contracts'
+import type { BackendMode, PiwrightApi, ProjectEntry, Settings, TerminalProfileId } from '../shared/ipc-contracts'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   const listener = (_event: IpcRendererEvent, value: T): void => cb(value)
@@ -74,9 +81,16 @@ const api: PiwrightApi = {
   filesList: (project, dir) => ipcRenderer.invoke(FILES_LIST_CHANNEL, project, dir),
   filesRead: (project, path) => ipcRenderer.invoke(FILES_READ_CHANNEL, project, path),
   filesWatch: (project, paths) => ipcRenderer.invoke(FILES_WATCH_CHANNEL, project, paths),
+  termProfiles: (project) => ipcRenderer.invoke(TERM_PROFILES_CHANNEL, project),
+  termCreate: (project, profileId: TerminalProfileId | null) => ipcRenderer.invoke(TERM_CREATE_CHANNEL, project, profileId),
+  termClose: (id: string) => ipcRenderer.invoke(TERM_CLOSE_CHANNEL, id),
+  termInput: (id: string, data: string) => ipcRenderer.send(TERM_INPUT_CHANNEL, id, data),
+  termResize: (id: string, cols: number, rows: number) => ipcRenderer.send(TERM_RESIZE_CHANNEL, id, cols, rows),
   onPiEvent: (cb) => subscribe(PI_EVENT_CHANNEL, cb),
   onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb),
-  onFilesChanged: (cb) => subscribe(FILES_CHANGED_CHANNEL, cb)
+  onFilesChanged: (cb) => subscribe(FILES_CHANGED_CHANNEL, cb),
+  onTermData: (cb) => subscribe(TERM_DATA_CHANNEL, cb),
+  onTermExit: (cb) => subscribe(TERM_EXIT_CHANNEL, cb)
 }
 
 contextBridge.exposeInMainWorld('piwright', api)
