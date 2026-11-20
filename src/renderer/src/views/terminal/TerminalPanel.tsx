@@ -1,9 +1,11 @@
-/** Панель терминалов проекта (справа, паттерн FilesPanel): вкладки, выбор профиля, спавн. */
+/** Терминальный док — горизонтальная область внизу экрана (референс PHPStudio/PHPStorm):
+ *  теснит чат и правые панели, проекты и вертикальный тулбар не трогает. */
 import { useEffect, useMemo, useRef } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalStore } from '../../stores/terminal'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
+import { useT } from '../../lib/i18n'
 import { attach, detach, fit } from './term-registry'
 import type { TerminalProfileId } from '../../../../shared/ipc-contracts'
 
@@ -39,8 +41,8 @@ export function TerminalPanel(): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const active = useSessionsStore((s) => s.active)
   const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
-  const width = useTerminalStore((s) => s.width)
-  const setWidth = useTerminalStore((s) => s.setWidth)
+  const height = useTerminalStore((s) => s.height)
+  const setHeight = useTerminalStore((s) => s.setHeight)
   const projectKey = useTerminalStore((s) => s.projectKey)
   const current = useTerminalStore((s) => (s.projectKey !== null ? s.projects[s.projectKey] : undefined))
   const terms = useTerminalStore((s) => s.terms)
@@ -49,6 +51,7 @@ export function TerminalPanel(): React.JSX.Element {
   const spawn = useTerminalStore((s) => s.spawn)
   const closeTab = useTerminalStore((s) => s.close)
   const activate = useTerminalStore((s) => s.activate)
+  const t = useT()
 
   useEffect(() => {
     useTerminalStore.getState().setProject(project)
@@ -56,16 +59,16 @@ export function TerminalPanel(): React.JSX.Element {
 
   const startResize = (down: React.MouseEvent): void => {
     down.preventDefault()
-    const move = (e: MouseEvent): void => setWidth(window.innerWidth - e.clientX)
+    const move = (e: MouseEvent): void => setHeight(window.innerHeight - e.clientY)
     const up = (): void => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
-      persistPanel('terminal', { width: useTerminalStore.getState().width })
+      persistPanel('terminal', { height: useTerminalStore.getState().height })
     }
     document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'col-resize'
+    document.body.style.cursor = 'row-resize'
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
@@ -85,15 +88,15 @@ export function TerminalPanel(): React.JSX.Element {
 
   if (project === null) {
     return (
-      <aside className="terminal-panel" style={{ width }}>
+      <aside className="terminal-dock" style={{ height }}>
         <div className="terminal-resizer" onMouseDown={startResize} />
-        <div className="panel-hint">Pick a session to open a terminal</div>
+        <div className="panel-hint">{t('Pick a session to open a terminal')}</div>
       </aside>
     )
   }
 
   return (
-    <aside className="terminal-panel" style={{ width }}>
+    <aside className="terminal-dock" style={{ height }}>
       <div className="terminal-resizer" onMouseDown={startResize} />
       <div className="terminal-head">
         {ids.map((id, index) => {
@@ -107,7 +110,7 @@ export function TerminalPanel(): React.JSX.Element {
               <span className="term-tab-name">{tabLabels[index]}</span>
               <button
                 className="icon term-close"
-                title="Close terminal"
+                title={t('Close terminal')}
                 onClick={(e) => {
                   e.stopPropagation()
                   void closeTab(id)
@@ -118,13 +121,13 @@ export function TerminalPanel(): React.JSX.Element {
             </div>
           )
         })}
-        <button className="term-new" title="New terminal (default profile)" onClick={() => void spawn(project)}>
+        <button className="term-new" title={t('New terminal (default profile)')} onClick={() => void spawn(project)}>
           +
         </button>
         <span className="spacer" />
         <select
           className="term-profile-select"
-          title="Profile for new terminal"
+          title={t('Profile for new terminal')}
           value={defaultProfileId ?? ''}
           disabled={profiles.length === 0}
           onChange={(e) => void spawn(project, e.target.value as TerminalProfileId)}
@@ -139,7 +142,7 @@ export function TerminalPanel(): React.JSX.Element {
       <TerminalError />
       <div className="term-body">
         {activeId !== null && projectKey !== null && <TermMount key={activeId} id={activeId} />}
-        {activeId === null && <div className="panel-hint">No terminals — press + or pick a profile</div>}
+        {activeId === null && <div className="panel-hint">{t('No terminals — press + or pick a profile')}</div>}
       </div>
     </aside>
   )

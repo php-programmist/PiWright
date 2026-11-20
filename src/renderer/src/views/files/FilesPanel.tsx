@@ -4,13 +4,15 @@ import { useEffect, useMemo } from 'react'
 import { useFilesStore } from '../../stores/files'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
+import { useT } from '../../lib/i18n'
 import type { ProjectEntry } from '../../../../shared/ipc-contracts'
 
 function TreeLevel({ project, dir, depth }: { project: ProjectEntry; dir: string; depth: number }): React.JSX.Element | null {
+  const t = useT()
   const listing = useFilesStore((s) => s.tree[dir])
   if (listing === undefined) return null
   if (listing.loading && listing.entries.length === 0) {
-    return <div className="panel-hint" style={{ paddingLeft: 10 + depth * 14 }}>loading…</div>
+    return <div className="panel-hint" style={{ paddingLeft: 10 + depth * 14 }}>{t('loading…')}</div>
   }
   return (
     <>
@@ -75,6 +77,7 @@ export function FilesPanel(): React.JSX.Element {
   const width = useFilesStore((s) => s.width)
   const setWidth = useFilesStore((s) => s.setWidth)
   const refresh = useFilesStore((s) => s.refresh)
+  const t = useT()
 
   useEffect(() => {
     useFilesStore.getState().setProject(project)
@@ -100,7 +103,7 @@ export function FilesPanel(): React.JSX.Element {
     return (
       <aside className="files-panel" style={{ width }}>
         <div className="files-resizer" onMouseDown={startResize} />
-        <div className="panel-hint">Pick a session to browse its files</div>
+        <div className="panel-hint">{t('Pick a session to browse its files')}</div>
       </aside>
     )
   }
@@ -109,9 +112,9 @@ export function FilesPanel(): React.JSX.Element {
     <aside className="files-panel" style={{ width }}>
       <div className="files-resizer" onMouseDown={startResize} />
       <div className="files-head">
-        <span className="files-title">Files</span>
+        <span className="files-title">{t('Files')}</span>
         <span className="spacer" />
-        <button className="icon" title="Refresh tree" onClick={() => void refresh(project)}>⟲</button>
+        <button className="icon" title={t('Refresh tree')} onClick={() => void refresh(project)}>⟲</button>
       </div>
       <FilesError />
       <div className="files-body">

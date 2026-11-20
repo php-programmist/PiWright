@@ -132,6 +132,27 @@ describe('GitService against a real repository', () => {
     expect((await git.checkout(project, '  ', true)).ok).toBe(false)
   })
 
+  it('branch rename, delete and checkout with start point', async () => {
+    expect((await git.checkout(project, 'tmp', true)).ok).toBe(true)
+    run('git commit -q --allow-empty -m base-commit')
+    expect((await git.renameBranch(project, 'no-such', 'x')).ok).toBe(false)
+    expect((await git.renameBranch(project, 'tmp', 'renamed')).ok).toBe(true)
+    expect((await git.branches(project)).branches).toContain('renamed')
+    expect((await git.checkout(project, 'main', false)).ok).toBe(true)
+
+    expect((await git.checkout(project, 'from-base', true, 'renamed')).ok).toBe(true)
+    const log = await git.log(project)
+    expect(log.entries[0]?.subject).toBe('base-commit')
+    expect((await git.checkout(project, 'main', false)).ok).toBe(true)
+
+    expect((await git.deleteBranch(project, 'main')).ok).toBe(false)
+    expect((await git.deleteBranch(project, 'from-base')).ok).toBe(false)
+    expect((await git.checkout(project, 'merged-b', true)).ok).toBe(true)
+    expect((await git.checkout(project, 'main', false)).ok).toBe(true)
+    expect((await git.deleteBranch(project, 'merged-b')).ok).toBe(true)
+    expect((await git.branches(project)).branches).not.toContain('merged-b')
+  })
+
   it('status fails outside a repository', async () => {
     const notARepo = mkdtempSync(join(tmpdir(), 'piwright-nogit-'))
     try {

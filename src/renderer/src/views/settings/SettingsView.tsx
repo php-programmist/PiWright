@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModelsTab } from './ModelsTab'
 import { useSessionsStore } from '../../stores/sessions'
-import type { NotificationSounds, Settings, Theme } from '../../../../shared/ipc-contracts'
+import { useT } from '../../lib/i18n'
+import type { NotificationSounds, Settings, Theme, UiLanguage } from '../../../../shared/ipc-contracts'
 
 const AUTOSAVE_DEBOUNCE_MS = 500
 
@@ -9,27 +10,28 @@ const CHAT_FONT_SIZES = [12, 13, 14, 16, 18]
 
 type Tab = 'general' | 'appearance' | 'notifications' | 'models'
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'notifications', label: 'Notifications' },
-  { id: 'models', label: 'Models' }
+const TABS: { id: Tab; key: string }[] = [
+  { id: 'general', key: 'General' },
+  { id: 'appearance', key: 'Appearance' },
+  { id: 'notifications', key: 'Notifications' },
+  { id: 'models', key: 'Models' }
 ]
 
 export function SettingsView(): React.JSX.Element {
   const settings = useSessionsStore((s) => s.settings)
   const closeSettings = useSessionsStore((s) => s.closeSettings)
+  const t = useT()
 
   if (settings === null) {
     return (
       <div className="settings-screen">
         <header className="settings-head">
-          <span>Settings</span>
+          <span>{t('Settings')}</span>
           <span className="spacer" />
-          <button className="icon" title="Close settings" onClick={closeSettings}>×</button>
+          <button className="icon" title={t('Close settings')} onClick={closeSettings}>×</button>
         </header>
         <div className="settings-body">
-          <div className="panel-hint">loading…</div>
+          <div className="panel-hint">{t('loading…')}</div>
         </div>
       </div>
     )
@@ -42,6 +44,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
   const [draft, setDraft] = useState<Settings>(settings)
   const [saved, setSaved] = useState(false)
   const dirtyRef = useRef(false)
+  const t = useT()
 
   useEffect(() => {
     if (!dirtyRef.current) return
@@ -63,16 +66,16 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
   return (
     <div className="settings-screen">
       <header className="settings-head">
-        <span>Settings</span>
-        {saved && <span className="saved">saved</span>}
+        <span>{t('Settings')}</span>
+        {saved && <span className="saved">{t('saved')}</span>}
         <span className="spacer" />
-        <button className="icon" title="Close settings" onClick={onClose}>×</button>
+        <button className="icon" title={t('Close settings')} onClick={onClose}>×</button>
       </header>
       <div className="settings-body">
         <nav className="settings-nav">
-          {TABS.map((t) => (
-            <button key={t.id} className={t.id === tab ? 'current' : ''} onClick={() => setTab(t.id)}>
-              {t.label}
+          {TABS.map((tb) => (
+            <button key={tb.id} className={tb.id === tab ? 'current' : ''} onClick={() => setTab(tb.id)}>
+              {t(tb.key)}
             </button>
           ))}
         </nav>
@@ -80,9 +83,32 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           {tab === 'general' && (
             <>
               <section className="settings-section">
+                <h3>{t('Chat')}</h3>
+                <label>
+                  {t('send message with')}
+                  <select
+                    value={draft.sendOnEnter ? 'enter' : 'ctrlEnter'}
+                    onChange={(e) => update({ sendOnEnter: e.target.value === 'enter' })}
+                  >
+                    <option value="enter">{t('Enter (Shift+Enter — newline)')}</option>
+                    <option value="ctrlEnter">Ctrl+Enter</option>
+                  </select>
+                </label>
+                <label>
+                  {t('interface language')}
+                  <select
+                    value={draft.language}
+                    onChange={(e) => update({ language: e.target.value as UiLanguage })}
+                  >
+                    <option value="en">English</option>
+                    <option value="ru">Русский</option>
+                  </select>
+                </label>
+              </section>
+              <section className="settings-section">
                 <h3>Windows</h3>
                 <label>
-                  pi path
+                  {t('pi path')}
                   <input
                     value={draft.piPathNative}
                     placeholder="auto (%USERPROFILE%\.pi\agent\bin\pi.cmd)"
@@ -91,9 +117,9 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 </label>
               </section>
               <section className="settings-section">
-                <h3>Launch</h3>
+                <h3>{t('Launch')}</h3>
                 <label>
-                  extra pi args
+                  {t('extra pi args')}
                   <input
                     value={draft.piExtraArgs}
                     placeholder="--no-extensions -e C:\path\to\ext"
@@ -101,10 +127,10 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   />
                 </label>
                 <label>
-                  update feed URL
+                  {t('update feed URL')}
                   <input
                     value={draft.updateUrl}
-                    placeholder="https://server/updates/ (empty = off)"
+                    placeholder={t('https://server/updates/ (empty = off)')}
                     onChange={(e) => update({ updateUrl: e.target.value })}
                   />
                 </label>
@@ -112,18 +138,18 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
               <section className="settings-section">
                 <h3>WSL</h3>
                 <label>
-                  distro
+                  {t('distro')}
                   <input
                     value={draft.wslDistro}
-                    placeholder="auto (first distro)"
+                    placeholder={t('auto (first distro)')}
                     onChange={(e) => update({ wslDistro: e.target.value })}
                   />
                 </label>
                 <label>
-                  pi path
+                  {t('pi path')}
                   <input
                     value={draft.piPathWsl}
-                    placeholder="auto (command -v pi)"
+                    placeholder={t('auto (command -v pi)')}
                     onChange={(e) => update({ piPathWsl: e.target.value })}
                   />
                 </label>
@@ -133,29 +159,29 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           {tab === 'appearance' && (
             <>
               <section className="settings-section">
-                <h3>Chat toolbar</h3>
+                <h3>{t('Chat toolbar')}</h3>
                 <label>
-                  model / thinking selectors and Stop button
+                  {t('model / thinking selectors and Stop button')}
                   <select
                     value={draft.selectorPlacement}
                     onChange={(e) => update({ selectorPlacement: e.target.value as 'top' | 'bottom' })}
                   >
-                    <option value="top">top — in the chat header</option>
-                    <option value="bottom">bottom — above the message input</option>
+                    <option value="top">{t('top — in the chat header')}</option>
+                    <option value="bottom">{t('bottom — above the message input')}</option>
                   </select>
                 </label>
               </section>
               <section className="settings-section">
-                <h3>Theme</h3>
+                <h3>{t('Theme')}</h3>
                 <label>
-                  color theme
+                  {t('color theme')}
                   <select value={draft.theme} onChange={(e) => update({ theme: e.target.value as Theme })}>
-                    <option value="dark">dark</option>
-                    <option value="light">light</option>
+                    <option value="dark">{t('dark')}</option>
+                    <option value="light">{t('light')}</option>
                   </select>
                 </label>
                 <label>
-                  chat font size
+                  {t('chat font size')}
                   <select
                     value={String(draft.chatFontSize)}
                     onChange={(e) => update({ chatFontSize: Number(e.target.value) })}
@@ -169,14 +195,14 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 </label>
               </section>
               <section className="settings-section">
-                <h3>Tool blocks</h3>
+                <h3>{t('Tool blocks')}</h3>
                 <label className="settings-check">
                   <input
                     type="checkbox"
                     checked={draft.singleLineTools}
                     onChange={(e) => update({ singleLineTools: e.target.checked })}
                   />
-                  single-line tool blocks (command in one line, full command and output when expanded)
+                  {t('single-line tool blocks (command in one line, full command and output when expanded)')}
                 </label>
               </section>
             </>
@@ -189,10 +215,10 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
   )
 }
 
-const SOUND_FIELDS: { key: keyof NotificationSounds; label: string }[] = [
-  { key: 'completion', label: 'turn completed' },
-  { key: 'await', label: 'pi asks a question' },
-  { key: 'error', label: 'error' }
+const SOUND_FIELDS: { key: keyof NotificationSounds; key2: string }[] = [
+  { key: 'completion', key2: 'turn completed' },
+  { key: 'await', key2: 'pi asks a question' },
+  { key: 'error', key2: 'error' }
 ]
 
 function NotificationsTab({
@@ -206,6 +232,7 @@ function NotificationsTab({
   const [tokenInput, setTokenInput] = useState('')
   const [testResult, setTestResult] = useState<string | null>(null)
   const [remote, setRemote] = useState<Awaited<ReturnType<typeof window.piwright.remoteStatus>> | null>(null)
+  const t = useT()
 
   useEffect(() => {
     void window.piwright.telegramTokenStatus().then((s) => setTokenConfigured(s.configured))
@@ -246,17 +273,17 @@ function NotificationsTab({
   return (
     <>
       <section className="settings-section">
-        <h3>Sounds</h3>
-        {SOUND_FIELDS.map(({ key, label }) => (
+        <h3>{t('Sounds')}</h3>
+        {SOUND_FIELDS.map(({ key, key2 }) => (
           <label key={key}>
-            {label}
+            {t(key2)}
             <span className="sound-row">
               <input
                 value={sounds[key]}
-                placeholder="empty = off (wav / aif / aiff / au)"
+                placeholder={t('empty = off (wav / aif / aiff / au)')}
                 onChange={(e) => updateSounds({ [key]: e.target.value })}
               />
-              <button className="ghost" title="Choose audio file" onClick={() => void browseSound(key)}>
+              <button className="ghost" title={t('Choose audio file')} onClick={() => void browseSound(key)}>
                 …
               </button>
             </span>
@@ -274,16 +301,16 @@ function NotificationsTab({
           />
         </label>
         <label>
-          bot token
+          {t('bot token')}
           <span className="sound-row">
             <input
               type="password"
               value={tokenInput}
-              placeholder={tokenConfigured ? 'token saved — type to replace' : '123456:ABC-DEF…'}
+              placeholder={tokenConfigured ? t('token saved — type to replace') : '123456:ABC-DEF…'}
               onChange={(e) => setTokenInput(e.target.value)}
             />
             <button className="ghost" onClick={() => void saveToken()} disabled={tokenInput.trim().length === 0 && !tokenConfigured}>
-              Save
+              {t('Save')}
             </button>
           </span>
         </label>
@@ -293,7 +320,7 @@ function NotificationsTab({
             checked={telegram.events.turnEnd}
             onChange={(e) => updateTelegram({ events: { ...telegram.events, turnEnd: e.target.checked } })}
           />
-          turn completed
+          {t('turn completed')}
         </label>
         <label className="settings-check">
           <input
@@ -301,7 +328,7 @@ function NotificationsTab({
             checked={telegram.events.permission}
             onChange={(e) => updateTelegram({ events: { ...telegram.events, permission: e.target.checked } })}
           />
-          asks permission (confirm)
+          {t('asks permission (confirm)')}
         </label>
         <label className="settings-check">
           <input
@@ -309,7 +336,7 @@ function NotificationsTab({
             checked={telegram.events.question}
             onChange={(e) => updateTelegram({ events: { ...telegram.events, question: e.target.checked } })}
           />
-          needs an answer (question)
+          {t('needs an answer (question)')}
         </label>
         <label className="settings-check">
           <input
@@ -317,23 +344,27 @@ function NotificationsTab({
             checked={telegram.events.error}
             onChange={(e) => updateTelegram({ events: { ...telegram.events, error: e.target.checked } })}
           />
-          extension error
+          {t('extension error')}
         </label>
         <div className="settings-row">
           <button className="ghost" onClick={() => void sendTest()} disabled={telegram.chatId.trim().length === 0}>
-            Send test message
+            {t('Send test message')}
           </button>
-          {testResult !== null && <span className={testResult === 'sent' || testResult === '…' ? 'saved' : 'settings-error'}>{testResult}</span>}
+          {testResult !== null && (
+            <span className={testResult === 'sent' || testResult === '…' ? 'saved' : 'settings-error'}>
+              {testResult === 'sent' ? t('sent') : testResult}
+            </span>
+          )}
         </div>
       </section>
       <section className="settings-section">
-        <h3>Remote (phone browser)</h3>
+        <h3>{t('Remote (phone browser)')}</h3>
         <label className="settings-check">
           <input type="checkbox" checked={remotePrefs.enabled} onChange={(e) => updateRemote({ enabled: e.target.checked })} />
-          enable remote bridge (sessions are shared on the LAN)
+          {t('enable remote bridge (sessions are shared on the LAN)')}
         </label>
         <label>
-          port
+          {t('port')}
           <input
             type="number"
             value={remotePrefs.port}
@@ -348,7 +379,7 @@ function NotificationsTab({
             {remote.pin}
           </div>
         )}
-        {remote !== null && !remote.running && <div className="panel-hint">Bridge is off — enable it and reopen settings.</div>}
+        {remote !== null && !remote.running && <div className="panel-hint">{t('Bridge is off — enable it and reopen settings.')}</div>}
       </section>
     </>
   )

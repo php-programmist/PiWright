@@ -5,6 +5,9 @@ import type { PiModelInfo } from './protocol-types'
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
 export type BackendMode = 'native' | 'wsl'
 
+/** Язык интерфейса. */
+export type UiLanguage = 'en' | 'ru'
+
 /** Тема оформления приложения. */
 export type Theme = 'dark' | 'light'
 
@@ -32,6 +35,10 @@ export interface Settings {
   chatFontSize: number
   /** Однострочные тул-блоки: шапка с «…», в раскрытом — полная команда и вывод. */
   singleLineTools: boolean
+  /** Отправка по Enter (иначе Ctrl+Enter, дефолт как в jb-pi). */
+  sendOnEnter: boolean
+  /** Язык интерфейса (дефолт English). */
+  language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
@@ -60,6 +67,8 @@ export interface NotificationSettings {
 export interface PanelPrefs {
   open?: boolean
   width?: number
+  /** Высота терминального дока (горизонтальная область внизу). */
+  height?: number
 }
 
 export type PanelName = 'git' | 'files' | 'terminal'
@@ -358,8 +367,12 @@ export interface PiwrightApi {
   gitPush(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry): Promise<GitLogResult>
   gitBranches(project: ProjectEntry): Promise<GitBranchesResult>
-  /** create — `git checkout -b <name>` (создать и переключиться), иначе `git checkout <name>`. */
-  gitCheckout(project: ProjectEntry, name: string, create: boolean): Promise<GitOpResult>
+  /** create — `git checkout -b <name> [startPoint]` (создать и переключиться), иначе `git checkout <name>`. */
+  gitCheckout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult>
+  /** `git branch -m <oldName> <newName>`. */
+  gitBranchRename(project: ProjectEntry, oldName: string, newName: string): Promise<GitOpResult>
+  /** `git branch -d <name>` (безопасное удаление; неслитая ветка — ошибка git). */
+  gitBranchDelete(project: ProjectEntry, name: string): Promise<GitOpResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
@@ -421,6 +434,8 @@ export const GIT_PUSH_CHANNEL = 'git:push'
 export const GIT_LOG_CHANNEL = 'git:log'
 export const GIT_BRANCHES_CHANNEL = 'git:branches'
 export const GIT_CHECKOUT_CHANNEL = 'git:checkout'
+export const GIT_BRANCH_RENAME_CHANNEL = 'git:branch-rename'
+export const GIT_BRANCH_DELETE_CHANNEL = 'git:branch-delete'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'

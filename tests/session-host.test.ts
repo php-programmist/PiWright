@@ -265,6 +265,31 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('WSL ask extension UNC path is converted to POSIX for pi args', async () => {
+    const child = scriptedChild('/home/u/proj/.pi/sessions/a.jsonl')
+    currentChild = child
+    const spawnArgs: string[][] = []
+    const backend: PiBackend = {
+      displayName: 'fake',
+      spawner: async (req) => {
+        spawnArgs.push(req.args)
+        return child as unknown as ChildProcess
+      }
+    }
+    const host = new SessionHost(
+      () => SETTINGS,
+      { onEvent: () => {}, onStatus: () => {} },
+      { kind: 'wsl', dir: '\\\\wsl.localhost\\Ubuntu\\home\\u\\proj' },
+      {
+        createBackend: async () => ({ backend, error: null }),
+        installAskExtension: async () => '\\\\wsl.localhost\\Ubuntu\\home\\u\\.pi\\agent\\piwright\\ask-question'
+      }
+    )
+    await host.prompt('ping')
+    expect(spawnArgs[0]).toEqual(['--mode', 'rpc', '-e', '/home/u/.pi/agent/piwright/ask-question'])
+    host.dispose()
+  })
+
   it('setWidget and setStatus extension requests become widget and status events', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

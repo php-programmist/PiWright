@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
+import { useLang, useT } from '../lib/i18n'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 
 const DOT_CLASS: Record<string, string> = {
@@ -41,6 +42,8 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
 }
 
 function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; summary: SessionSummary; onDelete: () => void }): React.JSX.Element {
+  const t = useT()
+  const lang = useLang()
   const openSession = async (): Promise<void> => {
     const ref = await window.piwright.openSession(project, summary.path)
     useSessionsStore.getState().setActive(ref.hostId)
@@ -49,11 +52,16 @@ function HistoryItem({ project, summary, onDelete }: { project: ProjectEntry; su
     <div className="history-item" title={summary.title} onClick={() => void openSession()}>
       <span className="history-title">{summary.title}</span>
       <span className="history-date">
-        {new Date(summary.lastActivityEpochMs).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        {new Date(summary.lastActivityEpochMs).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}
       </span>
       <button
         className="icon remove"
-        title="Delete session from disk"
+        title={t('Delete session from disk')}
         onClick={(e) => {
           e.stopPropagation()
           onDelete()
@@ -87,6 +95,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const removeProject = useSessionsStore((s) => s.removeProject)
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
   const setShowAll = useSessionsStore((s) => s.setShowAll)
+  const t = useT()
   const [renaming, setRenaming] = useState(false)
   const [renameText, setRenameText] = useState('')
 
@@ -105,7 +114,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
 
   const deleteHistory = async (summary: SessionSummary): Promise<void> => {
     const answer = window.confirm(
-      `Delete session "${summary.title}" from disk?\n\nIts session file will be removed permanently.`
+      t('Delete session "{title}" from disk?\n\nIts session file will be removed permanently.', { title: summary.title })
     )
     if (!answer) return
     const result = await window.piwright.deleteHistorySession(row.project, summary.path)
@@ -130,15 +139,15 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
         <span className="project-name" title={row.project.dir}>{dirName(row.project.dir)}</span>
         <span className="kind-badge">{kindLabel(row.project.kind)}</span>
         <span className="spacer" />
-        <button className="icon" title="Session history" onClick={() => { if (!expanded) toggleExpanded(key); void refreshHistory(row.project) }}>⟲</button>
-        <button className="icon" title="New session" onClick={() => void newSession()}>+</button>
-        <button className="icon remove" title="Remove project" onClick={() => void removeProject(row.project)}>×</button>
+        <button className="icon" title={t('Session history')} onClick={() => { if (!expanded) toggleExpanded(key); void refreshHistory(row.project) }}>⟲</button>
+        <button className="icon" title={t('New session')} onClick={() => void newSession()}>+</button>
+        <button className="icon remove" title={t('Remove project')} onClick={() => void removeProject(row.project)}>×</button>
       </div>
       {!expanded && unreadCount + busyCount + attentionCount > 0 && (
         <div className="project-badges">
-          {unreadCount > 0 && <span className="proj-badge green" title="Unread turns">{unreadCount}</span>}
-          {busyCount > 0 && <span className="proj-badge busy" title="Working">{busyCount}</span>}
-          {attentionCount > 0 && <span className="proj-badge attention" title="Need your answer">{attentionCount}</span>}
+          {unreadCount > 0 && <span className="proj-badge green" title={t('Unread turns')}>{unreadCount}</span>}
+          {busyCount > 0 && <span className="proj-badge busy" title={t('Working')}>{busyCount}</span>}
+          {attentionCount > 0 && <span className="proj-badge attention" title={t('Need your answer')}>{attentionCount}</span>}
         </div>
       )}
       {expanded && (
@@ -165,18 +174,18 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                 <span className="session-title" onDoubleClick={() => setRenaming(true)}>{s.title}</span>
               )}
               <span className="spacer" />
-              <button className="icon" title="Rename (or double-click title)" onClick={() => setRenaming(true)}>✎</button>
-              <button className="icon remove" title="Close session" onClick={() => void closeSession(s.hostId)}>×</button>
+              <button className="icon" title={t('Rename (or double-click title)')} onClick={() => setRenaming(true)}>✎</button>
+              <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
             </div>
           ))}
-          {active.length === 0 && <div className="panel-hint">no active sessions</div>}
-          <div className="history-head">history</div>
-          {row.historyLoading && <div className="panel-hint">loading…</div>}
-          {!row.historyLoading && history.length === 0 && <div className="panel-hint">no past sessions</div>}
+          {active.length === 0 && <div className="panel-hint">{t('no active sessions')}</div>}
+          <div className="history-head">{t('history')}</div>
+          {row.historyLoading && <div className="panel-hint">{t('loading…')}</div>}
+          {!row.historyLoading && history.length === 0 && <div className="panel-hint">{t('no past sessions')}</div>}
           {visible.map((h) => <HistoryItem key={h.path} project={row.project} summary={h} onDelete={() => void deleteHistory(h)} />)}
           {!row.historyLoading && history.length > HISTORY_PREVIEW_LIMIT && (
             <button className="show-all" onClick={() => setShowAll(key, !row.showAllHistory)}>
-              {row.showAllHistory ? 'show less' : `show all (${history.length})`}
+              {row.showAllHistory ? t('show less') : t('show all ({count})', { count: history.length })}
             </button>
           )}
         </div>
@@ -188,21 +197,22 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
 export function SessionsPanel(): React.JSX.Element {
   const projects = useSessionsStore((s) => s.projects)
   const openSettings = useSessionsStore((s) => s.openSettings)
+  const t = useT()
   const [adding, setAdding] = useState(false)
 
   return (
     <aside className="sessions-panel">
       <div className="panel-head">
-        <span>Projects</span>
+        <span>{t('Projects')}</span>
         <span className="spacer" />
-        {adding ? <AddProjectControl onDone={() => setAdding(false)} /> : <button className="icon" title="Add project" onClick={() => setAdding(true)}>+</button>}
+        {adding ? <AddProjectControl onDone={() => setAdding(false)} /> : <button className="icon" title={t('Add project')} onClick={() => setAdding(true)}>+</button>}
       </div>
       <div className="panel-body">
-        {projects.length === 0 && <div className="panel-hint">Add a project to start</div>}
+        {projects.length === 0 && <div className="panel-hint">{t('Add a project to start')}</div>}
         {projects.map((row) => <ProjectRow key={projectKey(row.project)} row={row} />)}
       </div>
       <div className="panel-foot">
-        <button className="icon" title="Settings" onClick={openSettings}>⚙</button>
+        <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
       </div>
     </aside>
   )

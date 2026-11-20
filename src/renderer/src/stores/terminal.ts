@@ -19,7 +19,8 @@ interface ProjectTerms {
  *  вкладок, не убивая чужие. Смена проекта сбрасывает профили, но не вкладки. */
 interface TerminalState {
   open: boolean
-  width: number
+  /** Высота горизонтального дока внизу экрана. */
+  height: number
   projectKey: string | null
   projects: Record<string, ProjectTerms>
   terms: Record<string, TermTab>
@@ -28,7 +29,7 @@ interface TerminalState {
   error: string | null
   setProject: (project: ProjectEntry | null) => void
   toggleOpen: () => void
-  setWidth: (width: number) => void
+  setHeight: (height: number) => void
   spawn: (project: ProjectEntry, profileId?: TerminalProfileId) => Promise<void>
   close: (id: string) => Promise<void>
   activate: (id: string) => void
@@ -36,9 +37,12 @@ interface TerminalState {
   setError: (error: string | null) => void
 }
 
+export const TERMINAL_DOCK_MIN = 120
+export const TERMINAL_DOCK_MAX_RESERVE = 160
+
 export const useTerminalStore = create<TerminalState>((set, get) => ({
   open: false,
-  width: 480,
+  height: 300,
   projectKey: null,
   projects: {},
   terms: {},
@@ -63,7 +67,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   toggleOpen: () => set((state) => ({ open: !state.open })),
 
-  setWidth: (width) => set({ width: Math.min(Math.max(width, 320), window.innerWidth - 560) }),
+  setHeight: (height) =>
+    set({ height: Math.min(Math.max(height, TERMINAL_DOCK_MIN), window.innerHeight - TERMINAL_DOCK_MAX_RESERVE) }),
 
   spawn: async (project, profileId) => {
     const result = await window.piwright.termCreate(project, profileId ?? null)

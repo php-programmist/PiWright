@@ -1,16 +1,18 @@
 import { bashCommand, editTexts, toolHeader } from '../lib/tool-blocks'
 import { useFilesStore } from '../stores/files'
 import { useSessionsStore } from '../stores/sessions'
+import { useT } from '../lib/i18n'
 import { toProjectRelative } from '../../../shared/file-paths'
 import type { ToolCall, ToolResult } from '../../../shared/agent-events'
 import type { ToolEntry } from '../stores/chat'
 
 export function ToolBlock({ call, partial, result, subTools = [] }: { call: ToolCall; partial: string; result: ToolResult | null; subTools?: ToolEntry[] }): React.JSX.Element {
   const header = toolHeader(call)
-  const status = result === null ? (partial.length > 0 ? 'running…' : 'running…') : result.isError ? 'error' : 'done'
+  const status = result === null ? 'running…' : result.isError ? 'error' : 'done'
   const edits = editTexts(call)
   const body = result !== null ? result.text : partial
   const singleLine = useSessionsStore((s) => s.settings?.singleLineTools ?? false)
+  const t = useT()
   const command = singleLine ? bashCommand(call) : null
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
@@ -38,7 +40,7 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
           ) : (
             <span className="tool-detail">{header.detail}</span>
           ))}
-        <span className={`tool-status ${status}`}>{status}</span>
+        <span className={`tool-status ${status}`}>{t(status)}</span>
       </summary>
       <div className="tool-body">
         {command !== null && <pre className="tool-command">{command}</pre>}

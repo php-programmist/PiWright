@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'dark',
   chatFontSize: 14,
   singleLineTools: false,
+  sendOnEnter: false,
+  language: 'en',
   panels: {},
   expandedProjects: {},
   notifications: DEFAULT_NOTIFICATIONS,

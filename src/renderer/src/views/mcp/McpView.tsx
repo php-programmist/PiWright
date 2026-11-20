@@ -2,16 +2,22 @@
  *  карточки серверов с тогглом и живой проверкой, форма добавления/редактирования, импорт JSON. */
 import { useEffect, useState } from 'react'
 import { useSessionsStore } from '../../stores/sessions'
+import { useT } from '../../lib/i18n'
 import type { McpScope, McpServerEntry } from '../../../../shared/ipc-contracts'
 
 type Exposure = 'codemode' | 'deferred' | 'direct' | 'hidden'
 
-const EXPOSURES: { value: Exposure; label: string; hint: string }[] = [
-  { value: 'codemode', label: 'CodeMode', hint: 'default — tools run through code mode' },
-  { value: 'deferred', label: 'Deferred', hint: 'loaded via tool search when the model needs them' },
-  { value: 'direct', label: 'Direct', hint: 'declared up front like a built-in tool' },
-  { value: 'hidden', label: 'Hidden', hint: 'registered but not available to the model' }
-]
+const EXPOSURE_VALUES: Exposure[] = ['codemode', 'deferred', 'direct', 'hidden']
+
+function useExposures(): { value: Exposure; label: string; hint: string }[] {
+  const t = useT()
+  return [
+    { value: 'codemode', label: 'CodeMode', hint: t('default — tools run through code mode') },
+    { value: 'deferred', label: 'Deferred', hint: t('loaded via tool search when the model needs them') },
+    { value: 'direct', label: 'Direct', hint: t('declared up front like a built-in tool') },
+    { value: 'hidden', label: 'Hidden', hint: t('registered but not available to the model') }
+  ]
+}
 
 interface ServerDraft {
   name: string
@@ -54,7 +60,8 @@ function draftOf(entry: McpServerEntry): ServerDraft {
       .map(([k, v]) => `${k}=${v as string}`)
       .join('\n')
   }
-  const exposure = typeof c['exposure'] === 'string' && EXPOSURES.some((e) => e.value === c['exposure']) ? (c['exposure'] as Exposure) : 'codemode'
+  const exposure =
+    typeof c['exposure'] === 'string' && EXPOSURE_VALUES.includes(c['exposure'] as Exposure) ? (c['exposure'] as Exposure) : 'codemode'
   return {
     name: entry.name,
     transport: typeof c['url'] === 'string' && c['url'].length > 0 ? 'http' : 'stdio',
@@ -115,6 +122,8 @@ interface ProbeState {
 export function McpView(): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.project ?? null)
+  const t = useT()
+  const exposures = useExposures()
   const [scope, setScope] = useState<McpScope>('user')
   const [file, setFile] = useState('')
   const [exists, setExists] = useState(false)
@@ -180,15 +189,15 @@ export function McpView(): React.JSX.Element {
     if (editing === null) return
     const name = editing.name.trim()
     if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      setImportError('Name: latin letters, digits, - and _ only')
+      setImportError(t('Name: latin letters, digits, - and _ only'))
       return
     }
     if (editing.transport === 'stdio' && editing.command.trim().length === 0) {
-      setImportError('Command is required')
+      setImportError(t('Command is required'))
       return
     }
     if (editing.transport === 'http' && editing.url.trim().length === 0) {
-      setImportError('URL is required')
+      setImportError(t('URL is required'))
       return
     }
     const withoutOriginal = servers.filter((s) => s.name !== (editingOriginal ?? name))
@@ -204,7 +213,7 @@ export function McpView(): React.JSX.Element {
     try {
       parsed = JSON.parse(importText)
     } catch {
-      setImportError('Invalid JSON')
+      setImportError(t('Invalid JSON'))
       return
     }
     const map =
@@ -212,14 +221,14 @@ export function McpView(): React.JSX.Element {
         ? (parsed as Record<string, unknown>)['mcpServers'] ?? parsed
         : null
     if (map === null || typeof map !== 'object' || Array.isArray(map)) {
-      setImportError('Expected an object with mcpServers')
+      setImportError(t('Expected an object with mcpServers'))
       return
     }
     const imported: McpServerEntry[] = Object.entries(map as Record<string, unknown>)
       .filter(([, config]) => config !== null && typeof config === 'object' && !Array.isArray(config))
       .map(([name, config]) => ({ name, config: config as Record<string, unknown> }))
     if (imported.length === 0) {
-      setImportError('No servers found in JSON')
+      setImportError(t('No servers found in JSON'))
       return
     }
     const byName = new Map(servers.map((s) => [s.name, s]))
@@ -243,7 +252,7 @@ export function McpView(): React.JSX.Element {
   if (project === null || activeHostId === null) {
     return (
       <main className="center-view">
-        <div className="panel-hint">Pick a session — MCP servers are per-project.</div>
+        <div className="panel-hint">{t('Pick a session — MCP servers are per-project.')}</div>
       </main>
     )
   }
@@ -251,31 +260,30 @@ export function McpView(): React.JSX.Element {
   return (
     <main className="center-view">
       <header className="center-head">
-        <h2>MCP servers</h2>
+        <h2>{t('MCP servers')}</h2>
         <span className="spacer" />
         <button className="ghost" onClick={() => void window.piwright.mcpReveal(project, scope)}>
-          Open file
+          {t('Open file')}
         </button>
         <button className="ghost" onClick={() => setImportOpen((v) => !v)}>
-          Import JSON
+          {t('Import JSON')}
         </button>
-        <button onClick={() => setEditing(emptyDraft())}>+ Add server</button>
+        <button onClick={() => setEditing(emptyDraft())}>{t('+ Add server')}</button>
       </header>
       <div className="center-tabs">
         <button className={scope === 'user' ? 'current' : ''} onClick={() => setScope('user')}>
-          User — all projects
+          {t('User — all projects')}
         </button>
         <button className={scope === 'project' ? 'current' : ''} onClick={() => setScope('project')}>
-          Project — .pi/mcp.json
+          {t('Project — .pi/mcp.json')}
         </button>
       </div>
       <div className="panel-hint">
-        {file.length > 0 ? (exists ? file : `${file} (not created yet)`) : (loadError ?? '')} — applied to new chats; busy
-        chats pick it up after a restart of the session.
+        {file.length > 0 ? (exists ? file : t('{file} (not created yet)', { file })) : (loadError ?? '')} — {t('applied to new chats; busy chats pick it up after a restart of the session.')}
       </div>
       {importOpen && (
         <section className="center-form">
-          <h3>Import JSON with mcpServers</h3>
+          <h3>{t('Import JSON with mcpServers')}</h3>
           <textarea
             rows={6}
             value={importText}
@@ -285,7 +293,7 @@ export function McpView(): React.JSX.Element {
           {importError !== null && <div className="settings-error">{importError}</div>}
           <div className="settings-row">
             <button onClick={() => void runImport()} disabled={importText.trim().length === 0}>
-              Import
+              {t('Import')}
             </button>
             <button
               className="ghost"
@@ -295,24 +303,24 @@ export function McpView(): React.JSX.Element {
                 setImportError(null)
               }}
             >
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </section>
       )}
       {editing !== null && (
         <section className="center-form">
-          <h3>{editingOriginal === null ? 'Add MCP server' : `Edit ${editingOriginal}`}</h3>
+          <h3>{editingOriginal === null ? t('Add MCP server') : t('Edit {name}', { name: editingOriginal })}</h3>
           <label>
-            name
+            {t('name')}
             <input
               value={editing.name}
-              placeholder="latin letters, digits, - and _"
+              placeholder={t('latin letters, digits, - and _')}
               onChange={(e) => setEditing({ ...editing, name: e.target.value })}
             />
           </label>
           <label>
-            transport
+            {t('transport')}
             <select
               value={editing.transport}
               onChange={(e) => setEditing({ ...editing, transport: e.target.value as 'stdio' | 'http' })}
@@ -324,11 +332,11 @@ export function McpView(): React.JSX.Element {
           {editing.transport === 'stdio' ? (
             <>
               <label>
-                command
+                {t('command')}
                 <input value={editing.command} placeholder="npx" onChange={(e) => setEditing({ ...editing, command: e.target.value })} />
               </label>
               <label>
-                args (one per line)
+                {t('args (one per line)')}
                 <textarea
                   rows={2}
                   value={editing.argsText}
@@ -337,11 +345,11 @@ export function McpView(): React.JSX.Element {
                 />
               </label>
               <label>
-                env (NAME=value, one per line)
+                {t('env (NAME=value, one per line)')}
                 <textarea rows={2} value={editing.envText} onChange={(e) => setEditing({ ...editing, envText: e.target.value })} />
               </label>
               <label>
-                cwd (relative or ~/…)
+                {t('cwd (relative or ~/…)')}
                 <input value={editing.cwd} onChange={(e) => setEditing({ ...editing, cwd: e.target.value })} />
               </label>
             </>
@@ -352,7 +360,7 @@ export function McpView(): React.JSX.Element {
                 <input value={editing.url} placeholder="https://example.com/mcp" onChange={(e) => setEditing({ ...editing, url: e.target.value })} />
               </label>
               <label>
-                headers (Name=value, one per line)
+                {t('headers (Name=value, one per line)')}
                 <textarea
                   rows={2}
                   value={editing.headersText}
@@ -365,7 +373,7 @@ export function McpView(): React.JSX.Element {
           <label>
             exposure
             <select value={editing.exposure} onChange={(e) => setEditing({ ...editing, exposure: e.target.value as Exposure })}>
-              {EXPOSURES.map((e) => (
+              {exposures.map((e) => (
                 <option key={e.value} value={e.value}>
                   {e.label} — {e.hint}
                 </option>
@@ -373,7 +381,7 @@ export function McpView(): React.JSX.Element {
             </select>
           </label>
           <label>
-            timeout, seconds
+            {t('timeout, seconds')}
             <input
               type="number"
               value={editing.timeout}
@@ -382,12 +390,12 @@ export function McpView(): React.JSX.Element {
             />
           </label>
           <label>
-            description
+            {t('description')}
             <input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
           </label>
           {importError !== null && <div className="settings-error">{importError}</div>}
           <div className="settings-row">
-            <button onClick={() => void submitDraft()}>Save server</button>
+            <button onClick={() => void submitDraft()}>{t('Save server')}</button>
             <button
               className="ghost"
               onClick={() => {
@@ -396,13 +404,13 @@ export function McpView(): React.JSX.Element {
                 setImportError(null)
               }}
             >
-              Cancel
+              {t('Cancel')}
             </button>
           </div>
         </section>
       )}
       {servers.length === 0 ? (
-        <div className="panel-hint">No MCP servers yet.</div>
+        <div className="panel-hint">{t('No MCP servers yet.')}</div>
       ) : (
         <div className="server-list">
           {servers.map((entry) => {
@@ -419,11 +427,11 @@ export function McpView(): React.JSX.Element {
                   <span className="spacer" />
                   <button
                     className="ghost"
-                    title="Check connection"
+                    title={t('Check connection')}
                     onClick={() => void probe(entry.name)}
                     disabled={probeState?.status === 'checking'}
                   >
-                    {probeState?.status === 'checking' ? '…' : 'Check'}
+                    {probeState?.status === 'checking' ? '…' : t('Check')}
                   </button>
                   <button
                     className="ghost"
@@ -433,9 +441,9 @@ export function McpView(): React.JSX.Element {
                       setImportError(null)
                     }}
                   >
-                    Edit
+                    {t('Edit')}
                   </button>
-                  <button className="ghost" title="Remove server" onClick={() => void remove(entry.name)}>
+                  <button className="ghost" title={t('Remove server')} onClick={() => void remove(entry.name)}>
                     ×
                   </button>
                   <label className="switch">
@@ -446,8 +454,10 @@ export function McpView(): React.JSX.Element {
                 {probeState?.status === 'done' && (
                   <div className={probeState.error !== null ? 'server-status error' : 'server-status ok'}>
                     {probeState.error !== null
-                      ? `error: ${probeState.error}${probeState.serverError !== null ? ` — ${probeState.serverError}` : ''}`
-                      : `connected · ${probeState.toolCount} tool${probeState.toolCount === 1 ? '' : 's'}`}
+                      ? t('error: {error}', {
+                          error: `${probeState.error}${probeState.serverError !== null ? ` — ${probeState.serverError}` : ''}`
+                        })
+                      : t('connected · {count} tool(s)', { count: probeState.toolCount })}
                   </div>
                 )}
                 {typeof entry.config['description'] === 'string' && entry.config['description'].length > 0 && (

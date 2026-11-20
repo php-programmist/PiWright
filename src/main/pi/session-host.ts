@@ -11,6 +11,7 @@ import { PiConnection } from './connection'
 import { createPiBackend } from './backends/factory'
 import type { CreateBackendResult } from './backends/factory'
 import { PiEventTranslator } from './event-translator'
+import { stripWslUncPrefix } from './backends/shell'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './extension-ui'
 import { ensureAskExtension } from './ask-extension'
 import { readAttachmentImages } from '../attachments/attachments'
@@ -214,7 +215,10 @@ export class SessionHost {
       }
     })
     try {
-      const askExtensionPath = await this.installAskExtension(this.project, settings)
+      const installed = await this.installAskExtension(this.project, settings)
+      // WSL: pi внутри дистрибутива UNC-путь не видит — для `-e` нужен POSIX-путь.
+      const askExtensionPath =
+        installed !== null && this.project.kind === 'wsl' ? (stripWslUncPrefix(installed) ?? installed) : installed
       await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, askExtensionPath, splitArgs(settings.piExtraArgs)) })
       const handshake = await runHandshake(conn, {
         desiredThinkingLevel: this.desiredThinkingLevel,

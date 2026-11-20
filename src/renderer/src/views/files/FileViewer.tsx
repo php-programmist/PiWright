@@ -4,9 +4,11 @@ import { useMemo } from 'react'
 import { FileEditor } from '../../components/FileEditor'
 import { useFilesStore } from '../../stores/files'
 import { useSessionsStore } from '../../stores/sessions'
+import { useT } from '../../lib/i18n'
 import { baseName } from '../git/GitPanel'
 
 export function FileViewer(): React.JSX.Element | null {
+  const t = useT()
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const active = useSessionsStore((s) => s.active)
   const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
@@ -30,7 +32,7 @@ export function FileViewer(): React.JSX.Element | null {
             <span className="file-tab-name">{baseName(tab)}</span>
             <button
               className="icon"
-              title="Close tab"
+              title={t('Close tab')}
               onClick={(e) => {
                 e.stopPropagation()
                 closeTab(project, tab)
@@ -41,7 +43,7 @@ export function FileViewer(): React.JSX.Element | null {
           </div>
         ))}
         <span className="spacer" />
-        <button className="icon file-close" title="Close viewer (back to chat)" onClick={closeViewer}>×</button>
+        <button className="icon file-close" title={t('Close viewer (back to chat)')} onClick={closeViewer}>×</button>
       </div>
       {error !== null && (
         <div className="files-error">

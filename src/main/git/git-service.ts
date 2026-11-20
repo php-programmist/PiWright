@@ -177,10 +177,31 @@ export class GitService {
     return { ok: true, error: null, branches }
   }
 
-  async checkout(project: ProjectEntry, name: string, create: boolean): Promise<GitOpResult> {
+  async checkout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult> {
     const trimmed = name.trim()
     if (trimmed.length === 0 || /\s/.test(trimmed)) return { ok: false, error: 'Invalid branch name' }
-    const args = create ? ['checkout', '-b', trimmed] : ['checkout', trimmed]
+    const start = startPoint?.trim() ?? ''
+    if (start.length > 0 && /\s/.test(start)) return { ok: false, error: 'Invalid branch name' }
+    const args = create ? ['checkout', '-b', trimmed, ...(start.length > 0 ? [start] : [])] : ['checkout', trimmed]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async renameBranch(project: ProjectEntry, oldName: string, newName: string): Promise<GitOpResult> {
+    const from = oldName.trim()
+    const to = newName.trim()
+    if (from.length === 0 || to.length === 0 || /\s/.test(from) || /\s/.test(to)) {
+      return { ok: false, error: 'Invalid branch name' }
+    }
+    const args = ['branch', '-m', from, to]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async deleteBranch(project: ProjectEntry, name: string): Promise<GitOpResult> {
+    const trimmed = name.trim()
+    if (trimmed.length === 0 || /\s/.test(trimmed)) return { ok: false, error: 'Invalid branch name' }
+    const args = ['branch', '-d', trimmed]
     const result = await this.run(project, args)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }

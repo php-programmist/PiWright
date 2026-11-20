@@ -7,6 +7,7 @@ import {
   encodeAskAnswers,
   splitRecommended
 } from '../../../shared/ask-questions'
+import { useT } from '../lib/i18n'
 import type { AskChoice, AskQuestionItem, AskQuestionRequest } from '../../../shared/ask-questions'
 
 /** Инлайн-карточка опроса `ask_question` (порт `ui/QuestionPanel.kt` без заметок):
@@ -22,10 +23,11 @@ export function AskQuestionCard({
   onAnswer: (answer: DialogAnswer) => void
 }): React.JSX.Element {
   const [choices, setChoices] = useState<AskChoice[]>(() => request.questions.map(() => emptyChoice()))
+  const t = useT()
 
   if (receipt !== null) {
     if (receipt !== 'answered') {
-      return <div className="dialog-card receipt">{receipt === 'cancelled' ? 'cancelled' : 'expired'}</div>
+      return <div className="dialog-card receipt">{t(receipt === 'cancelled' ? 'cancelled' : 'expired')}</div>
     }
     return (
       <div className="dialog-card receipt ask-receipt">
@@ -34,7 +36,8 @@ export function AskQuestionCard({
           const value = receiptValue(question, choice)
           return (
             <div key={index} className={`ask-receipt-line ${value === null ? 'missed' : ''}`}>
-              ✓ {question.header.trim().length > 0 ? question.header : question.question} → {value ?? '— без ответа'}
+              ✓ {question.header.trim().length > 0 ? question.header : question.question} →{' '}
+              {value === null ? t('— no answer') : value.startsWith('→') ? t('→ clarify in chat') : value}
             </div>
           )
         })}
@@ -62,14 +65,16 @@ export function AskQuestionCard({
       ))}
       <div className="ask-footer">
         <span className="ask-counter">
-          {answeredCount} answered{chatCount > 0 ? ` · ${chatCount} to chat` : ''}
+          {t('{count} answered', { count: answeredCount })}
+          {chatCount > 0 ? t(' · {count} to chat', { count: chatCount }) : ''}
         </span>
         <span className="spacer" />
         <button className="ask-cancel" onClick={() => onAnswer({ kind: 'cancelled' })}>
-          Cancel
+          {t('Cancel')}
         </button>
         <button className="ask-submit" disabled={answers.length === 0} onClick={submit}>
-          Submit{answeredCount > 0 ? ` · ${answeredCount}` : ''}
+          {t('Submit')}
+          {answeredCount > 0 ? ` · ${answeredCount}` : ''}
         </button>
       </div>
     </div>
@@ -77,7 +82,7 @@ export function AskQuestionCard({
 }
 
 function receiptValue(question: AskQuestionItem, choice: AskChoice): string | null {
-  if (choice.chatMarked) return '→ пояснить в чате'
+  if (choice.chatMarked) return '→ clarify in chat'
   if (question.multiSelect) {
     const selected = choice.multi.filter((label) => question.options.some((o) => o.label === label))
     const own = choice.customActive ? choice.customText.trim() : ''
@@ -100,6 +105,7 @@ function QuestionView({
   choice: AskChoice
   update: (index: number, patch: Partial<AskChoice>) => void
 }): React.JSX.Element {
+  const t = useT()
   const disabled = choice.chatMarked
   const selectOption = (label: string): void => {
     if (disabled) return
@@ -144,10 +150,10 @@ function QuestionView({
               <span className="ask-option-body">
                 <span className="ask-option-label">
                   {text}
-                  {recommended && <span className="ask-recommended"> Recommended</span>}
+                  {recommended && <span className="ask-recommended"> {t('Recommended')}</span>}
                 </span>
                 {option.description.trim().length > 0 && <span className="ask-option-desc">{option.description}</span>}
-                {reason !== null && <span className="ask-option-why">Why: {reason}</span>}
+                {reason !== null && <span className="ask-option-why">{t('Why: {reason}', { reason })}</span>}
               </span>
             </button>
           )
@@ -159,14 +165,14 @@ function QuestionView({
         >
           <span className="ask-mark">{choice.customActive ? (question.multiSelect ? '☑' : '●') : question.multiSelect ? '☐' : '○'}</span>
           <span className="ask-option-body">
-            <span className="ask-option-label">Свой вариант</span>
+            <span className="ask-option-label">{t('Own answer')}</span>
           </span>
         </button>
         {choice.customActive && (
           <textarea
             autoFocus
             rows={2}
-            placeholder="Введите свой ответ…"
+            placeholder={t('Type your own answer…')}
             value={choice.customText}
             onChange={(e) => update(index, { customText: e.target.value })}
           />
@@ -182,7 +188,7 @@ function QuestionView({
         className={`ask-chat-toggle ${choice.chatMarked ? 'marked' : ''}`}
         onClick={() => update(index, { chatMarked: !choice.chatMarked })}
       >
-        {choice.chatMarked ? '◆ Пояснить в чате' : '◇ Нужно пояснение'}
+        {choice.chatMarked ? t('Clarify in chat') : t('Needs clarification')}
       </button>
     </div>
   )

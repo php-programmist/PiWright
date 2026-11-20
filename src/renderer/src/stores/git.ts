@@ -48,7 +48,9 @@ interface GitState {
   unstage: (project: ProjectEntry, paths: string[]) => Promise<void>
   commit: (project: ProjectEntry) => Promise<void>
   push: (project: ProjectEntry) => Promise<void>
-  checkout: (project: ProjectEntry, name: string, create: boolean) => Promise<void>
+  checkout: (project: ProjectEntry, name: string, create: boolean, startPoint?: string) => Promise<void>
+  renameBranch: (project: ProjectEntry, oldName: string, newName: string) => Promise<void>
+  deleteBranch: (project: ProjectEntry, name: string) => Promise<void>
   generate: (project: ProjectEntry) => Promise<void>
   setMessage: (message: string) => void
   setError: (error: string | null) => void
@@ -163,9 +165,9 @@ export const useGitStore = create<GitState>((set, get) => ({
     if (result.ok) await get().refresh(project)
   },
 
-  checkout: async (project, name, create) => {
+  checkout: async (project, name, create, startPoint) => {
     set({ busy: true, error: null })
-    const result = await window.piwright.gitCheckout(project, name, create)
+    const result = await window.piwright.gitCheckout(project, name, create, startPoint)
     if (!result.ok) {
       set({ busy: false, error: result.error })
       return
@@ -173,6 +175,20 @@ export const useGitStore = create<GitState>((set, get) => ({
     get().closeFile()
     await get().refresh(project)
     set({ busy: false })
+  },
+
+  renameBranch: async (project, oldName, newName) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitBranchRename(project, oldName, newName)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refresh(project)
+  },
+
+  deleteBranch: async (project, name) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitBranchDelete(project, name)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refresh(project)
   },
 
   generate: async (project) => {

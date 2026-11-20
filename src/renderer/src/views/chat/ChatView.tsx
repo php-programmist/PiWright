@@ -9,6 +9,7 @@ import { useSessionsStore } from '../../stores/sessions'
 import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
+import { useT } from '../../lib/i18n'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -29,7 +30,7 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
     case 'thinking':
       return (
         <details className="thinking">
-          <summary>thinking</summary>
+          <ChatThinkingSummary />
           <pre>{entry.text}</pre>
         </details>
       )
@@ -58,9 +59,16 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
   }
 }
 
+function ChatThinkingSummary(): React.JSX.Element {
+  const t = useT()
+  return <summary>{t('thinking')}</summary>
+}
+
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
+  const sendOnEnter = useSessionsStore((s) => s.settings?.sendOnEnter ?? false)
+  const t = useT()
   const status = chat?.status ?? null
   const entries = useMemo(() => chat?.entries ?? [], [chat])
   const streaming = chat?.streaming ?? false
@@ -114,7 +122,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   if (activeHostId === null || status === null) {
     return (
       <main className="chat-empty">
-        <div className="panel-hint">Create or pick a session on the left</div>
+        <div className="panel-hint">{t('Create or pick a session on the left')}</div>
       </main>
     )
   }
@@ -178,11 +186,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const fmtTokens = (n: number): string => n.toLocaleString('en-US')
   const ctxTitle = (): string => {
     if (usageTotals === null) return ''
-    const parts = [`In: ${fmtTokens(usageTotals.input)} · Out: ${fmtTokens(usageTotals.output)}`]
+    const parts = [t('In: {in} · Out: {out}', { in: fmtTokens(usageTotals.input), out: fmtTokens(usageTotals.output) })]
     const hit = cacheHitOf(usageTotals.input, usageTotals.cacheRead, usageTotals.cacheWrite)
     if (hit !== null) {
-      parts.push(`Read from cache: ${fmtTokens(usageTotals.cacheRead)} (${hit}%)`)
-      parts.push(`Fresh: ${fmtTokens(usageTotals.input)} · Written to cache: ${fmtTokens(usageTotals.cacheWrite)}`)
+      parts.push(t('Read from cache: {read} ({hit}%)', { read: fmtTokens(usageTotals.cacheRead), hit }))
+      parts.push(
+        t('Fresh: {in} · Written to cache: {write}', { in: fmtTokens(usageTotals.input), write: fmtTokens(usageTotals.cacheWrite) })
+      )
     }
     return parts.join('\n')
   }
@@ -214,13 +224,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         >
           {status.thinkingLevels.map((level) => (
             <option key={level} value={level}>
-              thinking: {level}
+              {t('thinking: {level}', { level })}
             </option>
           ))}
         </select>
       )}
       <button className="abort" onClick={() => void abort()} disabled={!streaming}>
-        Stop
+        {t('Stop')}
       </button>
     </>
   )
@@ -229,14 +239,14 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     <>
       <header className="header">
         <span className={`dot ${status.state}`} />
-        <span className="state">{STATUS_LABEL[status.state] ?? status.state}</span>
+        <span className="state">{t(STATUS_LABEL[status.state] ?? status.state)}</span>
         {placement === 'top' && controls}
         {ctxPercent !== null && (
           <span className="ctx-usage" style={{ color: percentColor(ctxPercent) }} title={ctxTitle()}>
             {ctxPercent}%
           </span>
         )}
-        {queuedCount > 0 && <span className="queue-label">Queued: {queuedCount}</span>}
+        {queuedCount > 0 && <span className="queue-label">{t('Queued: {count}', { count: queuedCount })}</span>}
         {Object.entries(extensionStatuses).map(([key, text]) => (
           <span key={key} className="ext-status" title={key}>
             {text}
@@ -244,7 +254,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         ))}
         <button
           className="icon"
-          title={muted ? 'Unmute sounds for this session' : 'Mute sounds for this session'}
+          title={muted ? t('Unmute sounds for this session') : t('Mute sounds for this session')}
           onClick={() => toggleMuted(activeHostId)}
         >
           {muted ? (
@@ -280,7 +290,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         </button>
         <button
           className="icon"
-          title={toolsHidden ? 'Show tool blocks' : 'Hide tool blocks'}
+          title={toolsHidden ? t('Show tool blocks') : t('Hide tool blocks')}
           onClick={() => toggleToolsHidden(activeHostId)}
         >
           {toolsHidden ? (
@@ -323,7 +333,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       <footer className="composer">
         <textarea
           value={input}
-          placeholder="Message pi…"
+          placeholder={
+            sendOnEnter
+              ? t('Ask Pi (Enter to send, Shift+Enter for newline)')
+              : t('Ask Pi (Ctrl+Enter to send)')
+          }
           rows={3}
           onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => {
@@ -336,13 +350,18 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             }
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (sendOnEnter) {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void send()
+              }
+            } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault()
               void send()
             }
           }}
         />
-        <button className="attach" title="Attach file" onClick={() => void attachFile()} disabled={project === null}>
+        <button className="attach" title={t('Attach file')} onClick={() => void attachFile()} disabled={project === null}>
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
@@ -355,7 +374,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           </svg>
         </button>
         <button onClick={() => void send()} disabled={input.trim().length === 0}>
-          Send
+          {t('Send')}
         </button>
       </footer>
     </>

@@ -1,14 +1,16 @@
 import type { TodoItem } from '../../../shared/todo'
+import { useT } from '../lib/i18n'
 
 /** Todo-виджет расширения (порт `TodoPanel.kt` без прогресс-полосы пиксель-в-пиксель):
  *  шапка «Todo done/total» + строки ✓/▶/○. */
 export function TodoPanel({ items }: { items: TodoItem[] }): React.JSX.Element | null {
+  const t = useT()
   if (items.length === 0) return null
   const done = items.filter((item) => item.status === 'completed').length
   return (
     <details className="todo-panel" open>
       <summary>
-        <span className="todo-title">Todo</span>
+        <span className="todo-title">{t('Todo')}</span>
         <span className="todo-count">
           {done}/{items.length}
         </span>

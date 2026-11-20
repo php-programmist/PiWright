@@ -11,6 +11,8 @@ import {
   FILES_READ_CHANNEL,
   FILES_WATCH_CHANNEL,
   GIT_BRANCHES_CHANNEL,
+  GIT_BRANCH_DELETE_CHANNEL,
+  GIT_BRANCH_RENAME_CHANNEL,
   GIT_CHECKOUT_CHANNEL,
   GIT_COMMIT_CHANNEL,
   GIT_FILE_DIFF_CHANNEL,
@@ -145,6 +147,12 @@ export function registerIpc(
       if (typeof raw['singleLineTools'] === 'boolean') {
         safe.singleLineTools = raw['singleLineTools']
       }
+      if (typeof raw['sendOnEnter'] === 'boolean') {
+        safe.sendOnEnter = raw['sendOnEnter']
+      }
+      if (raw['language'] === 'en' || raw['language'] === 'ru') {
+        safe.language = raw['language']
+      }
       if (raw['panels'] !== null && typeof raw['panels'] === 'object' && !Array.isArray(raw['panels'])) {
         const src = raw['panels'] as Record<string, unknown>
         const panels: Settings['panels'] = {}
@@ -155,6 +163,7 @@ export function registerIpc(
           const rec = p as Record<string, unknown>
           if (typeof rec['open'] === 'boolean') entry.open = rec['open']
           if (typeof rec['width'] === 'number' && Number.isFinite(rec['width'])) entry.width = rec['width']
+          if (typeof rec['height'] === 'number' && Number.isFinite(rec['height'])) entry.height = rec['height']
           panels[name] = entry
         }
         safe.panels = panels
@@ -328,11 +337,23 @@ export function registerIpc(
     return git.branches(project)
   })
 
-  ipcMain.handle(GIT_CHECKOUT_CHANNEL, async (_event, project: unknown, name: unknown, create: unknown) => {
+  ipcMain.handle(GIT_CHECKOUT_CHANNEL, async (_event, project: unknown, name: unknown, create: unknown, startPoint: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof create !== 'boolean') {
       return { ok: false, error: 'Invalid request' }
     }
-    return git.checkout(project, name, create)
+    return git.checkout(project, name, create, typeof startPoint === 'string' ? startPoint : undefined)
+  })
+
+  ipcMain.handle(GIT_BRANCH_RENAME_CHANNEL, async (_event, project: unknown, oldName: unknown, newName: unknown) => {
+    if (!isProjectEntry(project) || typeof oldName !== 'string' || typeof newName !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.renameBranch(project, oldName, newName)
+  })
+
+  ipcMain.handle(GIT_BRANCH_DELETE_CHANNEL, async (_event, project: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string') return { ok: false, error: 'Invalid request' }
+    return git.deleteBranch(project, name)
   })
 
   ipcMain.handle(FILES_LIST_CHANNEL, async (_event, project: unknown, dir: unknown) => {

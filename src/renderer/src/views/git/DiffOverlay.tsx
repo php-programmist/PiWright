@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react'
 import { DiffEditor } from '../../components/DiffEditor'
 import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
+import { useT } from '../../lib/i18n'
 import { baseName } from './GitPanel'
 
 export function DiffOverlay(): React.JSX.Element | null {
+  const t = useT()
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const active = useSessionsStore((s) => s.active)
   const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
@@ -38,20 +40,20 @@ export function DiffOverlay(): React.JSX.Element | null {
   return (
     <div className="diff-overlay">
       <div className="diff-head">
-        <button className="icon" title="Previous file" onClick={() => step(-1)}>↑</button>
-        <button className="icon" title="Next file" onClick={() => step(1)}>↓</button>
+        <button className="icon" title={t('Previous file')} onClick={() => step(-1)}>↑</button>
+        <button className="icon" title={t('Next file')} onClick={() => step(1)}>↓</button>
         <span className="diff-title" title={selectedPath}>{baseName(selectedPath)}</span>
         <span className="spacer" />
-        <button className={`diff-mode${sideBySide ? '' : ' active'}`} title="Unified diff" onClick={() => setSideBySide(false)}>
-          unified
+        <button className={`diff-mode${sideBySide ? '' : ' active'}`} title={t('Unified diff')} onClick={() => setSideBySide(false)}>
+          {t('unified')}
         </button>
-        <button className={`diff-mode${sideBySide ? ' active' : ''}`} title="Side-by-side diff" onClick={() => setSideBySide(true)}>
-          split
+        <button className={`diff-mode${sideBySide ? ' active' : ''}`} title={t('Side-by-side diff')} onClick={() => setSideBySide(true)}>
+          {t('split')}
         </button>
-        <button className="icon diff-close" title="Close diff (back to chat)" onClick={closeFile}>×</button>
+        <button className="icon diff-close" title={t('Close diff (back to chat)')} onClick={closeFile}>×</button>
       </div>
       <div className="diff-body">
-        {diffLoading && <div className="panel-hint">loading…</div>}
+        {diffLoading && <div className="panel-hint">{t('loading…')}</div>}
         {!diffLoading && diff !== null && (
           <DiffEditor path={selectedPath} original={diff.original} modified={diff.modified} sideBySide={sideBySide} />
         )}

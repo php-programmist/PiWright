@@ -19,5 +19,9 @@ export function hydratePanels(settings: Settings): void {
   const { git, files, terminal } = settings.panels
   if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}) })
   if (files !== undefined) useFilesStore.setState({ ...(files.open !== undefined ? { open: files.open } : {}), ...(files.width !== undefined ? { width: files.width } : {}) })
-  if (terminal !== undefined) useTerminalStore.setState({ ...(terminal.open !== undefined ? { open: terminal.open } : {}), ...(terminal.width !== undefined ? { width: terminal.width } : {}) })
+  if (terminal !== undefined)
+    useTerminalStore.setState({
+      ...(terminal.open !== undefined ? { open: terminal.open } : {}),
+      ...(terminal.height !== undefined ? { height: terminal.height } : {})
+    })
 }
