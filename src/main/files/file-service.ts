@@ -4,7 +4,7 @@
 import { promises as fs } from 'node:fs'
 import { win32 } from 'node:path'
 import * as chokidar from 'chokidar'
-import type { FileListResult, FileReadResult, ProjectEntry } from '../../shared/ipc-contracts'
+import type { FileListResult, FileReadResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
 const BINARY_PLACEHOLDER = '(binary file)'
@@ -61,6 +61,18 @@ export class FileService {
       return { ok: true, error: null, content: buffer.includes(0) ? BINARY_PLACEHOLDER : buffer.toString('utf8') }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), content: '' }
+    }
+  }
+
+  async write(project: ProjectEntry, relPath: string, content: string): Promise<FileWriteResult> {
+    const abs = resolveWithinRoot(project.dir, relPath)
+    if (abs === null) return { ok: false, error: 'Path is outside the project' }
+    try {
+      await fs.mkdir(win32.dirname(abs), { recursive: true })
+      await fs.writeFile(abs, content, 'utf8')
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
 

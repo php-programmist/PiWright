@@ -2,6 +2,7 @@
  *  крестик вкладки закрывает её, крестик справа — обратно к чату (вкладки сохраняются). */
 import { useMemo } from 'react'
 import { FileEditor } from '../../components/FileEditor'
+import { MarkdownLive } from '../../components/MarkdownLive'
 import { useFilesStore } from '../../stores/files'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
@@ -52,7 +53,11 @@ export function FileViewer(): React.JSX.Element | null {
         </div>
       )}
       <div className="file-body">
-        <FileEditor path={activePath} content={contents[activePath] ?? ''} />
+        {/\.(md|markdown)$/i.test(activePath) ? (
+          <MarkdownLive key={activePath} project={project} path={activePath} content={contents[activePath] ?? ''} />
+        ) : (
+          <FileEditor path={activePath} content={contents[activePath] ?? ''} />
+        )}
       </div>
     </div>
   )

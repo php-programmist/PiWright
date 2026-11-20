@@ -29,6 +29,8 @@ interface FilesState extends FilesData {
   setActiveTab: (path: string) => void
   closeViewer: () => void
   setError: (error: string | null) => void
+  /** Оптимистичная запись md-файла (live-preview): контент сразу в сторе, при ошибке — перечит. */
+  saveContent: (project: ProjectEntry, path: string, content: string) => Promise<boolean>
   applyFileChanged: (project: ProjectEntry, path: string) => Promise<void>
 }
 
@@ -123,6 +125,17 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   closeViewer: () => set({ viewerOpen: false }),
 
   setError: (error) => set({ error }),
+
+  saveContent: async (project, path, content) => {
+    set((state) => ({ contents: { ...state.contents, [path]: content } }))
+    const result = await window.piwright.filesWrite(project, path, content)
+    if (!result.ok) {
+      set({ error: result.error })
+      await get().applyFileChanged(project, path)
+      return false
+    }
+    return true
+  },
 
   applyFileChanged: async (project, path) => {
     const state = get()

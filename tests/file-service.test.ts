@@ -79,6 +79,29 @@ describe('FileService.read', () => {
   })
 })
 
+describe('FileService.write', () => {
+  it('creates and overwrites a file by relative path', async () => {
+    expect(await service.write(project, 'notes/new.md', '# hi')).toMatchObject({ ok: true, error: null })
+    expect(await service.read(project, 'notes/new.md')).toMatchObject({ ok: true, content: '# hi' })
+    expect(await service.write(project, 'notes/new.md', '# bye')).toMatchObject({ ok: true })
+    expect(await service.read(project, 'notes/new.md')).toMatchObject({ ok: true, content: '# bye' })
+  })
+
+  it('rejects paths outside the project', async () => {
+    expect(await service.write(project, '../evil.md', 'x')).toMatchObject({
+      ok: false,
+      error: 'Path is outside the project'
+    })
+    expect(await service.write(project, 'a/../../evil.md', 'x')).toMatchObject({ ok: false })
+  })
+
+  it('keeps utf-8 content intact', async () => {
+    const text = '# Привет — мир \u00e9\u00e8\n\n- α β γ\n'
+    expect(await service.write(project, 'notes/utf.md', text)).toMatchObject({ ok: true })
+    expect(await service.read(project, 'notes/utf.md')).toMatchObject({ ok: true, content: text })
+  })
+})
+
 describe('resolveWithinRoot', () => {
   const root = 'D:\\r'
 
