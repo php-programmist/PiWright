@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type {
+  GitBranchesResult,
   GitFileDiffResult,
   GitLogResult,
   GitMessageResult,
@@ -167,6 +168,21 @@ export class GitService {
     const result = await this.run(project, ['log', '--oneline', '-n', String(LOG_LIMIT)])
     if (result.code !== 0) return { ok: true, error: null, entries: [] }
     return { ok: true, error: null, entries: parseLogOneline(result.stdout) }
+  }
+
+  async branches(project: ProjectEntry): Promise<GitBranchesResult> {
+    const result = await this.run(project, ['branch', '--list', '--format=%(refname:short)'])
+    if (result.code !== 0) return { ok: false, error: errorOf(result, ['branch']), branches: [] }
+    const branches = result.stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+    return { ok: true, error: null, branches }
+  }
+
+  async checkout(project: ProjectEntry, name: string, create: boolean): Promise<GitOpResult> {
+    const trimmed = name.trim()
+    if (trimmed.length === 0 || /\s/.test(trimmed)) return { ok: false, error: 'Invalid branch name' }
+    const args = create ? ['checkout', '-b', trimmed] : ['checkout', trimmed]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
   /** Сообщение коммита: `git diff --staged` → промпт → одноразовый pi (RPC, без сессии и

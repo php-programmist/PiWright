@@ -166,6 +166,17 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   </select>
                 </label>
               </section>
+              <section className="settings-section">
+                <h3>Tool blocks</h3>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    checked={draft.singleLineTools}
+                    onChange={(e) => update({ singleLineTools: e.target.checked })}
+                  />
+                  single-line tool blocks (command in one line, full command and output when expanded)
+                </label>
+              </section>
             </>
           )}
           {tab === 'models' && <div className="panel-hint">Model management will appear later.</div>}

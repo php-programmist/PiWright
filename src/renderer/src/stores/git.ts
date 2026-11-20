@@ -17,6 +17,7 @@ type GitData = Pick<
   | 'busy'
   | 'log'
   | 'logOpen'
+  | 'branches'
 >
 
 interface GitState {
@@ -36,6 +37,7 @@ interface GitState {
   busy: boolean
   log: GitLogEntry[]
   logOpen: boolean
+  branches: string[]
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Только статус; silent — не трогать error/status при сбое (поллинг, конец хода). */
@@ -46,6 +48,7 @@ interface GitState {
   unstage: (project: ProjectEntry, paths: string[]) => Promise<void>
   commit: (project: ProjectEntry) => Promise<void>
   push: (project: ProjectEntry) => Promise<void>
+  checkout: (project: ProjectEntry, name: string, create: boolean) => Promise<void>
   generate: (project: ProjectEntry) => Promise<void>
   setMessage: (message: string) => void
   setError: (error: string | null) => void
@@ -67,7 +70,8 @@ function resetState(): GitData {
     generating: false,
     busy: false,
     log: [],
-    logOpen: false
+    logOpen: false,
+    branches: []
   }
 }
 
@@ -86,12 +90,17 @@ export const useGitStore = create<GitState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const [statusResult, logResult] = await Promise.all([window.piwright.gitStatus(project), window.piwright.gitLog(project)])
+    const [statusResult, logResult, branchesResult] = await Promise.all([
+      window.piwright.gitStatus(project),
+      window.piwright.gitLog(project),
+      window.piwright.gitBranches(project)
+    ])
     set((state) => ({
       loading: false,
       status: statusResult.ok ? statusResult.status : state.status,
       error: statusResult.ok ? state.error : statusResult.error,
-      log: logResult.entries
+      log: logResult.entries,
+      branches: branchesResult.branches
     }))
   },
 
@@ -152,6 +161,18 @@ export const useGitStore = create<GitState>((set, get) => ({
     const result = await window.piwright.gitPush(project)
     set({ busy: false, error: result.ok ? null : result.error })
     if (result.ok) await get().refresh(project)
+  },
+
+  checkout: async (project, name, create) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitCheckout(project, name, create)
+    if (!result.ok) {
+      set({ busy: false, error: result.error })
+      return
+    }
+    get().closeFile()
+    await get().refresh(project)
+    set({ busy: false })
   },
 
   generate: async (project) => {

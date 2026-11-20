@@ -135,7 +135,8 @@ describe('PiHost', () => {
     const piHost = new PiHost(
       () => SETTINGS,
       { onStatus: (s) => statuses.push(s), onEvent: (m) => events.push(m) },
-      async () => ({ backend, error: null })
+      async () => ({ backend, error: null }),
+      async () => null
     )
     const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
     await host.prompt('go')

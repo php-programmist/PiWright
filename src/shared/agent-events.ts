@@ -1,4 +1,5 @@
 /** Протокол-независимый контракт транспорт → UI. Порт `core/AgentEvents.kt` (нужное для фазы 2). */
+import type { AskDialog } from './ask-questions'
 
 /** Вызов инструмента pi: `tool_execution_start` (или `toolCall` в истории). */
 export interface ToolCall {
@@ -68,6 +69,7 @@ export type ExtensionDialog =
   | { kind: 'select'; title: string; body: string | null; options: string[]; timeoutMs: number | null }
   | { kind: 'input'; title: string; placeholder: string | null; timeoutMs: number | null }
   | { kind: 'editor'; title: string; prefill: string | null; timeoutMs: number | null }
+  | AskDialog
 
 /** Ответ на диалог: confirmed у confirm, value у остальных; cancelled — закрыт без выбора. */
 export type DialogAnswer =

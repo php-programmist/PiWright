@@ -30,6 +30,8 @@ export interface Settings {
   theme: Theme
   /** Размер шрифта ленты чата, px. */
   chatFontSize: number
+  /** Однострочные тул-блоки: шапка с «…», в раскрытом — полная команда и вывод. */
+  singleLineTools: boolean
   /** Состояние правых панелей — переживает перезапуск. */
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
   projects: ProjectEntry[]
@@ -149,6 +151,11 @@ export interface GitMessageResult extends GitOpResult {
   message: string
 }
 
+/** Локальные ветки репозитория (`git branch --list`). */
+export interface GitBranchesResult extends GitOpResult {
+  branches: string[]
+}
+
 /** Запись каталога в дереве файлов проекта (`.git` скрыт). */
 export interface FileEntry {
   name: string
@@ -247,6 +254,9 @@ export interface PiwrightApi {
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry): Promise<GitLogResult>
+  gitBranches(project: ProjectEntry): Promise<GitBranchesResult>
+  /** create — `git checkout -b <name>` (создать и переключиться), иначе `git checkout <name>`. */
+  gitCheckout(project: ProjectEntry, name: string, create: boolean): Promise<GitOpResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
@@ -286,6 +296,8 @@ export const GIT_UNSTAGE_CHANNEL = 'git:unstage'
 export const GIT_COMMIT_CHANNEL = 'git:commit'
 export const GIT_PUSH_CHANNEL = 'git:push'
 export const GIT_LOG_CHANNEL = 'git:log'
+export const GIT_BRANCHES_CHANNEL = 'git:branches'
+export const GIT_CHECKOUT_CHANNEL = 'git:checkout'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'

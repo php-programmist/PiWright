@@ -1,0 +1,12 @@
+This directory contains a modified copy of @thinkrail/pi-ask-user-question 0.2.0
+(https://github.com/JetBrains/thinkrail, pi-extensions/ask-user-question),
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Modifications by the pi-wrapper plugin:
+- tool renamed from ask_user_question to ask_question;
+- added src/rpc.ts: the questionnaire is sent to the plugin as one `input`
+  request (JSON payload in the title) instead of sequential dialogs;
+- added a per-question "chat" answer kind: the user can mark questions as
+  needing a more detailed explanation, which the agent explains in chat;
+- questionnaire result text reports those marked questions instead of
+  terminating the turn.

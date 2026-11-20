@@ -8,6 +8,8 @@ import {
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_WATCH_CHANNEL,
+  GIT_BRANCHES_CHANNEL,
+  GIT_CHECKOUT_CHANNEL,
   GIT_COMMIT_CHANNEL,
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
@@ -99,6 +101,9 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
           CHAT_FONT_SIZE_MAX,
           Math.max(CHAT_FONT_SIZE_MIN, Math.round(raw['chatFontSize']))
         )
+      }
+      if (typeof raw['singleLineTools'] === 'boolean') {
+        safe.singleLineTools = raw['singleLineTools']
       }
       if (raw['panels'] !== null && typeof raw['panels'] === 'object' && !Array.isArray(raw['panels'])) {
         const src = raw['panels'] as Record<string, unknown>
@@ -268,6 +273,18 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
   ipcMain.handle(GIT_GENERATE_MESSAGE_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', message: '' }
     return git.generateCommitMessage(project)
+  })
+
+  ipcMain.handle(GIT_BRANCHES_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', branches: [] }
+    return git.branches(project)
+  })
+
+  ipcMain.handle(GIT_CHECKOUT_CHANNEL, async (_event, project: unknown, name: unknown, create: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string' || typeof create !== 'boolean') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.checkout(project, name, create)
   })
 
   ipcMain.handle(FILES_LIST_CHANNEL, async (_event, project: unknown, dir: unknown) => {

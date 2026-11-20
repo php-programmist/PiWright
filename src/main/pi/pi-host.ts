@@ -17,7 +17,8 @@ export class PiHost {
   constructor(
     private readonly getSettings: () => Settings,
     private readonly sink: PiHostSink,
-    private readonly createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
+    private readonly createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>,
+    private readonly installAskExtension?: (project: ProjectEntry, settings: Settings) => Promise<string | null>
   ) {}
 
   create(project: ProjectEntry, sessionFile?: string | null): SessionHost {
@@ -25,7 +26,11 @@ export class PiHost {
       onStatus: (status) => this.sink.onStatus(status),
       onEvent: (event) => this.sink.onEvent({ hostId: host.id, event })
     }
-    const host = new SessionHost(this.getSettings, listener, project, { sessionFile, createBackend: this.createBackend })
+    const host = new SessionHost(this.getSettings, listener, project, {
+      sessionFile,
+      createBackend: this.createBackend,
+      installAskExtension: this.installAskExtension
+    })
     this.hosts.set(host.id, host)
     return host
   }

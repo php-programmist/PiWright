@@ -23,6 +23,8 @@ export function iconForTool(name: string): string {
       return '✏️'
     case 'bash':
       return '⚡'
+    case 'ask_question':
+      return '❓'
     default:
       return '🔧'
   }
@@ -50,6 +52,14 @@ function compactArgs(call: ToolCall): string {
 export function toolHeader(call: ToolCall): ToolHeader {
   const command = bashCommand(call)
   if (command !== null) return { icon: iconForTool(call.name), title: terminalTitle(command), detail: '' }
+  if (call.name === 'ask_question') {
+    const questions = Array.isArray(call.args['questions']) ? call.args['questions'] : []
+    const headers = questions
+      .map((q) => (q !== null && typeof q === 'object' && typeof (q as Record<string, unknown>)['header'] === 'string' ? ((q as Record<string, unknown>)['header'] as string) : ''))
+      .filter((h) => h.trim().length > 0)
+      .join(', ')
+    return { icon: iconForTool(call.name), title: 'ask_question', detail: `${questions.length} question(s)${headers.length > 0 ? `: ${headers}` : ''}` }
+  }
   const detail = str(call.args, 'path') ?? compactArgs(call)
   return { icon: iconForTool(call.name), title: call.name, detail }
 }

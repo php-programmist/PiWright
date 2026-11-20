@@ -1,8 +1,8 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
-import type { GitFileEntry } from '../../../../shared/ipc-contracts'
+import type { GitFileEntry, ProjectEntry } from '../../../../shared/ipc-contracts'
 
 const BADGE_CLASS: Record<string, string> = {
   M: 'mod',
@@ -65,6 +65,64 @@ function ErrorBanner(): React.JSX.Element | null {
   )
 }
 
+function BranchSelect({ project, branch, detached }: { project: ProjectEntry; branch: string | null; detached: boolean }): React.JSX.Element {
+  const branches = useGitStore((s) => s.branches)
+  const busy = useGitStore((s) => s.busy)
+  const checkout = useGitStore((s) => s.checkout)
+  const [creating, setCreating] = useState(false)
+  const [name, setName] = useState('')
+
+  if (creating) {
+    const done = (): void => {
+      const trimmed = name.trim()
+      setCreating(false)
+      setName('')
+      if (trimmed.length > 0) void checkout(project, trimmed, true)
+    }
+    return (
+      <input
+        className="git-branch-input"
+        autoFocus
+        value={name}
+        placeholder="new branch name"
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') done()
+          if (e.key === 'Escape') {
+            setCreating(false)
+            setName('')
+          }
+        }}
+        onBlur={done}
+      />
+    )
+  }
+
+  return (
+    <>
+      {branch === null || detached ? (
+        <span className="git-branch">detached</span>
+      ) : (
+        <select
+          className="git-branch-select"
+          value={branch}
+          disabled={busy}
+          title={branch}
+          onChange={(e) => {
+            if (e.target.value !== branch) void checkout(project, e.target.value, false)
+          }}
+        >
+          {!branches.includes(branch) && <option value={branch}>{branch}</option>}
+          {branches.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </select>
+      )}
+      <button className="icon" title="Create branch" disabled={busy} onClick={() => setCreating(true)}>+</button>
+    </>
+  )
+}
+
 export function GitPanel(): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const active = useSessionsStore((s) => s.active)
@@ -117,7 +175,6 @@ export function GitPanel(): React.JSX.Element {
   const generate = useGitStore((s) => s.generate)
   const setMessage = useGitStore((s) => s.setMessage)
   const toggleLog = useGitStore((s) => s.toggleLog)
-
   if (project === null) {
     return (
       <aside className="git-panel" style={{ width }}>
@@ -130,13 +187,12 @@ export function GitPanel(): React.JSX.Element {
   const entries = status?.entries ?? []
   const staged = entries.filter((e) => e.index !== '.')
   const changes = entries.filter((e) => e.worktree !== '.' || e.untracked)
-  const branchLabel = status === null ? '—' : (status.branch ?? (status.detached ? 'detached' : '—'))
 
   return (
     <aside className="git-panel" style={{ width }}>
       <div className="git-resizer" onMouseDown={startResize} />
       <div className="git-head">
-        <span className="git-branch" title={status?.upstream ?? undefined}>{branchLabel}</span>
+        <BranchSelect project={project} branch={status?.branch ?? null} detached={status?.detached ?? false} />
         {(status?.ahead ?? 0) > 0 && <span className="git-ab">↑{status?.ahead}</span>}
         {(status?.behind ?? 0) > 0 && <span className="git-ab">↓{status?.behind}</span>}
         <span className="spacer" />

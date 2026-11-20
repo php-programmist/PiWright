@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: Settings = {
   selectorPlacement: 'top',
   theme: 'dark',
   chatFontSize: 14,
+  singleLineTools: false,
   panels: {},
   projects: []
 }

@@ -12,6 +12,7 @@ import { createPiBackend } from './backends/factory'
 import type { CreateBackendResult } from './backends/factory'
 import { PiEventTranslator } from './event-translator'
 import { decodeExtensionDialog, encodeDialogAnswer } from './extension-ui'
+import { ensureAskExtension } from './ask-extension'
 import { runHandshake } from './handshake'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
@@ -32,6 +33,8 @@ export interface SessionHostOptions {
   /** Файл сессии для возобновления — спавн с `--session <путь>` и реплей истории. */
   sessionFile?: string | null
   createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
+  /** Установка расширения ask_question; null — стартовать без него (по умолчанию — вшитое). */
+  installAskExtension?: (project: ProjectEntry, settings: Settings) => Promise<string | null>
 }
 
 export class SessionHost {
@@ -52,6 +55,7 @@ export class SessionHost {
   private desiredSessionName: string | null = null
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
+  private readonly installAskExtension: (project: ProjectEntry, settings: Settings) => Promise<string | null>
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -61,6 +65,7 @@ export class SessionHost {
   ) {
     this.sessionFile = opts.sessionFile ?? null
     this.createBackend = opts.createBackend ?? createPiBackend
+    this.installAskExtension = opts.installAskExtension ?? ensureAskExtension
     this.status('idle')
   }
 
@@ -172,7 +177,8 @@ export class SessionHost {
       }
     })
     try {
-      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, null, splitArgs(settings.piExtraArgs)) })
+      const askExtensionPath = await this.installAskExtension(this.project, settings)
+      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, askExtensionPath, splitArgs(settings.piExtraArgs)) })
       const handshake = await runHandshake(conn, {
         desiredThinkingLevel: this.desiredThinkingLevel,
         sessionName: this.desiredSessionName

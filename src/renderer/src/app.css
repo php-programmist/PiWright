@@ -335,6 +335,20 @@ body {
   font: inherit;
 }
 
+.settings-section label.settings-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.settings-section label.settings-check input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .history-head {
   color: var(--faint);
   padding: 6px 10px 2px 22px;
@@ -556,6 +570,18 @@ body {
   font-weight: 600;
 }
 
+.tool-block.single .tool-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.tool-block.single .tool-detail {
+  flex-shrink: 0;
+}
+
 .tool-detail {
   color: var(--faint);
   overflow: hidden;
@@ -587,6 +613,7 @@ body {
 
 .tool-output,
 .tool-patch,
+.tool-command,
 .edit-texts pre {
   margin: 0;
   white-space: pre-wrap;
@@ -594,6 +621,11 @@ body {
   font-family: Consolas, monospace;
   font-size: 0.9em;
   color: var(--text-2);
+}
+
+.tool-command {
+  color: var(--text);
+  margin-bottom: 6px;
 }
 
 .tool-patch {
@@ -668,6 +700,174 @@ body {
   padding: 6px 8px;
   font: inherit;
   margin-bottom: 8px;
+}
+
+.ask-card {
+  max-width: 90%;
+}
+
+.ask-question {
+  margin-bottom: 10px;
+}
+
+.ask-chip {
+  display: inline-block;
+  color: var(--blue);
+  background: var(--active);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.ask-question-text {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+}
+
+.ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ask-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ask-option:hover {
+  border-color: var(--accent);
+}
+
+.ask-option.selected {
+  border-color: var(--accent);
+  background: var(--active);
+}
+
+.ask-option.disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ask-mark {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.ask-option.selected .ask-mark {
+  color: var(--accent);
+}
+
+.ask-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ask-option-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ask-option-desc {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ask-option-why {
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.ask-recommended {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.ask-preview {
+  border-top: 1px dashed var(--border-strong);
+  margin-top: 6px;
+  padding-top: 6px;
+  font-size: 0.92em;
+}
+
+.ask-chat-toggle {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 0 0;
+}
+
+.ask-chat-toggle:hover {
+  color: var(--text);
+}
+
+.ask-chat-toggle.marked {
+  color: var(--yellow);
+}
+
+.ask-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ask-counter {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.ask-footer button {
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.ask-footer .ask-submit {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ask-footer .ask-submit:disabled {
+  background: var(--disabled);
+  cursor: default;
+}
+
+.ask-footer .ask-cancel {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+}
+
+.ask-receipt-line {
+  padding: 2px 0;
+  color: var(--green);
+  font-size: 12px;
+}
+
+.ask-receipt-line.missed {
+  color: var(--faint);
 }
 
 .info-message {
@@ -912,6 +1112,39 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.git-branch-select,
+.git-branch-input {
+  font-weight: 600;
+  color: var(--text);
+  background: var(--input-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 150px;
+  min-width: 0;
+}
+
+.git-branch-input {
+  flex: 1;
+  min-width: 60px;
+}
+
+.git-head .icon {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 2px;
+}
+
+.git-head .icon:hover {
+  color: var(--text);
 }
 
 .git-ab {

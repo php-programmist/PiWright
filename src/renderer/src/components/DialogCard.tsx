@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DialogAnswer, ExtensionDialog } from '../../../shared/agent-events'
+import { AskQuestionCard } from './AskQuestionCard'
 
 const RECEIPT_TEXT: Record<string, string> = {
   answered: 'answered',
@@ -7,7 +8,7 @@ const RECEIPT_TEXT: Record<string, string> = {
   expired: 'expired — pi applied the default answer'
 }
 
-/** Инлайн-карточка диалога расширения pi (`confirm`/`select`/`input`/`editor`).
+/** Инлайн-карточка диалога расширения pi (`confirm`/`select`/`input`/`editor`/`ask`).
  *  После ответа — квитанция вместо кнопок; первый ответ выигрывает (main-сторона). */
 export function DialogCard({
   dialog,
@@ -19,6 +20,10 @@ export function DialogCard({
   onAnswer: (answer: DialogAnswer) => void
 }): React.JSX.Element {
   const [value, setValue] = useState(dialog.kind === 'editor' ? (dialog.prefill ?? '') : '')
+
+  if (dialog.kind === 'ask') {
+    return <AskQuestionCard request={dialog.request} receipt={receipt} onAnswer={onAnswer} />
+  }
 
   if (receipt !== null) {
     return <div className="dialog-card receipt">{RECEIPT_TEXT[receipt] ?? receipt}</div>

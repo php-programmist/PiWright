@@ -113,6 +113,25 @@ describe('GitService against a real repository', () => {
     expect(after.status?.ahead).toBe(0)
   })
 
+  it('branches lists local branches, checkout switches, create makes a branch', async () => {
+    const listed = await git.branches(project)
+    expect(listed.ok).toBe(true)
+    expect(listed.branches).toContain('main')
+
+    expect((await git.checkout(project, 'feature/x', true)).ok).toBe(true)
+    let status = await git.status(project)
+    expect(status.status?.branch).toBe('feature/x')
+    expect((await git.branches(project)).branches).toContain('feature/x')
+
+    expect((await git.checkout(project, 'main', false)).ok).toBe(true)
+    status = await git.status(project)
+    expect(status.status?.branch).toBe('main')
+
+    expect((await git.checkout(project, 'missing-branch', false)).ok).toBe(false)
+    expect((await git.checkout(project, 'bad name with spaces', true)).ok).toBe(false)
+    expect((await git.checkout(project, '  ', true)).ok).toBe(false)
+  })
+
   it('status fails outside a repository', async () => {
     const notARepo = mkdtempSync(join(tmpdir(), 'piwright-nogit-'))
     try {

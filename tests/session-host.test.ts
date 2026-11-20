@@ -48,7 +48,10 @@ function makeHost(
     }
   }
   const created: CreateBackendResult = { backend, error: null }
-  const host = new SessionHost(() => settings, listener, PROJECT, { createBackend: async () => created })
+  const host = new SessionHost(() => settings, listener, PROJECT, {
+    createBackend: async () => created,
+    installAskExtension: async () => null
+  })
   return { host, events, statuses, spawnArgs }
 }
 
@@ -165,8 +168,7 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
-  it('extension_ui_request dialogs open, first answer wins, fire-and-forget methods are ignored', async () => {
-    const child = new ScriptedChild((type) => {
+  it('extension_ui_request dialogs open, first answer wins, fire-and-forget methods are ignored', async () => {    const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
       if (type === 'get_available_models') return { models: [] }
       if (type === 'get_commands') return { commands: [] }
@@ -199,6 +201,66 @@ describe('SessionHost', () => {
     expect(host.getPendingDialogs()).toHaveLength(0)
     const sent = child.sent.filter((c) => c['type'] === 'extension_ui_response')
     expect(sent).toEqual([{ type: 'extension_ui_response', id: 'u1', confirmed: true }])
+    host.dispose()
+  })
+
+  it('ask_question input request opens an ask dialog and the answer is a JSON value', async () => {
+    const questions = [
+      {
+        header: 'Auth',
+        question: 'Which auth?',
+        options: [
+          { label: 'A', description: 'first' },
+          { label: 'B', description: 'second' }
+        ]
+      }
+    ]
+    const title = 'pi-wrapper:ask:' + Buffer.from(JSON.stringify({ questions }), 'utf8').toString('base64')
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(`{"type":"extension_ui_request","id":"u9","method":"input","title":${JSON.stringify(title)}}\n`)
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'dialog_open' && e.dialog.kind === 'ask')).toBe(true)
+    })
+    const answer = host.respondDialog('u9', { kind: 'value', value: '{"answers":[],"cancelled":false}' })
+    expect(answer.ok).toBe(true)
+    const sent = child.sent.filter((c) => c['type'] === 'extension_ui_response')
+    expect(sent).toEqual([{ type: 'extension_ui_response', id: 'u9', value: '{"answers":[],"cancelled":false}' }])
+    host.dispose()
+  })
+
+  it('ask extension path from the installer goes into pi args as -e', async () => {
+    const child = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
+    currentChild = child
+    const events: UiEvent[] = []
+    const statuses: PiStatus[] = []
+    const spawnArgs: string[][] = []
+    const backend: PiBackend = {
+      displayName: 'fake',
+      spawner: async (req) => {
+        spawnArgs.push(req.args)
+        return child as unknown as ChildProcess
+      }
+    }
+    const host = new SessionHost(() => SETTINGS, { onEvent: (e) => events.push(e), onStatus: (s) => statuses.push(s) }, PROJECT, {
+      createBackend: async () => ({ backend, error: null }),
+      installAskExtension: async () => 'C:\\ext\\ask-question'
+    })
+    await host.prompt('ping')
+    expect(spawnArgs[0]).toEqual(['--mode', 'rpc', '-e', 'C:\\ext\\ask-question'])
     host.dispose()
   })
 
