@@ -230,6 +230,15 @@ export interface TermExitMessage {
   code: number
 }
 
+/** Вложение промпта: сохранено в `.pi/attachments/`. ref — ссылка для текста промпта. */
+export interface AttachmentResult {
+  ok: boolean
+  error: string | null
+  name: string
+  isImage: boolean
+  ref: string
+}
+
 export interface PiwrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
@@ -241,7 +250,7 @@ export interface PiwrightApi {
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>
-  prompt(hostId: string, text: string): Promise<PromptResult>
+  prompt(hostId: string, text: string, images?: string[]): Promise<PromptResult>
   abort(hostId: string): Promise<PromptResult>
   setModel(hostId: string, key: string): Promise<PromptResult>
   setThinkingLevel(hostId: string, level: string): Promise<PromptResult>
@@ -261,6 +270,10 @@ export interface PiwrightApi {
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  /** base64 → файл в `.pi/attachments/` (paste); name — желаемое, возвращается фактическое. */
+  putAttachment(project: ProjectEntry, name: string, base64: string): Promise<AttachmentResult>
+  /** Диалог выбора файла → копия в `.pi/attachments/`. */
+  chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
   termProfiles(project: ProjectEntry): Promise<TerminalProfilesResult>
   termCreate(project: ProjectEntry, profileId: TerminalProfileId | null): Promise<TerminalCreateResult>
   termClose(id: string): Promise<TerminalOpResult>
@@ -303,6 +316,8 @@ export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'
 export const FILES_WATCH_CHANNEL = 'files:watch'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
+export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'
+export const ATTACHMENTS_CHOOSE_CHANNEL = 'attachments:choose'
 export const TERM_PROFILES_CHANNEL = 'term:profiles'
 export const TERM_CREATE_CHANNEL = 'term:create'
 export const TERM_CLOSE_CHANNEL = 'term:close'

@@ -3,8 +3,9 @@ import { useFilesStore } from '../stores/files'
 import { useSessionsStore } from '../stores/sessions'
 import { toProjectRelative } from '../../../shared/file-paths'
 import type { ToolCall, ToolResult } from '../../../shared/agent-events'
+import type { ToolEntry } from '../stores/chat'
 
-export function ToolBlock({ call, partial, result }: { call: ToolCall; partial: string; result: ToolResult | null }): React.JSX.Element {
+export function ToolBlock({ call, partial, result, subTools = [] }: { call: ToolCall; partial: string; result: ToolResult | null; subTools?: ToolEntry[] }): React.JSX.Element {
   const header = toolHeader(call)
   const status = result === null ? (partial.length > 0 ? 'running…' : 'running…') : result.isError ? 'error' : 'done'
   const edits = editTexts(call)
@@ -48,6 +49,13 @@ export function ToolBlock({ call, partial, result }: { call: ToolCall; partial: 
           </div>
         )}
         {result?.patch != null && <pre className="tool-patch">{result.patch}</pre>}
+        {subTools.length > 0 && (
+          <div className="tool-children">
+            {subTools.map((child) => (
+              <ToolBlock key={child.call.id} call={child.call} partial={child.partial} result={child.result} subTools={child.children} />
+            ))}
+          </div>
+        )}
         {body.length > 0 && <pre className="tool-output">{body}</pre>}
       </div>
     </details>

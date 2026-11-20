@@ -5,6 +5,8 @@ import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { IpcMain } from 'electron'
 import {
+  ATTACHMENTS_CHOOSE_CHANNEL,
+  ATTACHMENTS_PUT_CHANNEL,
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_WATCH_CHANNEL,
@@ -50,6 +52,7 @@ import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN } from '../settings/settings'
+import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath } from '../sessions/session-catalog'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 
@@ -187,13 +190,13 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     return { ok: true, dir: result.filePaths[0] }
   })
 
-  ipcMain.handle(SESSION_PROMPT_CHANNEL, async (_event, hostId: unknown, text: unknown) => {
+  ipcMain.handle(SESSION_PROMPT_CHANNEL, async (_event, hostId: unknown, text: unknown, images: unknown) => {
     const h = host(piHost, hostId)
     if (h === null) return { ok: false, error: 'Session not found' }
     if (typeof text !== 'string' || text.trim().length === 0) {
       return { ok: false, error: 'Message is empty' }
     }
-    return h.prompt(text)
+    return h.prompt(text, isPathList(images) ? images : [])
   })
 
   ipcMain.handle(SESSION_ABORT_CHANNEL, (_event, hostId: unknown) => {
@@ -305,6 +308,18 @@ export function registerIpc(ipcMain: IpcMain, settings: SettingsService, piHost:
     if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
     files.setWatched(project, paths)
     return { ok: true, error: null }
+  })
+
+  ipcMain.handle(ATTACHMENTS_PUT_CHANNEL, async (_event, project: unknown, name: unknown, base64: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string' || typeof base64 !== 'string') {
+      return { ok: false, error: 'Invalid request', name: '', isImage: false, ref: '' }
+    }
+    return putAttachment(project, name, base64)
+  })
+
+  ipcMain.handle(ATTACHMENTS_CHOOSE_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '' }
+    return chooseAttachment(project)
   })
 
   ipcMain.handle(TERM_PROFILES_CHANNEL, async (_event, project: unknown) => {

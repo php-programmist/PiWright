@@ -1,13 +1,23 @@
 import { create } from 'zustand'
 import { compactionBannerText, compactionSummaryText } from '../../../shared/agent-events'
-import type { ExtensionDialog, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
+import type { ExtensionDialog, SessionTokens, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
 import type { PiEventMessage, PiStatus } from '../../../shared/ipc-contracts'
+
+export interface ToolEntry {
+  kind: 'tool'
+  id: number
+  call: ToolCall
+  partial: string
+  result: ToolResult | null
+  /** Вызовы, сделанные этим инструментом (nested/субагент, `parentToolCallId`). */
+  children: ToolEntry[]
+}
 
 export type Entry =
   | { kind: 'user'; id: number; text: string }
   | { kind: 'text'; id: number; text: string; open: boolean }
   | { kind: 'thinking'; id: number; text: string; open: boolean }
-  | { kind: 'tool'; id: number; call: ToolCall; partial: string; result: ToolResult | null }
+  | ToolEntry
   | { kind: 'dialog'; id: number; dialogId: string; dialog: ExtensionDialog; receipt: string | null }
   | { kind: 'info'; id: number; text: string }
   | { kind: 'error'; id: number; text: string }
@@ -25,6 +35,12 @@ export interface HostChat {
   streaming: boolean
   queue: QueueState
   contextUsage: { used: number; size: number } | null
+  /** Суммарные токены сессии (`get_session_stats`) — тултип процента контекста. */
+  usageTotals: SessionTokens | null
+  /** Статус-строки расширений (LSP и др.): key → text. */
+  extensionStatuses: Record<string, string>
+  /** Виджеты расширений (todo): key → строки. */
+  widgets: Record<string, string[]>
   toolsHidden: boolean
 }
 
@@ -68,7 +84,17 @@ function hostBuffers(hostId: string): HostBuffers {
 }
 
 function emptyHostChat(): HostChat {
-  return { status: null, entries: [], streaming: false, queue: { steering: [], followUp: [] }, contextUsage: null, toolsHidden: false }
+  return {
+    status: null,
+    entries: [],
+    streaming: false,
+    queue: { steering: [], followUp: [] },
+    contextUsage: null,
+    usageTotals: null,
+    extensionStatuses: {},
+    widgets: {},
+    toolsHidden: false
+  }
 }
 
 function resetBuffers(hostId: string): void {
@@ -116,6 +142,29 @@ function closeOpenBlocks(entries: Entry[]): Entry[] {
   )
 }
 
+/** Рекурсивная замена тул-записи; false — id не найден. */
+function mapToolEntry(entries: Entry[], callId: string, fn: (t: ToolEntry) => ToolEntry): boolean {
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]
+    if (e.kind !== 'tool') continue
+    if (e.call.id === callId) {
+      entries[i] = fn(e)
+      return true
+    }
+    const children = [...e.children]
+    if (mapToolEntry(children, callId, fn)) {
+      entries[i] = { ...e, children }
+      return true
+    }
+  }
+  return false
+}
+
+/** Вложить дочерний вызов в родителя; false — родитель не найден. */
+function appendChildTool(entries: Entry[], parentId: string, child: ToolEntry): boolean {
+  return mapToolEntry(entries, parentId, (t) => ({ ...t, children: [...t.children, child] }))
+}
+
 /** Чистый переход по транслированному событию; дельты буферизуются отдельно. */
 function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
   switch (event.type) {
@@ -153,36 +202,28 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'tool_start': {
       const flushed = withFlushed(hostId, host)
+      const entry: ToolEntry = { kind: 'tool', id: newId(), call: event.call, partial: '', result: null, children: [] }
+      const parentId = event.call.parentToolCallId
+      if (parentId !== null) {
+        const entries = [...flushed.entries]
+        if (appendChildTool(entries, parentId, entry)) return { ...flushed, entries }
+      }
       return {
         ...flushed,
-        entries: [...closeOpenBlocks(flushed.entries), { kind: 'tool', id: newId(), call: event.call, partial: '', result: null }]
+        entries: [...closeOpenBlocks(flushed.entries), entry]
       }
     }
     case 'tool_update': {
       const flushed = withFlushed(hostId, host)
       const entries = [...flushed.entries]
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const e = entries[i]
-        if (e.kind === 'tool' && e.call.id === event.id && e.result === null) {
-          entries[i] = { ...e, partial: event.text }
-          break
-        }
-      }
+      mapToolEntry(entries, event.id, (e) => (e.result === null ? { ...e, partial: event.text } : e))
       return { ...flushed, entries }
     }
     case 'tool_end': {
       const flushed = withFlushed(hostId, host)
       const entries = [...flushed.entries]
-      let found = false
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const e = entries[i]
-        if (e.kind === 'tool' && e.call.id === event.call.id && e.result === null) {
-          entries[i] = { ...e, result: event.result }
-          found = true
-          break
-        }
-      }
-      if (!found) entries.push({ kind: 'tool', id: newId(), call: event.call, partial: '', result: event.result })
+      const found = mapToolEntry(entries, event.call.id, (e) => ({ ...e, result: event.result }))
+      if (!found) entries.push({ kind: 'tool', id: newId(), call: event.call, partial: '', result: event.result, children: [] })
       return { ...flushed, entries }
     }
     case 'queue_update': {
@@ -191,6 +232,20 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'context_usage':
       return { ...host, contextUsage: { used: event.used, size: event.size } }
+    case 'session_stats':
+      return { ...host, usageTotals: event.tokens }
+    case 'extension_status': {
+      const statuses = { ...host.extensionStatuses }
+      if (event.text === null) delete statuses[event.key]
+      else statuses[event.key] = event.text
+      return { ...host, extensionStatuses: statuses }
+    }
+    case 'widget': {
+      const widgets = { ...host.widgets }
+      if (event.lines === null) delete widgets[event.key]
+      else widgets[event.key] = event.lines
+      return { ...host, widgets }
+    }
     case 'notify': {
       const flushed = withFlushed(hostId, host)
       return {
@@ -315,7 +370,16 @@ export const useChatStore = create<ChatState>((set) => ({
       return {
         hosts: {
           ...state.hosts,
-          [hostId]: { ...host, entries: [], streaming: false, queue: { steering: [], followUp: [] }, contextUsage: null }
+          [hostId]: {
+            ...host,
+            entries: [],
+            streaming: false,
+            queue: { steering: [], followUp: [] },
+            contextUsage: null,
+            usageTotals: null,
+            extensionStatuses: {},
+            widgets: {}
+          }
         }
       }
     })

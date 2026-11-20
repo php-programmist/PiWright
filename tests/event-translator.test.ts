@@ -17,6 +17,8 @@ class Recorder implements StreamListener {
   thoughts = ''
   results: ToolResult[] = []
   speeds: (TurnUsage['speed'] | null)[] = []
+  started: { name: string; parent: string | null }[] = []
+  ended: { name: string; parent: string | null }[] = []
 
   onAssistantTextDelta(text: string): void {
     this.text += text
@@ -34,12 +36,14 @@ class Recorder implements StreamListener {
     this.calls.push(`queue:${JSON.stringify(steering)}/${JSON.stringify(followUp)}`)
   }
   onToolStart(call: ToolCall): void {
+    this.started.push({ name: call.name, parent: call.parentToolCallId })
     this.calls.push(`start:${call.name}:${JSON.stringify(call.args)}`)
   }
   onToolUpdate(id: string, partialText: string): void {
     this.calls.push(`update:${id}:${partialText}`)
   }
   onToolEnd(call: ToolCall, result: ToolResult): void {
+    this.ended.push({ name: call.name, parent: call.parentToolCallId })
     this.calls.push(`end:${call.name}`)
     this.results.push(result)
   }
@@ -157,6 +161,24 @@ describe('PiEventTranslator', () => {
       '{"type":"tool_execution_update","toolCallId":"c1","toolName":"bash","partialResult":{"content":[{"type":"text","text":"line 1"}]}}'
     ])
     expect(recorder.calls).toEqual(['update:c1:line 1'])
+  })
+
+  it('nested tool calls carry parentToolCallId', () => {
+    const recorder = new Recorder()
+    feed(new PiEventTranslator(recorder), [
+      '{"type":"tool_execution_start","toolCallId":"p1","toolName":"codemode","args":{}}',
+      '{"type":"tool_execution_start","toolCallId":"c1","toolName":"read","args":{"path":"a"},"parentToolCallId":"p1"}',
+      '{"type":"tool_execution_end","toolCallId":"c1","toolName":"read","result":{"content":[{"type":"text","text":"x"}]},"isError":false,"parentToolCallId":"p1"}',
+      '{"type":"tool_execution_end","toolCallId":"p1","toolName":"codemode","result":{"content":[{"type":"text","text":"done"}]},"isError":false}'
+    ])
+    expect(recorder.started).toEqual([
+      { name: 'codemode', parent: null },
+      { name: 'read', parent: 'p1' }
+    ])
+    expect(recorder.ended).toEqual([
+      { name: 'read', parent: 'p1' },
+      { name: 'codemode', parent: null }
+    ])
   })
 
   it('model error ends the turn with onError instead of onResult', () => {

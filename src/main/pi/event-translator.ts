@@ -152,7 +152,8 @@ export class PiEventTranslator {
         const call: ToolCall = {
           id,
           name: str(payload, 'toolName') ?? 'tool',
-          args: obj(payload, 'args') ?? {}
+          args: obj(payload, 'args') ?? {},
+          parentToolCallId: str(payload, 'parentToolCallId')
         }
         this.toolCalls.set(call.id, call)
         this.listener.onToolStart(call)
@@ -170,7 +171,8 @@ export class PiEventTranslator {
         const call = this.toolCalls.get(id) ?? {
           id,
           name: str(payload, 'toolName') ?? 'tool',
-          args: {}
+          args: {},
+          parentToolCallId: str(payload, 'parentToolCallId')
         }
         this.toolCalls.delete(id)
         this.listener.onToolEnd(call, toolResult(obj(payload, 'result'), bool(payload, 'isError')))
@@ -313,7 +315,7 @@ export class PiEventTranslator {
           } else if (kind === 'toolCall') {
             const id = str(b, 'id')
             if (id === null) continue
-            const call: ToolCall = { id, name: str(b, 'name') ?? 'tool', args: obj(b, 'arguments') ?? {} }
+            const call: ToolCall = { id, name: str(b, 'name') ?? 'tool', args: obj(b, 'arguments') ?? {}, parentToolCallId: null }
             calls.set(call.id, call)
             this.listener.onToolStart(call)
           }
@@ -323,7 +325,7 @@ export class PiEventTranslator {
       if (role === 'toolResult') {
         const id = str(message, 'toolCallId')
         if (id === null) continue
-        const call = calls.get(id) ?? { id, name: str(message, 'toolName') ?? 'tool', args: {} }
+        const call = calls.get(id) ?? { id, name: str(message, 'toolName') ?? 'tool', args: {}, parentToolCallId: null }
         calls.delete(id)
         this.listener.onToolEnd(call, toolResult(message, bool(message, 'isError')))
         continue

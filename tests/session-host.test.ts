@@ -60,6 +60,7 @@ function scriptedChild(sessionFile: string): ScriptedChild {
     if (type === 'get_state') return handshakeData(sessionFile)
     if (type === 'get_available_models') return { models: [] }
     if (type === 'get_commands') return { commands: [] }
+    if (type === 'get_session_stats') return { tokens: { input: 100, output: 20, cacheRead: 900, cacheWrite: 30 } }
     if (type === 'get_available_thinking_levels') return { levels: ['off'] }
     if (type === 'prompt') {
       queueMicrotask(() => {
@@ -262,6 +263,92 @@ describe('SessionHost', () => {
     await host.prompt('ping')
     expect(spawnArgs[0]).toEqual(['--mode', 'rpc', '-e', 'C:\\ext\\ask-question'])
     host.dispose()
+  })
+
+  it('setWidget and setStatus extension requests become widget and status events', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"extension_ui_request","id":"w1","method":"setWidget","widgetKey":"pi-agent-desktop:todo","widgetLines":["{\\"subject\\":\\"a\\",\\"status\\":\\"pending\\"}"]}\n' +
+              '{"type":"extension_ui_request","id":"s1","method":"setStatus","statusKey":"lsp","statusText":"\\u001b[2mLSP: idle\\u001b[22;39m"}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'widget')).toBe(true)
+    })
+    expect(events.some((e) => e.type === 'widget' && e.key === 'pi-agent-desktop:todo' && e.lines?.length === 1)).toBe(true)
+    expect(events.some((e) => e.type === 'extension_status' && e.key === 'lsp' && e.text === 'LSP: idle')).toBe(true)
+    host.dispose()
+  })
+
+  it('session stats arrive after the handshake and refresh after each turn', async () => {
+    const child = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
+    currentChild = child
+    const { host, events } = makeHost([child])
+    await host.prompt('ping')
+    await vi.waitFor(() => {
+      expect(events.filter((e) => e.type === 'session_stats').length).toBeGreaterThanOrEqual(2)
+    })
+    const stats = events.filter((e): e is Extract<UiEvent, { type: 'session_stats' }> => e.type === 'session_stats')
+    expect(stats[0].tokens).toEqual({ input: 100, output: 20, cacheRead: 900, cacheWrite: 30 })
+    expect(child.sent.some((c) => c['type'] === 'get_session_stats')).toBe(true)
+    host.dispose()
+  })
+
+  it('prompt with image names sends base64 image blocks only for image-capable models', async () => {
+    const { promises: fs } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = join(tmpdir(), `piwright-sh-${Date.now()}`)
+    await fs.mkdir(join(dir, '.pi', 'attachments'), { recursive: true })
+    await fs.writeFile(join(dir, '.pi', 'attachments', 'pic.png'), Buffer.from([1, 2, 3]))
+    const makeTmpHost = (modelInput: string[]): { host: SessionHost; child: ScriptedChild } => {
+      const c = new ScriptedChild((type) => {
+        if (type === 'get_state') {
+          return {
+            ...handshakeData('x'),
+            model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: modelInput }
+          }
+        }
+        if (type === 'get_available_models') return { models: [] }
+        if (type === 'get_commands') return { commands: [] }
+        if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+        return null
+      })
+      currentChild = c
+      const h = new SessionHost(() => SETTINGS, { onEvent: () => {}, onStatus: () => {} }, { kind: 'native', dir }, {
+        createBackend: async () => ({ backend: { displayName: 'fake', spawner: async () => c as unknown as ChildProcess }, error: null }),
+        installAskExtension: async () => null
+      })
+      return { host: h, child: c }
+    }
+    const { host, child } = makeTmpHost(['text', 'image'])
+    await host.prompt('look', ['pic.png', 'note.txt'])
+    const frame = child.sent.find((c) => c['type'] === 'prompt')
+    expect(frame).toMatchObject({
+      message: 'look',
+      images: [{ type: 'image', data: Buffer.from([1, 2, 3]).toString('base64'), mimeType: 'image/png' }]
+    })
+    host.dispose()
+
+    const second = makeTmpHost(['text'])
+    await second.host.prompt('look', ['pic.png'])
+    const frame2 = second.child.sent.find((c) => c['type'] === 'prompt')
+    expect(frame2).toMatchObject({ message: 'look' })
+    expect(frame2).not.toHaveProperty('images')
+    second.host.dispose()
   })
 
   it('abort clears the queue then aborts', async () => {

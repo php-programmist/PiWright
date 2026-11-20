@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { Markdown } from '../../components/Markdown'
+import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
 import { useChatStore } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
+import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
+import { base64FromBytes } from '../../../../shared/attachments'
+import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -30,7 +34,7 @@ function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: str
         </details>
       )
     case 'tool':
-      return <ToolBlock call={entry.call} partial={entry.partial} result={entry.result} />
+      return <ToolBlock call={entry.call} partial={entry.partial} result={entry.result} subTools={entry.children} />
     case 'dialog':
       return <DialogCard dialog={entry.dialog} receipt={entry.receipt} onAnswer={(answer) => onAnswer(entry.dialogId, answer)} />
     case 'info':
@@ -62,6 +66,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const streaming = chat?.streaming ?? false
   const queue = chat?.queue ?? { steering: [], followUp: [] }
   const contextUsage = chat?.contextUsage ?? null
+  const usageTotals = chat?.usageTotals ?? null
+  const extensionStatuses = chat?.extensionStatuses ?? {}
+  const widgets = chat?.widgets ?? {}
+  const todoItems = parseTodoLines(widgets[TODO_WIDGET_KEY] ?? widgets[PLAN_WIDGET_KEY] ?? [])
   const applyEvent = useChatStore((s) => s.applyEvent)
   const addUserMessage = useChatStore((s) => s.addUserMessage)
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
@@ -70,9 +78,12 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
+  const pendingImagesRef = useRef<string[]>([])
+  const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
 
   useEffect(() => {
     autoScrollRef.current = true
+    pendingImagesRef.current = []
   }, [activeHostId])
 
   useEffect(() => {
@@ -99,10 +110,33 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     if (text.length === 0) return
     setInput('')
     addUserMessage(activeHostId, text)
-    const result = await window.piwright.prompt(activeHostId, text)
+    const images = pendingImagesRef.current
+    pendingImagesRef.current = []
+    const result = await window.piwright.prompt(activeHostId, text, images)
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
+  }
+
+  const insertAttachmentRef = (ref: string): void => {
+    setInput((v) => `${v}${v.length > 0 && !v.endsWith(' ') ? ' ' : ''}${ref} `)
+  }
+
+  const attachFile = async (): Promise<void> => {
+    if (project === null) return
+    const res = await window.piwright.chooseAttachment(project)
+    if (!res.ok) return
+    if (res.isImage) pendingImagesRef.current.push(res.name)
+    insertAttachmentRef(res.ref)
+  }
+
+  const pasteImage = async (file: File): Promise<void> => {
+    if (project === null) return
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const res = await window.piwright.putAttachment(project, file.name.length > 0 ? file.name : 'pasted.png', base64FromBytes(bytes))
+    if (!res.ok) return
+    pendingImagesRef.current.push(res.name)
+    insertAttachmentRef(res.ref)
   }
 
   const abort = async (): Promise<void> => {
@@ -124,6 +158,19 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const modelKey = status.model
   const toolsHidden = chat?.toolsHidden ?? false
   const visibleEntries = toolsHidden ? entries.filter((e) => e.kind !== 'tool') : entries
+  const ctxPercent =
+    contextUsage !== null && contextUsage.size > 0 ? Math.min(100, Math.max(0, Math.round((contextUsage.used / contextUsage.size) * 100))) : null
+  const fmtTokens = (n: number): string => n.toLocaleString('en-US')
+  const ctxTitle = (): string => {
+    if (usageTotals === null) return ''
+    const parts = [`In: ${fmtTokens(usageTotals.input)} · Out: ${fmtTokens(usageTotals.output)}`]
+    const hit = cacheHitOf(usageTotals.input, usageTotals.cacheRead, usageTotals.cacheWrite)
+    if (hit !== null) {
+      parts.push(`Read from cache: ${fmtTokens(usageTotals.cacheRead)} (${hit}%)`)
+      parts.push(`Fresh: ${fmtTokens(usageTotals.input)} · Written to cache: ${fmtTokens(usageTotals.cacheWrite)}`)
+    }
+    return parts.join('\n')
+  }
 
   const controls = (
     <>
@@ -169,10 +216,17 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <span className={`dot ${status.state}`} />
         <span className="state">{STATUS_LABEL[status.state] ?? status.state}</span>
         {placement === 'top' && controls}
-        {contextUsage !== null && contextUsage.size > 0 && (
-          <span className="ctx-usage">{Math.round((contextUsage.used / contextUsage.size) * 100)}%</span>
+        {ctxPercent !== null && (
+          <span className="ctx-usage" style={{ color: percentColor(ctxPercent) }} title={ctxTitle()}>
+            {ctxPercent}%
+          </span>
         )}
         {queuedCount > 0 && <span className="queue-label">Queued: {queuedCount}</span>}
+        {Object.entries(extensionStatuses).map(([key, text]) => (
+          <span key={key} className="ext-status" title={key}>
+            {text}
+          </span>
+        ))}
         <button
           className="icon"
           title={toolsHidden ? 'Show tool blocks' : 'Hide tool blocks'}
@@ -206,6 +260,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <span className="spacer" />
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
+      {todoItems.length > 0 && <TodoPanel items={todoItems} />}
       <main className="transcript" ref={transcriptRef} onScroll={handleScroll}>
         {visibleEntries.map((entry) => (
           <EntryView key={entry.id} entry={entry} onAnswer={(id, answer) => void answerDialog(id, answer)} />
@@ -220,6 +275,15 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           placeholder="Message pi…"
           rows={3}
           onChange={(e) => setInput(e.target.value)}
+          onPaste={(e) => {
+            const file = Array.from(e.clipboardData.items)
+              .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+              ?.getAsFile()
+            if (file !== null && file !== undefined) {
+              e.preventDefault()
+              void pasteImage(file)
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -227,6 +291,18 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             }
           }}
         />
+        <button className="attach" title="Attach file" onClick={() => void attachFile()} disabled={project === null}>
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
         <button onClick={() => void send()} disabled={input.trim().length === 0}>
           Send
         </button>

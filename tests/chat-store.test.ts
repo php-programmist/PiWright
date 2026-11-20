@@ -77,7 +77,7 @@ describe('chat store transcript', () => {
     const store = useChatStore.getState()
     store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
     store.applyEvent({ hostId: HOST, event: { type: 'assistant_delta', text: 'partial' } })
-    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: { command: 'ls' } } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: { command: 'ls' }, parentToolCallId: null } } })
     const list = entries()
     expect(list[0]).toMatchObject({ kind: 'text', text: 'partial', open: false })
     expect(list[1]).toMatchObject({ kind: 'tool', call: { id: 'c1' }, result: null })
@@ -85,11 +85,43 @@ describe('chat store transcript', () => {
 
   it('tool update and end fill the matching block', () => {
     const store = useChatStore.getState()
-    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: {} } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: {}, parentToolCallId: null } } })
     store.applyEvent({ hostId: HOST, event: { type: 'tool_update', id: 'c1', text: 'line 1' } })
     expect(entries()[0]).toMatchObject({ partial: 'line 1' })
-    store.applyEvent({ hostId: HOST, event: { type: 'tool_end', call: { id: 'c1', name: 'bash', args: {} }, result: { text: 'line 1\nline 2', isError: false, patch: null } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_end', call: { id: 'c1', name: 'bash', args: {}, parentToolCallId: null }, result: { text: 'line 1\nline 2', isError: false, patch: null } } })
     expect(entries()[0]).toMatchObject({ result: { text: 'line 1\nline 2' } })
+  })
+
+  it('nested tool calls attach to the parent block and update in place', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'p1', name: 'codemode', args: {}, parentToolCallId: null } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'read', args: {}, parentToolCallId: 'p1' } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c2', name: 'bash', args: {}, parentToolCallId: 'p1' } } })
+    const flat = entries()
+    expect(flat).toHaveLength(1)
+    const parent = flat[0] as Extract<Entry, { kind: 'tool' }>
+    expect(parent.call.id).toBe('p1')
+    expect(parent.children.map((c) => c.call.id)).toEqual(['c1', 'c2'])
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_update', id: 'c1', text: 'partial' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_end', call: { id: 'c1', name: 'read', args: {}, parentToolCallId: 'p1' }, result: { text: 'x', isError: false, patch: null } } })
+    const after = (entries()[0] as Extract<Entry, { kind: 'tool' }>).children
+    expect(after[0]).toMatchObject({ partial: 'partial', result: { text: 'x' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_end', call: { id: 'p1', name: 'codemode', args: {}, parentToolCallId: null }, result: { text: 'done', isError: false, patch: null } } })
+    expect((entries()[0] as Extract<Entry, { kind: 'tool' }>).result?.text).toBe('done')
+  })
+
+  it('session stats replace totals, extension statuses and widgets set and clear', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'session_stats', tokens: { input: 100, output: 20, cacheRead: 900, cacheWrite: 30 } } })
+    expect(useChatStore.getState().hosts[HOST]?.usageTotals).toEqual({ input: 100, output: 20, cacheRead: 900, cacheWrite: 30 })
+    store.applyEvent({ hostId: HOST, event: { type: 'extension_status', key: 'lsp', text: 'LSP: idle' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'widget', key: 'pi-agent-desktop:todo', lines: ['{"subject":"a","status":"pending"}'] } })
+    expect(useChatStore.getState().hosts[HOST]?.extensionStatuses).toEqual({ lsp: 'LSP: idle' })
+    expect(useChatStore.getState().hosts[HOST]?.widgets['pi-agent-desktop:todo']).toHaveLength(1)
+    store.applyEvent({ hostId: HOST, event: { type: 'extension_status', key: 'lsp', text: null } })
+    store.applyEvent({ hostId: HOST, event: { type: 'widget', key: 'pi-agent-desktop:todo', lines: null } })
+    expect(useChatStore.getState().hosts[HOST]?.extensionStatuses).toEqual({})
+    expect(useChatStore.getState().hosts[HOST]?.widgets['pi-agent-desktop:todo']).toBeUndefined()
   })
 
   it('own echoes are suppressed, queued deliveries are shown', () => {

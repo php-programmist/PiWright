@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { decodeAskQuestionRequest, decodeExtensionDialog, encodeDialogAnswer, splitDialogTitleBody, stripAnsi } from '../src/main/pi/extension-ui'
+import {
+  decodeAskQuestionRequest,
+  decodeExtensionDialog,
+  decodeExtensionUi,
+  encodeDialogAnswer,
+  splitDialogTitleBody,
+  stripAnsi
+} from '../src/main/pi/extension-ui'
 import { ASK_PAYLOAD_PREFIX } from '../src/shared/ask-questions'
 import type { PiJsonObject } from '../src/shared/protocol-types'
 
@@ -12,6 +19,8 @@ function obj(json: string): PiJsonObject {
 function askTitle(questions: unknown): string {
   return ASK_PAYLOAD_PREFIX + Buffer.from(JSON.stringify({ questions }), 'utf8').toString('base64')
 }
+
+const TODO_KEY = 'pi-agent-desktop:todo'
 
 describe('extension-ui dialogs', () => {
   it('confirm decodes message and timeout', () => {
@@ -124,5 +133,41 @@ describe('extension-ui dialogs', () => {
   it('stripAnsi removes CSI sequences', () => {
     expect(stripAnsi('\u001b[38;5;226m⏸ plan\u001b[39m')).toBe('⏸ plan')
     expect(stripAnsi('plain')).toBe('plain')
+  })
+})
+
+describe('extension-ui fire-and-forget (setStatus/setWidget)', () => {
+  it('setStatus decodes key and strips ANSI, blank text means removal', () => {
+    expect(decodeExtensionUi('setStatus', obj(JSON.stringify({ statusKey: 'lsp', statusText: '\u001b[2mLSP: idle\u001b[22;39m' })))).toEqual({
+      kind: 'status',
+      key: 'lsp',
+      text: 'LSP: idle'
+    })
+    expect(decodeExtensionUi('setStatus', obj(JSON.stringify({ statusKey: 'lsp', statusText: '  ' })))).toEqual({
+      kind: 'status',
+      key: 'lsp',
+      text: null
+    })
+    expect(decodeExtensionUi('setStatus', obj(JSON.stringify({ statusText: 'no key' })))).toBeNull()
+  })
+
+  it('setWidget decodes lines, empty list means removal', () => {
+    const lines = [JSON.stringify({ subject: 'a', status: 'pending' })]
+    expect(decodeExtensionUi('setWidget', obj(JSON.stringify({ widgetKey: TODO_KEY, widgetLines: lines })))).toEqual({
+      kind: 'widget',
+      key: TODO_KEY,
+      lines
+    })
+    expect(decodeExtensionUi('setWidget', obj(JSON.stringify({ widgetKey: 'k', widgetLines: [] })))).toEqual({
+      kind: 'widget',
+      key: 'k',
+      lines: null
+    })
+    expect(decodeExtensionUi('setWidget', obj(JSON.stringify({ widgetLines: ['x'] })))).toBeNull()
+  })
+
+  it('unknown methods are not ours', () => {
+    expect(decodeExtensionUi('notify', obj(JSON.stringify({ message: 'hi' })))).toBeNull()
+    expect(decodeExtensionUi('setTitle', obj(JSON.stringify({ title: 't' })))).toBeNull()
   })
 })

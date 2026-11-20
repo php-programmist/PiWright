@@ -904,6 +904,110 @@ body {
   color: var(--faint);
 }
 
+.ctx-usage {
+  font-size: 1.5em;
+  font-weight: 600;
+}
+
+.ext-status {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.todo-panel {
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.todo-panel summary {
+  padding: 5px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  list-style: none;
+}
+
+.todo-panel summary::before {
+  content: '▸';
+  color: var(--faint);
+}
+
+.todo-panel[open] summary::before {
+  content: '▾';
+}
+
+.todo-title {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.todo-count {
+  color: var(--faint);
+}
+
+.todo-bar {
+  flex: 1;
+  max-width: 160px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.todo-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.todo-body {
+  padding: 2px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.todo-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.todo-row.completed .todo-glyph {
+  color: var(--green);
+}
+
+.todo-row.completed .todo-subject {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+.todo-row.in_progress .todo-glyph {
+  color: var(--accent);
+}
+
+.todo-row.in_progress .todo-subject {
+  font-weight: 600;
+}
+
+.todo-row.pending .todo-glyph {
+  color: var(--faint);
+}
+
+.tool-children {
+  margin: 4px 0 0 16px;
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .header .abort {
   background: transparent;
   color: var(--red);
@@ -994,6 +1098,19 @@ body {
   border-radius: 6px;
   padding: 8px 16px;
   cursor: pointer;
+}
+
+.composer button.attach {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  padding: 8px 10px;
+}
+
+.composer button.attach:disabled {
+  color: var(--disabled);
+  border-color: var(--border);
+  cursor: default;
 }
 
 .composer button:disabled {

@@ -9,6 +9,7 @@ import type {
   PiResponse,
   PiSlashCommand
 } from '../../shared/protocol-types'
+import type { SessionTokens } from '../../shared/agent-events'
 
 const EXTENDED_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
@@ -49,6 +50,16 @@ function dataObject(response: PiResponse): PiJsonObject {
   return response.data !== null && typeof response.data === 'object' && !Array.isArray(response.data)
     ? (response.data as PiJsonObject)
     : {}
+}
+
+/** `tokens` из `get_session_stats`; null — ответ не содержит статистику. */
+export function decodeSessionTokens(response: PiResponse): SessionTokens | null {
+  const stats = dataObject(response)
+  const raw = stats['tokens']
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const t = raw as PiJsonObject
+  const num = (key: string): number => (typeof t[key] === 'number' && Number.isFinite(t[key]) ? (t[key] as number) : 0)
+  return { input: num('input'), output: num('output'), cacheRead: num('cacheRead'), cacheWrite: num('cacheWrite') }
 }
 
 function decodeCommands(data: PiJsonObject): PiSlashCommand[] {
@@ -98,7 +109,7 @@ export async function runHandshake(conn: PiConnection, opts: HandshakeOptions = 
 
   const commands = decodeCommands(dataObject(await conn.request('get_commands')))
 
-  await conn.request('get_session_stats')
+  const sessionTokens = decodeSessionTokens(await conn.request('get_session_stats'))
 
   const levelsRaw = dataObject(await conn.request('get_available_thinking_levels'))['levels']
   const levels = Array.isArray(levelsRaw) ? levelsRaw.filter((l): l is string => typeof l === 'string') : []
@@ -123,6 +134,7 @@ export async function runHandshake(conn: PiConnection, opts: HandshakeOptions = 
     commands,
     thinkingLevels: levels,
     thinkingLevel,
-    autoCompactionEnabled: state['autoCompactionEnabled'] === true
+    autoCompactionEnabled: state['autoCompactionEnabled'] === true,
+    sessionTokens
   }
 }

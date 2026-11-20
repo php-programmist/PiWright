@@ -106,3 +106,23 @@ export function encodeDialogAnswer(answer: DialogAnswer): PiJsonObject {
       return { cancelled: true }
   }
 }
+
+/** Fire-and-forget UI-методы расширений: статус-строки (LSP и др.) и виджеты (todo).
+ *  Порт `ExtensionUi.kt` decode setStatus/setWidget. null — метод не наш. */
+export function decodeExtensionUi(method: string, payload: PiJsonObject): { kind: 'status'; key: string; text: string | null } | { kind: 'widget'; key: string; lines: string[] | null } | null {
+  if (method === 'setStatus') {
+    const key = str(payload, 'statusKey')
+    if (key === null) return null
+    const text = str(payload, 'statusText')
+    return { kind: 'status', key, text: text !== null && text.trim().length > 0 ? stripAnsi(text) : null }
+  }
+  if (method === 'setWidget') {
+    const key = str(payload, 'widgetKey')
+    if (key === null) return null
+    const lines = array(payload, 'widgetLines')
+      .filter((v): v is string => typeof v === 'string')
+      .map(stripAnsi)
+    return { kind: 'widget', key, lines: lines.length > 0 ? lines : null }
+  }
+  return null
+}

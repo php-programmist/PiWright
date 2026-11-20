@@ -11,9 +11,10 @@ import { PiConnection } from './connection'
 import { createPiBackend } from './backends/factory'
 import type { CreateBackendResult } from './backends/factory'
 import { PiEventTranslator } from './event-translator'
-import { decodeExtensionDialog, encodeDialogAnswer } from './extension-ui'
+import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './extension-ui'
 import { ensureAskExtension } from './ask-extension'
-import { runHandshake } from './handshake'
+import { readAttachmentImages } from '../attachments/attachments'
+import { runHandshake, decodeSessionTokens } from './handshake'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
 
@@ -189,6 +190,9 @@ export class SessionHost {
       translator.contextWindow = handshake.model?.contextWindow ?? 0
       this.conn = conn
       this.translator = translator
+      if (handshake.sessionTokens !== null) {
+        this.emit({ type: 'session_stats', tokens: handshake.sessionTokens })
+      }
       if (resume) {
         const response = await conn.request('get_messages')
         const data: PiJsonObject =
@@ -213,6 +217,7 @@ export class SessionHost {
       translator.onEvent(type, payload)
       this.emit({ type: 'turn_end' })
       this.status('ready')
+      this.refreshSessionStats()
       return
     } else if (type === 'message_start' && (payload['message'] as Record<string, unknown> | undefined)?.['role'] === 'assistant') {
       this.emit({ type: 'assistant_message_start' })
@@ -220,10 +225,30 @@ export class SessionHost {
     translator.onEvent(type, payload)
   }
 
+  /** Суммарные токены сессии после хода — fire-and-forget, renderer заменяет totals целиком. */
+  private refreshSessionStats(): void {
+    const conn = this.conn
+    if (conn === null || !conn.running) return
+    void conn
+      .request('get_session_stats')
+      .then((response) => {
+        const tokens = decodeSessionTokens(response)
+        if (tokens !== null) this.emit({ type: 'session_stats', tokens })
+      })
+      .catch(() => {})
+  }
+
   /** Диалоги (confirm/select/input/editor) — в реестр и renderer; fire-and-forget методы — мимо. */
   private handleDialogRequest(id: string, method: string, payload: Record<string, unknown>): void {
     const dialog = decodeExtensionDialog(method, payload)
-    if (dialog === null) return
+    if (dialog === null) {
+      const ui = decodeExtensionUi(method, payload)
+      if (ui !== null) {
+        if (ui.kind === 'status') this.emit({ type: 'extension_status', key: ui.key, text: ui.text })
+        else this.emit({ type: 'widget', key: ui.key, lines: ui.lines })
+      }
+      return
+    }
     const entry: PendingDialogEntry = {
       dialog,
       timer:
@@ -368,10 +393,16 @@ export class SessionHost {
     this.status(this.lastState)
   }
 
-  private async sendPrompt(text: string): Promise<PromptResult> {
+  private async sendPrompt(text: string, images: string[]): Promise<PromptResult> {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
-    const response = await conn.request('prompt', { message: text })
+    const fields: PiJsonObject = { message: text }
+    // Модель без `input: image` картинку не примет — остаётся ссылка `@путь` в тексте.
+    if (images.length > 0 && (this.handshake?.model?.imageInput ?? false)) {
+      const blocks = await readAttachmentImages(this.project, images)
+      if (blocks.length > 0) fields['images'] = blocks
+    }
+    const response = await conn.request('prompt', fields)
     if (!response.success) {
       const error = `${response.command} failed: ${response.error ?? 'no details'}`
       this.status('error', error)
@@ -380,10 +411,10 @@ export class SessionHost {
     return { ok: true, error: null }
   }
 
-  async prompt(text: string): Promise<PromptResult> {
+  async prompt(text: string, images: string[] = []): Promise<PromptResult> {
     try {
       await this.ensureStarted()
-      return await this.sendPrompt(text)
+      return await this.sendPrompt(text, images)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }

@@ -48,6 +48,8 @@ describe('runHandshake', () => {
           : ok('get_state', { thinkingLevel: 'medium' }),
       get_available_models: () => ok('get_available_models', { models: [MODEL] }),
       get_commands: () => ok('get_commands', { commands: [{ name: 'compact', description: 'Compact', source: 'core' }] }),
+      get_session_stats: () =>
+        ok('get_session_stats', { tokens: { input: 50000, output: 10000, cacheRead: 40000, cacheWrite: 5000, total: 105000 } }),
       get_available_thinking_levels: () => ok('get_available_thinking_levels', { levels: ['off', 'medium'] })
     })
     const result = await runHandshake(conn)
@@ -67,6 +69,16 @@ describe('runHandshake', () => {
     expect(result.thinkingLevels).toEqual(['off', 'medium'])
     expect(result.thinkingLevel).toBe('medium')
     expect(result.autoCompactionEnabled).toBe(true)
+    expect(result.sessionTokens).toEqual({ input: 50000, output: 10000, cacheRead: 40000, cacheWrite: 5000 })
+  })
+
+  it('session stats without tokens decode to null', async () => {
+    const conn = scriptedConn({
+      get_state: () => ok('get_state', { sessionId: 's', thinkingLevel: 'off' }),
+      get_available_thinking_levels: () => ok('get_available_thinking_levels', { levels: ['off'] })
+    })
+    const result = await runHandshake(conn)
+    expect(result.sessionTokens).toBeNull()
   })
 
   it('applies desired thinking level only when supported and different', async () => {

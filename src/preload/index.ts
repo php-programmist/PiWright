@@ -2,6 +2,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import {
+  ATTACHMENTS_CHOOSE_CHANNEL,
+  ATTACHMENTS_PUT_CHANNEL,
   FILES_CHANGED_CHANNEL,
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
@@ -65,7 +67,7 @@ const api: PiwrightApi = {
   deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
     ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),
   chooseProjectDir: (kind: BackendMode) => ipcRenderer.invoke(SESSIONS_CHOOSE_DIR_CHANNEL, kind),
-  prompt: (hostId: string, text: string) => ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text),
+  prompt: (hostId: string, text: string, images?: string[]) => ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? []),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),
   setModel: (hostId: string, key: string) => ipcRenderer.invoke(SESSION_SET_MODEL_CHANNEL, hostId, key),
   setThinkingLevel: (hostId: string, level: string) => ipcRenderer.invoke(SESSION_SET_THINKING_CHANNEL, hostId, level),
@@ -85,6 +87,8 @@ const api: PiwrightApi = {
   filesList: (project, dir) => ipcRenderer.invoke(FILES_LIST_CHANNEL, project, dir),
   filesRead: (project, path) => ipcRenderer.invoke(FILES_READ_CHANNEL, project, path),
   filesWatch: (project, paths) => ipcRenderer.invoke(FILES_WATCH_CHANNEL, project, paths),
+  putAttachment: (project, name, base64) => ipcRenderer.invoke(ATTACHMENTS_PUT_CHANNEL, project, name, base64),
+  chooseAttachment: (project) => ipcRenderer.invoke(ATTACHMENTS_CHOOSE_CHANNEL, project),
   termProfiles: (project) => ipcRenderer.invoke(TERM_PROFILES_CHANNEL, project),
   termCreate: (project, profileId: TerminalProfileId | null) => ipcRenderer.invoke(TERM_CREATE_CHANNEL, project, profileId),
   termClose: (id: string) => ipcRenderer.invoke(TERM_CLOSE_CHANNEL, id),

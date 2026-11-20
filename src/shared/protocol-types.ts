@@ -44,4 +44,6 @@ export interface PiHandshakeResult {
   thinkingLevels: string[]
   thinkingLevel: string | null
   autoCompactionEnabled: boolean
+  /** Суммарные токены сессии из `get_session_stats` (input/output/cacheRead/cacheWrite). */
+  sessionTokens: { input: number; output: number; cacheRead: number; cacheWrite: number } | null
 }
