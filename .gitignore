@@ -28,7 +28,7 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# LSP (�������-�����������)
+# LSP
 .pi-lsp.json
 
 # playwright-cli (snapshots, session artifacts)
@@ -39,3 +39,4 @@ Desktop.ini
 
 # Локальные инструкции агента
 AGENTS.md
+.pi

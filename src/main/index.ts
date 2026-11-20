@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron'
 import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
@@ -8,6 +8,7 @@ import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { SettingsService } from './settings/settings'
+import { loadWindowState, saveWindowState } from './window-state'
 import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin } from './remote/auth'
@@ -20,11 +21,13 @@ let fileService: FileService | null = null
 let terminalService: TerminalService | null = null
 let bridge: RemoteBridge | null = null
 let hub: NotificationHub | null = null
+let windowStatePath = ''
 
 function createWindow(): void {
+  const state = loadWindowState(windowStatePath, screen.getPrimaryDisplay().workArea)
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 800,
+    width: state.width,
+    height: state.height,
     title: 'Piwright',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -32,6 +35,10 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: true
     }
+  })
+  if (state.maximized) mainWindow.maximize()
+  mainWindow.on('close', () => {
+    saveWindowState(windowStatePath, mainWindow as BrowserWindow)
   })
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -44,6 +51,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
   gitService = new GitService(() => settings.get())
   fileService = new FileService({
