@@ -59,6 +59,7 @@ import {
   APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
+  SETTINGS_REVEAL_CHANNEL,
   SKILLS_LIST_CHANNEL,
   SKILLS_REVEAL_CHANNEL,
   SKILLS_TOGGLE_CHANNEL,
@@ -148,6 +149,11 @@ export function registerIpc(
   notifications?: NotificationServices
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
+
+  ipcMain.handle(SETTINGS_REVEAL_CHANNEL, () => {
+    shell.showItemInFolder(settings.path)
+    return { ok: true, error: null }
+  })
 
   ipcMain.handle(APP_VERSION_CHANNEL, () => app.getVersion())
 

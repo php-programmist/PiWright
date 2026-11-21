@@ -165,9 +165,8 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      {settingsOpen ? (
-        <SettingsView />
-      ) : (
+      {settingsOpen && <SettingsView />}
+      {(
         <div className="layout">
           <SessionsPanel />
           <div className="workspace">

@@ -68,6 +68,7 @@ import {
   APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
+  SETTINGS_REVEAL_CHANNEL,
   TERM_CLOSE_CHANNEL,
   TERM_CREATE_CHANNEL,
   TERM_DATA_CHANNEL,
@@ -102,6 +103,7 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
 const api: PiWrightApi = {
   getSettings: () => ipcRenderer.invoke(SETTINGS_GET_CHANNEL),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
+  revealSettings: () => ipcRenderer.invoke(SETTINGS_REVEAL_CHANNEL),
   appVersion: () => ipcRenderer.invoke(APP_VERSION_CHANNEL),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),
   sessionHistory: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_HISTORY_CHANNEL, project),

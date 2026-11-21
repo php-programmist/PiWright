@@ -184,6 +184,7 @@ const RU: Record<string, string> = {
   // Настройки — общие
   'saved': 'сохранено',
   'Close settings': 'Закрыть настройки',
+  'Open configuration file': 'Открыть файл конфигурации',
   'Save': 'Сохранить',
   'General': 'Общие',
   'Appearance': 'Внешний вид',

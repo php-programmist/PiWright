@@ -23,21 +23,32 @@ export function SettingsView(): React.JSX.Element {
   const closeSettings = useSessionsStore((s) => s.closeSettings)
   const t = useT()
 
-  if (settings === null) {
-    return (
-      <div className="settings-screen">
-        <header className="settings-head">
-          <span>{t('Settings')}</span>
-          <span className="spacer" />
-          <button className="icon" title={t('Close settings')} onClick={closeSettings}>×</button>
-        </header>
-        <div className="settings-body">
-          <div className="panel-hint">{t('loading…')}</div>
-        </div>
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') closeSettings()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [closeSettings])
+
+  return (
+    <div
+      className="settings-modal-overlay"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeSettings()
+      }}
+    >
+      <div className="settings-modal">
+        {settings === null ? (
+          <div className="settings-body">
+            <div className="panel-hint">{t('loading…')}</div>
+          </div>
+        ) : (
+          <SettingsForm settings={settings} onClose={closeSettings} />
+        )}
       </div>
-    )
-  }
-  return <SettingsForm settings={settings} onClose={closeSettings} />
+    </div>
+  )
 }
 
 function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () => void }): React.JSX.Element {
@@ -65,12 +76,15 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
   }
 
   return (
-    <div className="settings-screen">
+    <>
       <header className="settings-head">
         <span>{t('Settings')}</span>
         {saved && <span className="saved">{t('saved')}</span>}
         <span className="spacer" />
-        <button className="icon" title={t('Close settings')} onClick={onClose}>×</button>
+        <button className="ghost" onClick={() => void window.piwright.revealSettings()}>
+          {t('Open configuration file')}
+        </button>
+        <button className="settings-close" title={t('Close settings')} onClick={onClose}>×</button>
       </header>
       <div className="settings-body">
         <nav className="settings-nav">
@@ -243,7 +257,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           )}
         </div>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -155,6 +155,10 @@ export class SettingsService {
     this.cache = this.read()
   }
 
+  get path(): string {
+    return this.filePath
+  }
+
   private read(): Settings {
     if (!existsSync(this.filePath)) return { ...DEFAULT_SETTINGS }
     try {
