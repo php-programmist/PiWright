@@ -227,7 +227,7 @@ function BranchSelect({ project, branch, detached }: { project: ProjectEntry; br
       {open && <div className="popup-overlay" onClick={close} />}
       {open && mode !== 'rename' && (
         <div className="branch-popup">
-          {mode === 'list' && (
+          {(mode === 'list' || mode === 'submenu') && (
             <>
               <input
                 className="branch-search"
