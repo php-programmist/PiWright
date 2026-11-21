@@ -347,6 +347,47 @@ footer {
 
 footer .row { margin-top: 8px; justify-content: flex-end; }
 #attach { margin-right: auto; }
+
+/* Петля: чекбокс + счётчик итераций + причина остановки, поле условия выхода. */
+footer [hidden] { display: none !important; }
+.loop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.loop-bar .loop-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#loopMax {
+  width: 64px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--panel2);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.loop-info { color: var(--muted, #9aa); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#loopExit {
+  margin-top: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--panel2);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  resize: none;
+}
 #hideTools { padding: 9px 12px; display: flex; align-items: center; }
 #hideTools svg { display: block; }
 #tgNotify { padding: 9px 12px; display: flex; align-items: center; }

@@ -1,6 +1,7 @@
 /** Чистые функции протокола «телефон ↔ десктоп». Порт `core/remote/RemoteProtocol.kt`
  *  (Gson → JSON-объекты PiWright, ModelInfo → PiModelInfo, todo — shared/todo). */
 import { randomUUID } from 'node:crypto'
+import type { LoopInfo } from '../../shared/agent-events'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../shared/todo'
@@ -171,8 +172,13 @@ export function decodeCatalogThinkingLevels(data: PiJsonObject | null): string[]
   return array.filter((l): l is string => typeof l === 'string')
 }
 
-export function attachedFrame(sessionId: string, title: string, project: string, telegram: boolean): PiJsonObject {
-  return { type: 'attached', id: sessionId, title, project, telegram }
+export function attachedFrame(sessionId: string, title: string, project: string, telegram: boolean, loops: boolean): PiJsonObject {
+  return { type: 'attached', id: sessionId, title, project, telegram, loops }
+}
+
+/** Состояние петли сессии (чекбокс «Петля»): active/remaining/reason. */
+export function loopStateFrame(sessionId: string, info: LoopInfo): PiJsonObject {
+  return { type: 'loop_state', id: sessionId, info }
 }
 
 export function uiAnsweredFrame(id: string, by: string): PiJsonObject {

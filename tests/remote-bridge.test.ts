@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RemoteBridge, RemoteSession } from '../src/main/remote/bridge'
 import { RemoteAuth } from '../src/main/remote/auth'
 import type { SessionHost } from '../src/main/pi/session-host'
 import type { PiHost } from '../src/main/pi/pi-host'
+import type { LoopController } from '../src/main/pi/loop-controller'
 import type { PiResponse } from '../src/shared/protocol-types'
 import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
@@ -68,15 +69,24 @@ function fakePiHost(hosts: SessionHost[]): PiHost {
   } as unknown as PiHost
 }
 
-function bridgeWith(hosts: SessionHost[]): { bridge: RemoteBridge; auth: RemoteAuth } {
+function fakeLoops(): LoopController {
+  return {
+    start: vi.fn(() => ({ active: true, remaining: 5, reason: null })),
+    stop: vi.fn(() => null),
+    setRemaining: vi.fn(() => null),
+    get: vi.fn(() => null)
+  } as unknown as LoopController
+}
+
+function bridgeWith(hosts: SessionHost[], loops?: LoopController, settings?: Partial<Settings>): { bridge: RemoteBridge; auth: RemoteAuth } {
   const auth = new RemoteAuth('123456')
-  const settings = (): Settings => ({ ...DEFAULT_SETTINGS })
-  return { bridge: new RemoteBridge(settings, fakePiHost(hosts), auth), auth }
+  const getSettings = (): Settings => ({ ...DEFAULT_SETTINGS, ...settings })
+  return { bridge: new RemoteBridge(getSettings, fakePiHost(hosts), auth, null, loops), auth }
 }
 
 /** Мост с расшаренной первой сессией (шаринг теперь явный — глобус в шапке чата). */
-function sharedBridge(hosts: SessionHost[]): { bridge: RemoteBridge; auth: RemoteAuth } {
-  const created = bridgeWith(hosts)
+function sharedBridge(hosts: SessionHost[], loops?: LoopController, settings?: Partial<Settings>): { bridge: RemoteBridge; auth: RemoteAuth } {
+  const created = bridgeWith(hosts, loops, settings)
   if (hosts.length > 0) {
     const hostId = (hosts[0] as unknown as { id: string }).id
     expect(created.bridge.setSharedByHost(hostId, true)).toBe(true)
@@ -324,6 +334,62 @@ describe('RemoteBridge', () => {
     expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'error' })
     bridge['onText'](socket, '{"type":"wat"}')
     expect(JSON.parse(socket.lines[1])).toMatchObject({ type: 'error', message: 'unknown frame type' })
+  })
+
+  it('prompt with loop field starts the loop when the setting is on', () => {
+    const host = fakeHost()
+    const loops = fakeLoops()
+    const { bridge } = sharedBridge([host], loops, { loopsEnabled: true })
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(3)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5, exit: 'when done' } }))
+    expect(loops.start).toHaveBeenCalledWith('host-1', 'do it', 5, 'when done')
+    expect(socket.lines).toHaveLength(0)
+  })
+
+  it('prompt with loop field is rejected when loops are disabled', () => {
+    const host = fakeHost()
+    const loops = fakeLoops()
+    const { bridge } = sharedBridge([host], loops)
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(3)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5, exit: 'when done' } }))
+    expect(loops.start).not.toHaveBeenCalled()
+    expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'error', message: 'Loops are disabled in settings' })
+  })
+
+  it('loop_stop and loop_set_remaining reach the controller with the host id', () => {
+    const host = fakeHost()
+    const loops = fakeLoops()
+    const { bridge } = sharedBridge([host], loops)
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(4)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    bridge['onText'](socket, JSON.stringify({ type: 'loop_stop' }))
+    bridge['onText'](socket, JSON.stringify({ type: 'loop_set_remaining', remaining: 7 }))
+    expect(loops.stop).toHaveBeenCalledWith('host-1')
+    expect(loops.setRemaining).toHaveBeenCalledWith('host-1', 7)
+  })
+
+  it('loopState broadcasts to the session sockets; attach replays current state', () => {
+    const host = fakeHost()
+    const loops = fakeLoops()
+    ;(loops as unknown as { get: ReturnType<typeof vi.fn> }).get.mockReturnValue({ active: true, remaining: 3, reason: null })
+    const { bridge } = sharedBridge([host], loops, { loopsEnabled: true })
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(5)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    const attached = socket.lines.map((l) => JSON.parse(l) as { type: string; loops?: boolean }).find((f) => f.type === 'attached')
+    expect(attached?.loops).toBe(true)
+    const replayed = socket.lines.map((l) => JSON.parse(l) as { type: string; info?: unknown }).find((f) => f.type === 'loop_state')
+    expect(replayed).toMatchObject({ type: 'loop_state', id: remote.id, info: { active: true, remaining: 3 } })
+    socket.lines.length = 0
+    bridge.loopState('host-1', { active: false, remaining: 0, reason: 'exit' })
+    expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'loop_state', info: { active: false, reason: 'exit' } })
   })
 })
 

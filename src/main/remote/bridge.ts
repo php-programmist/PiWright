@@ -8,6 +8,8 @@ import type { Settings } from '../../shared/ipc-contracts'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY } from '../../shared/todo'
 import type { SessionHost } from '../pi/session-host'
 import type { PiHost } from '../pi/pi-host'
+import type { LoopController } from '../pi/loop-controller'
+import type { LoopInfo } from '../../shared/agent-events'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from '../pi/extension-ui'
 import { sessionStatus } from '../pi/session-status'
 import type { RemoteAuth } from './auth'
@@ -17,6 +19,7 @@ import {
   catalogFrame,
   catalogModelOf,
   errorFrame,
+  loopStateFrame,
   normalizeCreateSessionRequest,
   normalizePromptImages,
   normalizeSessionName,
@@ -93,7 +96,9 @@ export class RemoteBridge {
     private readonly getSettings: () => Settings,
     private readonly piHost: PiHost,
     private readonly auth: RemoteAuth,
-    private server: RemoteWebServer | null = null
+    private server: RemoteWebServer | null = null,
+    /** Контроллер петель: старт с телефона, рассылка loop_state. Не задан в тестах. */
+    private readonly loops?: LoopController
   ) {}
 
   // ------------------------------------------------------------- lifecycle
@@ -283,6 +288,12 @@ export class RemoteBridge {
       case 'prompt':
         void this.forwardPrompt(socket, frame)
         return
+      case 'loop_stop':
+        this.loopStop(socket)
+        return
+      case 'loop_set_remaining':
+        this.loopSetRemaining(socket, frame)
+        return
       case 'abort':
         this.forwardCommand(socket, frame, 'abort')
         return
@@ -346,9 +357,13 @@ export class RemoteBridge {
     this.socketSessions.set(socket.seq, remote.id)
     remote.sockets.push(socket)
     remote.unread = false
-    socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.host.telegramEnabled)))
+    socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.host.telegramEnabled, this.getSettings().loopsEnabled)))
     void this.sendSnapshot(socket, remote)
     socket.send(JSON.stringify(todosFrame(remoteTodos(widgetLinesOf(remote)))))
+    const loopInfo = this.loops?.get(remote.host.id)
+    if (loopInfo !== null && loopInfo !== undefined) {
+      socket.send(JSON.stringify(loopStateFrame(remote.id, loopInfo)))
+    }
     this.replayPendingDialogs(socket, remote)
     this.broadcastSessions()
   }
@@ -436,6 +451,45 @@ export class RemoteBridge {
     if (behavior !== null) command['streamingBehavior'] = behavior
     if (images.blocks.length > 0) command['images'] = images.blocks
     remote.host.sendRemoteLine(JSON.stringify(command))
+    this.startLoopFromPrompt(socket, remote, frame, text)
+  }
+
+  /** Петля с телефона: поле loop промпта {max, exit}; работает только при включённой настройке. */
+  private startLoopFromPrompt(socket: RemoteSocket, remote: RemoteSession, frame: PiJsonObject, text: string): void {
+    const raw = frame['loop']
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return
+    if (!this.getSettings().loopsEnabled || this.loops === undefined) {
+      socket.send(JSON.stringify(errorFrame('Loops are disabled in settings')))
+      return
+    }
+    const loop = raw as PiJsonObject
+    const max = loop['max']
+    const exit = frameString(loop, 'exit')?.trim() ?? ''
+    if (typeof max !== 'number' || !Number.isFinite(max) || exit.length === 0) {
+      socket.send(JSON.stringify(errorFrame('Invalid loop request')))
+      return
+    }
+    this.loops.start(remote.host.id, text, max, exit)
+  }
+
+  private loopStop(socket: RemoteSocket): void {
+    const remote = this.sessionFor(socket)
+    if (remote === undefined || this.loops === undefined) return
+    this.loops.stop(remote.host.id)
+  }
+
+  private loopSetRemaining(socket: RemoteSocket, frame: PiJsonObject): void {
+    const remote = this.sessionFor(socket)
+    const remaining = frame['remaining']
+    if (remote === undefined || this.loops === undefined || typeof remaining !== 'number' || !Number.isFinite(remaining)) return
+    this.loops.setRemaining(remote.host.id, remaining)
+  }
+
+  /** loop_state из LoopController → всем сокетам сессии. */
+  loopState(hostId: string, info: LoopInfo): void {
+    const remote = this.sessionsByHost.get(hostId)
+    if (remote === undefined) return
+    this.broadcast(remote, JSON.stringify(loopStateFrame(remote.id, info)))
   }
 
   private forwardCommand(socket: RemoteSocket, frame: PiJsonObject, type: string): void {

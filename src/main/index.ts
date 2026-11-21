@@ -81,6 +81,7 @@ app.whenReady().then(() => {
   )
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
+    if (event.type === 'loop_state') bridge?.loopState(hostId, event.info)
   }, (previousHostId, createdHostId) => {
     const previous = piHost?.get(previousHostId) ?? null
     if (previous === null) return
@@ -88,7 +89,7 @@ app.whenReady().then(() => {
     if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
   })
   const auth = new RemoteAuth(generatePin())
-  bridge = new RemoteBridge(() => settings.get(), piHost, auth)
+  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)
   bridge.applySettings(settings.get())
   hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
   terminalService = new TerminalService({

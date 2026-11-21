@@ -176,6 +176,9 @@ export function registerIpc(
       if (typeof raw['sendOnEnter'] === 'boolean') {
         safe.sendOnEnter = raw['sendOnEnter']
       }
+      if (typeof raw['loopsEnabled'] === 'boolean') {
+        safe.loopsEnabled = raw['loopsEnabled']
+      }
       if (raw['language'] === 'en' || raw['language'] === 'ru') {
         safe.language = raw['language']
       }
@@ -215,6 +218,7 @@ export function registerIpc(
       }
     }
     const next = settings.set(safe)
+    if (!next.loopsEnabled) loops.stopAll()
     notifications?.onSettingsChanged(next)
     return next
   })
@@ -367,6 +371,7 @@ export function registerIpc(
   })
 
   ipcMain.handle(LOOP_START_CHANNEL, (_event, hostId: unknown, prompt: unknown, maxIterations: unknown, exitCondition: unknown) => {
+    if (!settings.get().loopsEnabled) return { ok: false, error: 'Loops are disabled in settings' }
     if (typeof hostId !== 'string' || typeof prompt !== 'string' || prompt.trim().length === 0 || typeof maxIterations !== 'number') {
       return { ok: false, error: 'Invalid loop request' }
     }

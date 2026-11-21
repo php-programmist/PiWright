@@ -106,6 +106,16 @@ export class LoopController {
     this.states.delete(hostId)
   }
 
+  /** Настройка «Петли» выключена — гасим все активные петли. */
+  stopAll(): void {
+    for (const [hostId, state] of this.states) {
+      if (!state.active) continue
+      state.active = false
+      state.reason = 'user'
+      this.emitState(hostId, state, null)
+    }
+  }
+
   onEvent(message: PiEventMessage): void {
     const state = this.states.get(message.hostId)
     if (state === undefined) return

@@ -72,6 +72,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
   const sendOnEnter = useSessionsStore((s) => s.settings?.sendOnEnter ?? false)
+  const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
   const t = useT()
   const status = chat?.status ?? null
   const entries = useMemo(() => chat?.entries ?? [], [chat])
@@ -94,7 +95,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const loopMax = chat?.loopMax ?? 20
   const loopActive = loop?.active ?? false
   const loopChecked = loopActive || loopEnabled
-  const loopSplit = loopEnabled && !loopActive
+  const loopSplit = loopsEnabled && loopEnabled && !loopActive
   const toggleTelegram = useSessionsStore((s) => s.toggleTelegram)
   const toggleShare = useSessionsStore((s) => s.toggleShare)
   const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
@@ -180,7 +181,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const send = async (behavior?: PromptBehavior): Promise<void> => {
     const text = input.trim()
     if (text.length === 0) return
-    const startingLoop = !streaming && loopEnabled && !loopActive
+    const startingLoop = !streaming && loopsEnabled && loopEnabled && !loopActive
     // Чекбокс «Петля» обязывает прописать условие выхода — без него ход не отправляется.
     if (startingLoop && loopExit.trim().length === 0) return
     setInput('')
@@ -549,10 +550,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <div ref={bottomRef} />
       </main>
       {placement === 'bottom' ? (
-        <div className="selector-bar">{controls}{loopControls}</div>
-      ) : (
+        <div className="selector-bar">{controls}{loopsEnabled && loopControls}</div>
+      ) : loopsEnabled ? (
         <div className="loop-bar">{loopControls}</div>
-      )}
+      ) : null}
       <footer className="composer">
         <div className="composer-fields">
         <textarea

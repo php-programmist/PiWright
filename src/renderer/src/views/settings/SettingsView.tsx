@@ -8,13 +8,14 @@ const AUTOSAVE_DEBOUNCE_MS = 500
 
 const CHAT_FONT_SIZES = [12, 13, 14, 16, 18]
 
-type Tab = 'general' | 'appearance' | 'notifications' | 'models'
+type Tab = 'general' | 'appearance' | 'notifications' | 'models' | 'advanced'
 
 const TABS: { id: Tab; key: string }[] = [
   { id: 'general', key: 'General' },
   { id: 'appearance', key: 'Appearance' },
   { id: 'notifications', key: 'Notifications' },
-  { id: 'models', key: 'Models' }
+  { id: 'models', key: 'Models' },
+  { id: 'advanced', key: 'Advanced features' }
 ]
 
 export function SettingsView(): React.JSX.Element {
@@ -226,6 +227,20 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           )}
           {tab === 'notifications' && <NotificationsTab draft={draft} update={update} />}
           {tab === 'models' && <ModelsTab />}
+          {tab === 'advanced' && (
+            <section className="settings-section">
+              <h3>{t('Loops')}</h3>
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={draft.loopsEnabled}
+                  onChange={(e) => update({ loopsEnabled: e.target.checked })}
+                />
+                {t('Enable loops (the Loop checkbox near the prompt field and in Remote)')}
+              </label>
+              <div className="panel-hint">{t('Loops explanation')}</div>
+            </section>
+          )}
         </div>
       </div>
     </div>

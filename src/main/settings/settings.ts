@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatFontSize: 14,
   singleLineTools: false,
   sendOnEnter: false,
+  loopsEnabled: false,
   language: 'en',
   panels: {},
   expandedProjects: {},

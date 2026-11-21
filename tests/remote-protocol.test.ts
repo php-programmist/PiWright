@@ -126,7 +126,7 @@ describe('frames', () => {
 
   it('error / attached / ui_answered / created / snapshot', () => {
     expect(errorFrame('x')).toEqual({ type: 'error', message: 'x' })
-    expect(attachedFrame('1', 't', 'p', false)).toEqual({ type: 'attached', id: '1', title: 't', project: 'p', telegram: false })
+    expect(attachedFrame('1', 't', 'p', false, true)).toEqual({ type: 'attached', id: '1', title: 't', project: 'p', telegram: false, loops: true })
     expect(uiAnsweredFrame('1', 'phone')).toEqual({ type: 'ui_answered', id: '1', by: 'phone' })
     expect(sessionCreatedFrame('9')).toEqual({ type: 'session_created', id: '9' })
     expect(snapshotFrame([{ a: 1 }, { b: 2 }, { c: 3 }, { d: 4 }])).toEqual({

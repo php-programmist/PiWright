@@ -41,11 +41,12 @@ function modelKey(model: { provider: string; id: string } | null | undefined): s
 
 /** Вшитые PiWright расширения, ставятся перед спавном pi; порядок = порядок `-e`. */
 function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Promise<(string | null)[]> {
-  return Promise.all([
+  const extensions = [
     ensureAskExtension(project, settings),
     ensureSessionToolsExtension(project, settings),
-    ensureLoopStopExtension(project, settings)
-  ])
+    ...(settings.loopsEnabled ? [ensureLoopStopExtension(project, settings)] : [])
+  ]
+  return Promise.all(extensions)
 }
 
 export interface SessionHostOptions {

@@ -326,4 +326,18 @@ describe('LoopController (auto-continue with check turn)', () => {
     const finalHostId = created[created.length - 1].id
     expect(loopState(controller, finalHostId)).toMatchObject({ active: false, reason: 'short-circuit' })
   })
+
+  it('stopAll stops every active loop (setting turned off)', async () => {
+    const { piHost } = fakePiHost()
+    const { emit, events } = collector()
+    const controller = new LoopController(piHost, emit)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.start('host-9', 'p', 5, EXIT)
+    controller.stop('host-9')
+    controller.stopAll()
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'user' })
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: false, reason: 'user' })
+    const host1States = events.get('host-1')?.filter((e) => e.type === 'loop_state') ?? []
+    expect(host1States.at(-1)).toMatchObject({ info: { active: false, reason: 'user' } })
+  })
 })

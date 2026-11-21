@@ -31,6 +31,11 @@ const createModel = el("createModel");
 const createThinkingRow = el("createThinkingRow");
 const createThinking = el("createThinking");
 const createCancel = el("createCancel");
+const loopBar = el("loopBar");
+const loopCheck = el("loopCheck");
+const loopMaxInput = el("loopMax");
+const loopInfoLabel = el("loopInfo");
+const loopExitInput = el("loopExit");
 
 const MAX_IMAGES = 3;
 const MAX_IMAGE_SIDE = 1600;
@@ -76,6 +81,12 @@ let toolsHidden = false;
 let readMode = false;
 let tgEnabled = false;
 const hideToolsBySession = new Map();
+// Петля: включена ли настройкой на ПК, состояние — своё у каждой сессии (как hideTools).
+let loopsEnabled = false;
+let loopEnabled = false;
+let loopInfo = null;
+let loopMax = 20;
+const loopEnabledBySession = new Map();
 let lastSessions = [];
 let catalogWaiter = null;
 // Модели из последнего catalog-кадра: уровни thinking берутся от выбранной модели, а не из общего списка.
@@ -197,6 +208,7 @@ function handleFrame(frame) {
     case "compaction_end": return addInfo("компакция завершена");
     case "session_created": return onSessionCreated(frame);
     case "catalog": return onCatalog(frame);
+    case "loop_state": return onLoopState(frame);
   }
 }
 
@@ -406,6 +418,10 @@ function onAttached(frame) {
   applyToolsHidden();
   tgEnabled = frame.telegram === true;
   applyTgNotify();
+  loopsEnabled = frame.loops === true;
+  loopEnabled = loopEnabledBySession.get(frame.id) === true;
+  loopInfo = null;
+  applyLoopUi();
   updateAttachButton();
   setDot();
 }
@@ -1363,10 +1379,21 @@ function renderChips() {
 function sendPrompt(behavior) {
   const text = input.value.trim();
   if (!text || !attached) return;
+  const startingLoop = loopsEnabled && loopEnabled && !(loopInfo && loopInfo.active);
+  if (startingLoop && loopExitInput.value.trim().length === 0) {
+    addInfo("Укажите условие выхода из петли", true);
+    return;
+  }
   input.value = "";
   autoGrow();
   const frame = { type: "prompt", text };
   if (behavior) frame.behavior = behavior;
+  if (startingLoop) {
+    frame.loop = { max: loopMax, exit: loopExitInput.value.trim() };
+    loopEnabled = false;
+    loopEnabledBySession.set(attached.id, false);
+    applyLoopUi();
+  }
   if (pendingImages.length) {
     frame.images = pendingImages.map((image) => ({ data: image.data, mimeType: image.mimeType }));
     pendingImages = [];
@@ -1380,6 +1407,64 @@ function autoGrow() {
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
 input.addEventListener("input", autoGrow);
+
+// ---------------------------------------------------------------------- loop
+
+const LOOP_REASON_TEXT = {
+  agent: "ход без вызовов инструментов",
+  exit: "условие выхода выполнено",
+  user: "остановлена пользователем",
+  max: "достигнут лимит итераций",
+  "short-circuit": "3 итерации подряд быстрее 10 секунд",
+  error: "не удалось запустить следующую итерацию"
+};
+
+function onLoopState(frame) {
+  if (attached && frame.id !== attached.id) return;
+  loopInfo = frame.info || null;
+  applyLoopUi();
+}
+
+function applyLoopUi() {
+  loopBar.hidden = !loopsEnabled;
+  if (!loopsEnabled) {
+    loopExitInput.hidden = true;
+    loopInfoLabel.textContent = "";
+    return;
+  }
+  const active = !!(loopInfo && loopInfo.active);
+  loopCheck.checked = active || loopEnabled;
+  loopMaxInput.value = String(active ? loopInfo.remaining : loopMax);
+  loopExitInput.hidden = !loopEnabled || active;
+  if (loopInfo && !active && loopInfo.reason) {
+    loopInfoLabel.textContent = `остановлена: ${LOOP_REASON_TEXT[loopInfo.reason] || loopInfo.reason}`;
+  } else if (active) {
+    loopInfoLabel.textContent = "активна";
+  } else {
+    loopInfoLabel.textContent = "";
+  }
+}
+
+loopCheck.addEventListener("change", () => {
+  if (!attached) return;
+  if (loopInfo && loopInfo.active) {
+    loopCheck.checked = true;
+    send({ type: "loop_stop" });
+    return;
+  }
+  loopEnabled = loopCheck.checked;
+  loopEnabledBySession.set(attached.id, loopEnabled);
+  applyLoopUi();
+  if (loopEnabled) loopExitInput.focus();
+});
+
+loopMaxInput.addEventListener("change", () => {
+  const value = Math.round(Number(loopMaxInput.value));
+  if (!Number.isFinite(value)) return;
+  loopMax = Math.min(999, Math.max(1, value));
+  loopMaxInput.value = String(loopMax);
+  if (attached && loopInfo && loopInfo.active) send({ type: "loop_set_remaining", remaining: loopMax });
+});
 
 // -------------------------------------------------------------- create session
 

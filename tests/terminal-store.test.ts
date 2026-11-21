@@ -20,6 +20,7 @@ const baseSettings: Settings = {
   chatFontSize: 14,
   singleLineTools: false,
   sendOnEnter: false,
+  loopsEnabled: false,
   language: 'en',
   panels: {},
   expandedProjects: {},

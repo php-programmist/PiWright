@@ -40,6 +40,8 @@ export interface Settings {
   singleLineTools: boolean
   /** Отправка по Enter (иначе Ctrl+Enter, дефолт как в jb-pi). */
   sendOnEnter: boolean
+  /** Петли (авто-продолжение промпта в новых сессиях): чекбокс у поля промпта, Remote-петля, loop-stop расширение. */
+  loopsEnabled: boolean
   /** Язык интерфейса (дефолт English). */
   language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
