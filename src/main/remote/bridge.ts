@@ -8,7 +8,7 @@ import type { Settings } from '../../shared/ipc-contracts'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY } from '../../shared/todo'
 import type { SessionHost } from '../pi/session-host'
 import type { PiHost } from '../pi/pi-host'
-import { decodeExtensionUi, encodeDialogAnswer } from '../pi/extension-ui'
+import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from '../pi/extension-ui'
 import { sessionStatus } from '../pi/session-status'
 import type { RemoteAuth } from './auth'
 import { RemoteWebServer, lanCandidates } from './server'
@@ -546,7 +546,7 @@ export class RemoteBridge {
     const id = frameString(frame, 'id')
     const method = frameString(frame, 'method')
     if (id === null || method === null) return
-    if (decodeExtensionUi(method, frame) !== null) return
+    if (decodeExtensionDialog(method, frame) === null) return
     const timeoutRaw = frame['timeout']
     const timeoutMs = typeof timeoutRaw === 'number' && Number.isFinite(timeoutRaw) ? timeoutRaw : null
     const pending: PendingUi = {

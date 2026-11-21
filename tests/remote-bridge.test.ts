@@ -168,12 +168,14 @@ describe('RemoteBridge', () => {
     expect(sessions?.sessions?.[0].status).toBe('busy')
   })
 
-  it('setWidget/setStatus fire-and-forget не регистрируются как pending — точка остаётся busy при стриминге', () => {
+  it('fire-and-forget extension UI (setWidget/setStatus/notify/setTitle) не регистрируется как pending — точка остаётся busy при стриминге', () => {
     const host = fakeHost({ streaming: true })
     const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
     remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 'w-1', method: 'setWidget', widgetKey: 'todo', widgetLines: ['a'] }))
     remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 's-1', method: 'setStatus', statusKey: 'lsp', statusText: 'ok' }))
+    remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 'n-1', method: 'notify', message: 'done' }))
+    remote.tap(JSON.stringify({ type: 'extension_ui_request', id: 't-1', method: 'setTitle', title: 'x' }))
     const socket = fakeSocket(1)
     bridge['onOpen'](socket)
     const initial = JSON.parse(socket.lines[0]) as { type: string; sessions: { status: string }[] }
