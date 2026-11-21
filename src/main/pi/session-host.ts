@@ -514,7 +514,10 @@ export class SessionHost {
   async setThinkingLevel(level: string): Promise<PromptResult> {
     this.desiredThinkingLevel = level
     const conn = this.conn
-    if (conn === null || !conn.running) return { ok: true, error: null }
+    if (conn === null || !conn.running) {
+      this.status(this.lastState)
+      return { ok: true, error: null }
+    }
     try {
       const response = await conn.request('set_thinking_level', { level })
       if (!response.success) {

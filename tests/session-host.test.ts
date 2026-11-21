@@ -537,6 +537,20 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('setThinkingLevel before start updates desired level and pushes status without spawning pi', async () => {
+    const child = new ScriptedChild(() => null)
+    currentChild = child
+    const { host, statuses, spawnArgs } = makeHost([child], SETTINGS, {
+      seedModels: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, imageInput: false, thinkingLevels: ['off', 'low'] }],
+      seedThinkingLevels: ['off', 'low']
+    })
+    const result = await host.setThinkingLevel('low')
+    expect(result.ok).toBe(true)
+    expect(spawnArgs.length).toBe(0)
+    expect(statuses[statuses.length - 1]?.thinkingLevel).toBe('low')
+    host.dispose()
+  })
+
   it('initialModel/initialThinkingLevel apply after handshake; unknown model is skipped', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\proj\.pi\sessions\a.jsonl')
