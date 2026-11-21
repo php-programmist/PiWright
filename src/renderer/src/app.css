@@ -1202,6 +1202,16 @@ body {
   min-width: 0;
 }
 
+.tool-block.single[open] .tool-title {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.tool-block.single[open] .tool-command {
+  display: none;
+}
+
 .tool-block.single .tool-detail {
   flex-shrink: 0;
 }
