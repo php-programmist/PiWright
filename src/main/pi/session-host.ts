@@ -17,6 +17,7 @@ import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './
 import { ensureAskExtension } from './ask-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens } from './handshake'
+import { generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
 
@@ -64,6 +65,8 @@ export class SessionHost {
   private desiredThinkingLevel: string | null = null
   private desiredSessionName: string | null = null
   private desiredModel: string | null = null
+  /** Название первой сессии уже генерировали (успешно или нет) — второй раз не спавним одноразовый pi. */
+  private titleGenerated = false
   private readonly seedModels: PiModelInfo[]
   private readonly seedThinkingLevels: string[]
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
@@ -552,10 +555,28 @@ export class SessionHost {
   async prompt(text: string, images: string[] = [], behavior?: PromptBehavior): Promise<PromptResult> {
     try {
       await this.ensureStarted()
+      await this.maybeGenerateTitle(text)
       return await this.sendPrompt(text, images, behavior)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }
+    }
+  }
+
+  /** Первое сообщение новой сессии: одноразовый pi с той же моделью придумывает название 2-3 слова,
+   *  затем оно ставится через rename (set_session_name). Любая неудача — промпт уходит без названия. */
+  private async maybeGenerateTitle(message: string): Promise<void> {
+    if (this.titleGenerated || this.sessionName !== null || this.firstUserText !== null) return
+    this.titleGenerated = true
+    const model = modelKey(this.handshake?.model)
+    if (model === null) return
+    try {
+      const created = await this.createBackend(this.project, this.getSettings())
+      if (created.backend === null) return
+      const title = await generateSessionTitle(created.backend.spawner, this.project.dir, model, message)
+      if (title !== null && this.sessionName === null) await this.rename(title)
+    } catch {
+      // название не критично — молча продолжаем с эвристическим заголовком
     }
   }
 

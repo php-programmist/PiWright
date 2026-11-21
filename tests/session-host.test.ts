@@ -82,6 +82,19 @@ function childEmitAgentTurn(): void {
   currentChild?.emitData('{"type":"agent_settled","aborted":false}\n')
 }
 
+/** Одноразовый pi для generateSessionTitle: отвечает agent_settled без текста — название не генерируется. */
+function nullTitleChild(): ScriptedChild {
+  const child = new ScriptedChild((type) => {
+    if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\title.jsonl')
+    if (type === 'prompt') {
+      queueMicrotask(() => child.emitData('{"type":"agent_settled","aborted":false}\n'))
+      return { disposition: 'started' }
+    }
+    return null
+  })
+  return child
+}
+
 describe('SessionHost', () => {
   it('starts lazily on first prompt, handshakes and streams', async () => {
     const child = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
@@ -121,7 +134,7 @@ describe('SessionHost', () => {
       return null
     })
     currentChild = first
-    const { host, spawnArgs, statuses, events } = makeHost([first, second])
+    const { host, spawnArgs, statuses, events } = makeHost([first, nullTitleChild(), second])
     await host.prompt('one')
     first.closeWith(1)
     await vi.waitFor(() => {
@@ -130,9 +143,11 @@ describe('SessionHost', () => {
     currentChild = second
     const result = await host.prompt('two')
     expect(result.ok).toBe(true)
-    expect(spawnArgs).toHaveLength(2)
+    expect(spawnArgs).toHaveLength(3)
     expect(spawnArgs[0]).toEqual(['--mode', 'rpc'])
-    expect(spawnArgs[1]).toEqual(['--mode', 'rpc', '--session', 'C:\\proj\\.pi\\sessions\\a.jsonl'])
+    // Первая попытка generateSessionTitle: детей в скрипте нет — спавн падает, промпт уходит без названия.
+    expect(spawnArgs[1]).toEqual(['--mode', 'rpc', '--no-session', '--no-extensions', '--no-tools', '--no-mcp'])
+    expect(spawnArgs[2]).toEqual(['--mode', 'rpc', '--session', 'C:\\proj\\.pi\\sessions\\a.jsonl'])
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'injected_user_message' && e.text === 'earlier question')).toBe(true)
     })
@@ -282,10 +297,12 @@ describe('SessionHost', () => {
     const events: UiEvent[] = []
     const statuses: PiStatus[] = []
     const spawnArgs: string[][] = []
+    let spawns = 0
     const backend: PiBackend = {
       displayName: 'fake',
       spawner: async (req) => {
         spawnArgs.push(req.args)
+        if (spawns++ > 0) throw new Error('unexpected second spawn')
         return child as unknown as ChildProcess
       }
     }
@@ -302,10 +319,12 @@ describe('SessionHost', () => {
     const child = scriptedChild('/home/u/proj/.pi/sessions/a.jsonl')
     currentChild = child
     const spawnArgs: string[][] = []
+    let spawns = 0
     const backend: PiBackend = {
       displayName: 'fake',
       spawner: async (req) => {
         spawnArgs.push(req.args)
+        if (spawns++ > 0) throw new Error('unexpected second spawn')
         return child as unknown as ChildProcess
       }
     }
@@ -373,6 +392,7 @@ describe('SessionHost', () => {
     await fs.mkdir(join(dir, '.pi', 'attachments'), { recursive: true })
     await fs.writeFile(join(dir, '.pi', 'attachments', 'pic.png'), Buffer.from([1, 2, 3]))
     const makeTmpHost = (modelInput: string[]): { host: SessionHost; child: ScriptedChild } => {
+      const spawns: string[][] = []
       const c = new ScriptedChild((type) => {
         if (type === 'get_state') {
           return {
@@ -387,7 +407,17 @@ describe('SessionHost', () => {
       })
       currentChild = c
       const h = new SessionHost(() => SETTINGS, { onEvent: () => {}, onStatus: () => {} }, { kind: 'native', dir }, {
-        createBackend: async () => ({ backend: { displayName: 'fake', spawner: async () => c as unknown as ChildProcess }, error: null }),
+        createBackend: async () => ({
+          backend: {
+            displayName: 'fake',
+            spawner: async (req) => {
+              spawns.push(req.args)
+              if (spawns.length > 1) throw new Error('unexpected second spawn')
+              return c as unknown as ChildProcess
+            }
+          },
+          error: null
+        }),
         installAskExtension: async () => null
       })
       return { host: h, child: c }
