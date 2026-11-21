@@ -60,8 +60,13 @@
       "output": "release"
     },
     "files": [
-      "out/**",
-      "build/icon.ico"
+      "out/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
     ],
     "npmRebuild": false,
     "asarUnpack": [

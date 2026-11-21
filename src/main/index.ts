@@ -30,7 +30,7 @@ function createWindow(bg: string): void {
     height: state.height,
     title: 'PiWright',
     backgroundColor: bg,
-    icon: join(__dirname, '../../build/icon.ico'),
+    icon: app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(__dirname, '../../build/icon.ico'),
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

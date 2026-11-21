@@ -2,6 +2,9 @@
  *  (вшита ?raw-импортами), апгрейдит любой Upgrade в WebSocket. Порт `RemoteWebServer.kt`;
  *  вместо ручного HTTP-парсинга — node:http, WebSocket остался ручным (ws.ts). */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { app } from 'electron'
 import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo, Socket as NetSocket } from 'node:net'
 import { networkInterfaces } from 'node:os'
@@ -14,6 +17,8 @@ import appJs from '../../../resources/remote/app.js?raw'
 import styleCss from '../../../resources/remote/style.css?raw'
 
 const COOKIE_NAME = 'pi_remote'
+
+const iconPath = app?.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(__dirname, '../../build/icon.ico')
 
 export interface RemoteWebServerListener {
   onOpen(socket: RemoteSocket): void
@@ -96,6 +101,7 @@ function loginPage(error: boolean): string {
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PiWright remote — вход</title>
+<link rel="icon" href="/icon.ico">
 <style>
   :root{color-scheme:dark}
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -206,6 +212,21 @@ export class RemoteWebServer {
       }
       this.auth.noteFailure(peer)
       writeRedirect(res, '/login?e=1', null)
+      return
+    }
+    if (path === '/icon.ico') {
+      try {
+        const icon = await readFile(iconPath)
+        res.writeHead(200, {
+          'Content-Type': 'image/x-icon',
+          'Content-Length': icon.length,
+          'Cache-Control': 'no-store',
+          Connection: 'close'
+        })
+        res.end(icon)
+      } catch {
+        writeHttp(res, 404, 'text/plain', 'Not found')
+      }
       return
     }
     if (!this.auth.isAuthorized(cookieToken(req))) {
