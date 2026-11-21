@@ -21,7 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   piPathNative: '',
   piPathWsl: '',
   piExtraArgs: '',
-  updateUrl: '',
+  updateUrl: 'https://github.com/php-programmist/PiWright/releases/latest/download/',
   selectorPlacement: 'top',
   theme: 'dark',
   chatFontSize: 14,

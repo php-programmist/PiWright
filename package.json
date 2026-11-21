@@ -5,6 +5,10 @@
   "main": "./out/main/index.js",
   "author": "piwright",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/php-programmist/PiWright.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -76,7 +80,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://piwright.invalid/updates/"
+      "url": "https://github.com/php-programmist/PiWright/releases/latest/download/"
     }
   }
 }
