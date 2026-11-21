@@ -1,7 +1,7 @@
 /** Настройки: JSON в `%APPDATA%\PiWright\settings.json`. Атомарная запись (tmp + rename).
  *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir/piPath) мигтируются:
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -180,6 +180,9 @@ export class SettingsService {
   set(patch: Partial<Settings>): Settings {
     this.cache = { ...this.cache, ...patch }
     mkdirSync(dirname(this.filePath), { recursive: true })
+    if (existsSync(this.filePath)) {
+      copyFileSync(this.filePath, `${this.filePath}.bak`)
+    }
     const tmp = `${this.filePath}.tmp`
     writeFileSync(tmp, JSON.stringify(this.cache, null, 2), 'utf8')
     renameSync(tmp, this.filePath)
