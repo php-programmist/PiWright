@@ -1,7 +1,7 @@
 /** Чистые функции worktree (shared/worktree) + GitService.worktreeCreate/worktreeRemove
  *  против реального временного репозитория. */
 import { execSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -83,7 +83,8 @@ describe('GitService worktrees against a real repository', () => {
   let git: GitService
 
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'piwright-wt-'))
+    // TEMP на CI может быть 8.3-путём (RUNNER~1); git rev-parse возвращает канонический long path.
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'piwright-wt-')))
     project = { kind: 'native', dir }
     git = new GitService(() => ({ ...DEFAULT_SETTINGS }))
     execSync('git init -q -b main', { cwd: dir, stdio: 'pipe' })
