@@ -84,7 +84,7 @@ describe('GitService worktrees against a real repository', () => {
 
   beforeAll(() => {
     // TEMP на CI может быть 8.3-путём (RUNNER~1); git rev-parse возвращает канонический long path.
-    dir = realpathSync(mkdtempSync(join(tmpdir(), 'piwright-wt-')))
+    dir = realpathSync.native(mkdtempSync(join(tmpdir(), 'piwright-wt-')))
     project = { kind: 'native', dir }
     git = new GitService(() => ({ ...DEFAULT_SETTINGS }))
     execSync('git init -q -b main', { cwd: dir, stdio: 'pipe' })
