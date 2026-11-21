@@ -128,6 +128,7 @@ export function App(): React.JSX.Element {
       }
       // Петля перешла на новую сессию: если юзер смотрел прошлую — следуем за петлёй.
       if (message.event.type === 'loop_state' && message.event.info.active && message.event.previousHostId !== null) {
+        useChatStore.getState().carryOverLoopFlags(message.event.previousHostId, message.hostId)
         const st = useSessionsStore.getState()
         if (st.activeHostId === message.event.previousHostId) st.setActive(message.hostId)
       }

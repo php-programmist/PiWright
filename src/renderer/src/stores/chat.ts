@@ -65,6 +65,8 @@ interface ChatState {
   toggleMuted: (hostId: string) => void
   setLoopEnabled: (hostId: string, enabled: boolean) => void
   setLoopMax: (hostId: string, max: number) => void
+  /** Новая сессия петли: перенять флаги прошлой (Mute, Hidden tools, максимум итераций). */
+  carryOverLoopFlags: (previousHostId: string, hostId: string) => void
   markUnread: (hostId: string) => void
   markRead: (hostId: string) => void
   resetTranscript: (hostId: string) => void
@@ -504,6 +506,18 @@ export const useChatStore = create<ChatState>((set) => ({
       const host = state.hosts[hostId]
       if (host === undefined) return state
       return { hosts: { ...state.hosts, [hostId]: { ...host, loopMax: max } } }
+    }),
+  carryOverLoopFlags: (previousHostId, hostId) =>
+    set((state) => {
+      const previous = state.hosts[previousHostId]
+      if (previous === undefined) return state
+      const host = state.hosts[hostId] ?? emptyHostChat()
+      return {
+        hosts: {
+          ...state.hosts,
+          [hostId]: { ...host, muted: previous.muted, toolsHidden: previous.toolsHidden, loopMax: previous.loopMax }
+        }
+      }
     }),
   markUnread: (hostId) =>
     set((state) => {

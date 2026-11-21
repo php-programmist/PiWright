@@ -81,6 +81,11 @@ app.whenReady().then(() => {
   )
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
+  }, (previousHostId, createdHostId) => {
+    const previous = piHost?.get(previousHostId) ?? null
+    if (previous === null) return
+    if (previous.telegramEnabled) bridge?.setTelegramEnabledByHost(createdHostId, true)
+    if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
   })
   const auth = new RemoteAuth(generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth)

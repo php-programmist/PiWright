@@ -27,7 +27,9 @@ export class LoopController {
 
   constructor(
     private readonly piHost: PiHost,
-    private readonly emit: (hostId: string, event: UiEvent) => void
+    private readonly emit: (hostId: string, event: UiEvent) => void,
+    /** Мост для копирования флагов прошлой сессии (Remote, Telegram) в новую. */
+    private readonly onSpawned?: (previousHostId: string, createdHostId: string) => void
   ) {}
 
   start(hostId: string, prompt: string, maxIterations: number): LoopInfo | null {
@@ -120,6 +122,7 @@ export class LoopController {
     const created = this.piHost.create(state.project)
     this.states.delete(previousHostId)
     this.states.set(created.id, state)
+    this.onSpawned?.(previousHostId, created.id)
     this.emit(previousHostId, {
       type: 'loop_state',
       info: { active: false, remaining: state.remaining, reason: null },
