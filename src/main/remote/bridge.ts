@@ -55,9 +55,6 @@ export class RemoteSession {
   readonly id = newRemoteSessionId()
   readonly sockets: RemoteSocket[] = []
   readonly widgetLines = new Map<string, string[]>()
-  /** Тоггл уведомлений этой сессии в Telegram: своё у каждой сессии, живёт в памяти.
-   *  Дефолт false — включается явно иконкой в шапке чата (как в jb-pi). */
-  telegramEnabled: boolean
   /** Идёт ход: ведётся по сырым строкам (agent_start/agent_settled), как в jb-pi —
    *  тап срабатывает до обновления статуса хоста. */
   streaming: boolean
@@ -68,7 +65,6 @@ export class RemoteSession {
     readonly host: SessionHost,
     readonly tap: (line: string) => void
   ) {
-    this.telegramEnabled = false
     this.streaming = host.streaming
     this.unread = false
   }
@@ -186,23 +182,24 @@ export class RemoteBridge {
     return false
   }
 
-  /** Telegram-флаг сессии (по умолчанию включён, гасится с телефона). */
+  /** Telegram-флаг сессии — источник истины в SessionHost, виден для любой сессии
+   *  (шаринг не обязателен); неизвестная — выключено. */
   telegramEnabledFor(hostId: string): boolean {
-    return this.sessionsByHost.get(hostId)?.telegramEnabled ?? true
+    return this.piHost.get(hostId)?.telegramEnabled ?? false
   }
 
   setTelegramEnabled(id: string, enabled: boolean): void {
     const remote = this.sessions.get(id)
     if (remote === undefined) return
-    remote.telegramEnabled = enabled
+    remote.host.telegramEnabled = enabled
     this.broadcastSessions()
   }
 
-  /** Тоггл из UI ПК (иконка в шапке чата): сессия ищется по hostId. */
+  /** Тоггл из UI ПК (иконка в шапке чата): работает для любой сессии, не только расшаренной. */
   setTelegramEnabledByHost(hostId: string, enabled: boolean): boolean {
-    const remote = this.sessionsByHost.get(hostId)
-    if (remote === undefined) return false
-    remote.telegramEnabled = enabled
+    const host = this.piHost.get(hostId)
+    if (host === null) return false
+    host.telegramEnabled = enabled
     this.broadcastSessions()
     return true
   }
@@ -349,7 +346,7 @@ export class RemoteBridge {
     this.socketSessions.set(socket.seq, remote.id)
     remote.sockets.push(socket)
     remote.unread = false
-    socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.telegramEnabled)))
+    socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.host.telegramEnabled)))
     void this.sendSnapshot(socket, remote)
     socket.send(JSON.stringify(todosFrame(remoteTodos(widgetLinesOf(remote)))))
     this.replayPendingDialogs(socket, remote)
@@ -618,7 +615,7 @@ export class RemoteBridge {
         title: remote.title,
         project: remote.projectName,
         status,
-        telegram: remote.telegramEnabled,
+        telegram: remote.host.telegramEnabled,
         unread: remote.unread
       }
     })

@@ -26,11 +26,13 @@ export class NotificationHub {
 
     const settings = this.getSettings()
     if (!settings.notifications.telegram.events[kind]) return
+    const host = this.piHost.get(message.hostId)
+    if (host === null || host === undefined || !host.telegramEnabled) return
     const bridge = this.bridge()
-    if (bridge !== null && (bridge.isPhoneVisible() || !bridge.telegramEnabledFor(message.hostId))) return
+    if (bridge !== null && bridge.isPhoneVisible()) return
     const token = this.tokenStore.read()
     if (token === null) return
-    const status = this.piHost.get(message.hostId)?.lastStatus()
+    const status = host.lastStatus()
     if (status === null || status === undefined) return
     sendTelegramNotification(settings.notifications.telegram.chatId, token, basename(status.project.dir) || status.project.dir, status.title, kind)
   }

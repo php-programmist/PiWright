@@ -67,6 +67,9 @@ export class SessionHost {
   private desiredModel: string | null = null
   /** Название первой сессии уже генерировали (успешно или нет) — второй раз не спавним одноразовый pi. */
   private titleGenerated = false
+  /** Тоггл Telegram-уведомлений этой сессии — независим от remote-шаринга (jb-pi: поле вкладки);
+   *  мост держит зеркало для телефона, источник истины — здесь. */
+  telegramEnabled = false
   private readonly seedModels: PiModelInfo[]
   private readonly seedThinkingLevels: string[]
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()

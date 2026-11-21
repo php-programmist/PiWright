@@ -26,6 +26,7 @@ function fakeHost(overrides: Partial<Record<'streaming' | 'displayTitle', unknow
     project,
     streaming: overrides['streaming'] ?? false,
     displayTitle: overrides['displayTitle'] ?? 'fix auth',
+    telegramEnabled: false,
     remoteTaps: [] as ((line: string) => void)[],
     sentLines: [] as string[],
     respondUiCalls: [] as unknown[],
@@ -203,26 +204,38 @@ describe('RemoteBridge', () => {
     expect(bridge.answerUiFromPc('no-such-host', 'ui-5')).toBe(false)
   })
 
-  it('telegram toggle from phone updates the flag (default off, включается явно)', () => {
+  it('telegram toggle from phone updates the host flag (default off, включается явно)', () => {
     const host = fakeHost()
     const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
-    expect(remote.telegramEnabled).toBe(false)
+    expect(remote.host.telegramEnabled).toBe(false)
     const socket = fakeSocket(1)
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
     bridge['onText'](socket, JSON.stringify({ type: 'telegram', enabled: true }))
-    expect(remote.telegramEnabled).toBe(true)
+    expect(remote.host.telegramEnabled).toBe(true)
     bridge['onText'](socket, JSON.stringify({ type: 'telegram', enabled: false }))
-    expect(remote.telegramEnabled).toBe(false)
+    expect(remote.host.telegramEnabled).toBe(false)
     expect(bridge.telegramEnabledFor(remote.host.id)).toBe(false)
   })
 
-  it('setTelegramEnabledByHost toggles by hostId (иконка в шапке чата)', () => {
+  it('telegram toggle from PC works for unshared session (независимо от remote)', () => {
     const host = fakeHost()
-    const { bridge } = sharedBridge([host])
+    const { bridge } = bridgeWith([host])
     expect(bridge.setTelegramEnabledByHost(host.id, true)).toBe(true)
+    expect(host.telegramEnabled).toBe(true)
     expect(bridge.telegramEnabledFor(host.id)).toBe(true)
+    expect(bridge.setTelegramEnabledByHost(host.id, false)).toBe(true)
+    expect(bridge.telegramEnabledFor(host.id)).toBe(false)
+  })
+
+  it('setTelegramEnabledByHost unknown host → false', () => {
+    const { bridge } = bridgeWith([])
     expect(bridge.setTelegramEnabledByHost('no-such-host', true)).toBe(false)
+  })
+
+  it('telegramEnabledFor для неизвестной сессии — false (не слать уведомления)', () => {
+    const { bridge } = bridgeWith([])
+    expect(bridge.telegramEnabledFor('no-such-host')).toBe(false)
   })
 
   it('visibility frames drive isPhoneVisible', () => {

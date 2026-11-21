@@ -96,7 +96,8 @@ describe('NotificationHub', () => {
 
   function hub(
     overrides: Partial<typeof DEFAULT_SETTINGS.notifications.telegram> = {},
-    bridge: RemoteBridge | null = null
+    bridge: RemoteBridge | null = null,
+    hostTelegramEnabled = true
   ): NotificationHub {
     const s = settings()
     s.notifications.telegram = { ...s.notifications.telegram, ...overrides }
@@ -113,6 +114,7 @@ describe('NotificationHub', () => {
         get: (hostId: string) =>
           hostId === 'h1'
             ? {
+                telegramEnabled: hostTelegramEnabled,
                 lastStatus: () => ({ project: { kind: 'native', dir: 'D:\\Work\\api' }, title: 'fix auth' })
               }
             : null
@@ -146,8 +148,8 @@ describe('NotificationHub', () => {
   })
 
   it('phone visible or session telegram off suppresses sending', () => {
-    hub({}, { isPhoneVisible: () => true, telegramEnabledFor: () => true } as unknown as RemoteBridge).onEvent(event({ type: 'turn_end' }))
-    hub({}, { isPhoneVisible: () => false, telegramEnabledFor: () => false } as unknown as RemoteBridge).onEvent(event({ type: 'turn_end' }))
+    hub({}, { isPhoneVisible: () => true } as unknown as RemoteBridge).onEvent(event({ type: 'turn_end' }))
+    hub({}, null, false).onEvent(event({ type: 'turn_end' }))
     expect(sent).toEqual([])
   })
 
