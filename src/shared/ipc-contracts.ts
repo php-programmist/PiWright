@@ -273,6 +273,11 @@ export interface FileWriteResult {
   error: string | null
 }
 
+export interface FileRenameResult {
+  ok: boolean
+  error: string | null
+}
+
 /** Файл из набора открытых изменился на диске (chokidar в main). */
 export interface FileChangedMessage {
   project: ProjectEntry
@@ -461,6 +466,7 @@ export interface PiWrightApi {
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesWrite(project: ProjectEntry, path: string, content: string): Promise<FileWriteResult>
+  filesRename(project: ProjectEntry, path: string, newName: string): Promise<FileRenameResult>
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   /** base64 → файл в `.pi/attachments/` (paste); name — желаемое, возвращается фактическое. */
   putAttachment(project: ProjectEntry, name: string, base64: string): Promise<AttachmentResult>
@@ -537,6 +543,7 @@ export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'
 export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'
 export const FILES_WRITE_CHANNEL = 'files:write'
+export const FILES_RENAME_CHANNEL = 'files:rename'
 export const FILES_WATCH_CHANNEL = 'files:watch'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'

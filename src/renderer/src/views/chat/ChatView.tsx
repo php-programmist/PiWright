@@ -11,6 +11,7 @@ import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
+import { onPromptInject } from '../../lib/prompt-inject'
 import { splitWorktreeHostDir } from '../../../../shared/worktree'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 import type { PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
@@ -102,6 +103,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => {
     activeHostRef.current = activeHostId ?? ''
   }, [activeHostId])
+  useEffect(
+    () =>
+      onPromptInject((text) =>
+        setInput((v) => `${v}${v.length > 0 && !v.endsWith(' ') ? ' ' : ''}${text} `)
+      ),
+    []
+  )
   useEffect(() => () => {
     atBottomMap.delete(activeHostRef.current)
   }, [])

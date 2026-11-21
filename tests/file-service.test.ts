@@ -102,6 +102,29 @@ describe('FileService.write', () => {
   })
 })
 
+describe('FileService.rename', () => {
+  it('renames a file and a directory', async () => {
+    expect(await service.rename(project, 'a.txt', 'renamed.txt')).toMatchObject({ ok: true, error: null })
+    expect(await service.read(project, 'renamed.txt')).toMatchObject({ ok: true, content: 'hello' })
+    expect(await service.rename(project, 'renamed.txt', 'a.txt')).toMatchObject({ ok: true })
+    expect(await service.rename(project, 'sub/deep', 'deep2')).toMatchObject({ ok: true })
+    expect(await service.read(project, 'sub/deep2/c.txt')).toMatchObject({ ok: true, content: 'sea' })
+    expect(await service.rename(project, 'sub/deep2', 'deep')).toMatchObject({ ok: true })
+  })
+
+  it('rejects invalid names and existing targets', async () => {
+    expect(await service.rename(project, 'a.txt', 'sub/b.txt')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.rename(project, 'a.txt', '..')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.rename(project, 'a.txt', '')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.rename(project, 'a.txt', 'big.txt')).toMatchObject({ ok: false, error: 'Target already exists' })
+    expect(await service.rename(project, 'sub', 'notes')).toMatchObject({ ok: false, error: 'Target already exists' })
+  })
+
+  it('rejects paths outside the project', async () => {
+    expect(await service.rename(project, '../x', 'y')).toMatchObject({ ok: false, error: 'Path is outside the project' })
+  })
+})
+
 describe('resolveWithinRoot', () => {
   const root = 'D:\\r'
 

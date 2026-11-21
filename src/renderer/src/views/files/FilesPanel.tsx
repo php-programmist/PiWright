@@ -1,15 +1,49 @@
 /** Панель дерева файлов проекта (справа, паттерн GitPanel): ленивая загрузка каталогов,
- *  клик по файлу — просмотрщик поверх чата. */
-import { useEffect, useMemo } from 'react'
+ *  клик по файлу — просмотрщик поверх чата, правый клик — меню (переименовать, копировать
+ *  путь, добавить в контекст чата). */
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useT } from '../../lib/i18n'
+import { injectIntoPrompt } from '../../lib/prompt-inject'
 import { fileStatusClass } from '../../lib/git-file-class'
 import type { GitStatus, ProjectEntry } from '../../../../shared/ipc-contracts'
 
-function TreeLevel({ project, dir, depth }: { project: ProjectEntry; dir: string; depth: number }): React.JSX.Element | null {
+type EntryKind = 'dir' | 'file'
+
+interface MenuState {
+  x: number
+  y: number
+  path: string
+  kind: EntryKind
+}
+
+interface RenameState {
+  path: string
+  value: string
+}
+
+/** dir проекта — хост-путь Windows (native `D:\…`, wsl UNC) → абсолютный путь файла. */
+function absolutePath(dir: string, rel: string): string {
+  return `${dir.replace(/[\\/]+$/, '')}\\${rel.replace(/\//g, '\\')}`
+}
+
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = text
+    document.body.appendChild(area)
+    area.select()
+    document.execCommand('copy')
+    area.remove()
+  }
+}
+
+function TreeLevel({ project, dir, depth, onMenu }: { project: ProjectEntry; dir: string; depth: number; onMenu: (path: string, kind: EntryKind, x: number, y: number) => void }): React.JSX.Element | null {
   const t = useT()
   const listing = useFilesStore((s) => s.tree[dir])
   if (listing === undefined) return null
@@ -20,31 +54,39 @@ function TreeLevel({ project, dir, depth }: { project: ProjectEntry; dir: string
     <>
       {listing.entries.map((entry) =>
         entry.kind === 'dir' ? (
-          <DirRow key={entry.name} project={project} parentDir={dir} name={entry.name} depth={depth} />
+          <DirRow key={entry.name} project={project} parentDir={dir} name={entry.name} depth={depth} onMenu={onMenu} />
         ) : (
-          <FileRow key={entry.name} project={project} dir={dir} name={entry.name} depth={depth} />
+          <FileRow key={entry.name} project={project} dir={dir} name={entry.name} depth={depth} onMenu={onMenu} />
         )
       )}
     </>
   )
 }
 
-function DirRow({ project, parentDir, name, depth }: { project: ProjectEntry; parentDir: string; name: string; depth: number }): React.JSX.Element {
+function DirRow({ project, parentDir, name, depth, onMenu }: { project: ProjectEntry; parentDir: string; name: string; depth: number; onMenu: (path: string, kind: EntryKind, x: number, y: number) => void }): React.JSX.Element {
   const path = parentDir === '' ? name : `${parentDir}/${name}`
   const expanded = useFilesStore((s) => s.expanded[path] ?? false)
   const toggleDir = useFilesStore((s) => s.toggleDir)
   return (
     <>
-      <div className="tree-row" style={{ paddingLeft: 6 + depth * 14 }} onClick={() => void toggleDir(project, path)}>
+      <div
+        className="tree-row"
+        style={{ paddingLeft: 6 + depth * 14 }}
+        onClick={() => void toggleDir(project, path)}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onMenu(path, 'dir', e.clientX, e.clientY)
+        }}
+      >
         <span className="tree-caret">{expanded ? '▾' : '▸'}</span>
         <span className="tree-name">{name}</span>
       </div>
-      {expanded && <TreeLevel project={project} dir={path} depth={depth + 1} />}
+      {expanded && <TreeLevel project={project} dir={path} depth={depth + 1} onMenu={onMenu} />}
     </>
   )
 }
 
-function FileRow({ project, dir, name, depth }: { project: ProjectEntry; dir: string; name: string; depth: number }): React.JSX.Element {
+function FileRow({ project, dir, name, depth, onMenu }: { project: ProjectEntry; dir: string; name: string; depth: number; onMenu: (path: string, kind: EntryKind, x: number, y: number) => void }): React.JSX.Element {
   const path = dir === '' ? name : `${dir}/${name}`
   const activePath = useFilesStore((s) => s.activePath)
   const openFile = useFilesStore((s) => s.openFile)
@@ -55,6 +97,10 @@ function FileRow({ project, dir, name, depth }: { project: ProjectEntry; dir: st
       style={{ paddingLeft: 6 + depth * 14 + 16 }}
       title={path}
       onClick={() => void openFile(project, path)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onMenu(path, 'file', e.clientX, e.clientY)
+      }}
     >
       <span className={`tree-name${statusClass === '' ? '' : ` ${statusClass}`}`}>{name}</span>
     </div>
@@ -85,12 +131,32 @@ export function FilesPanel(): React.JSX.Element {
   const width = useFilesStore((s) => s.width)
   const setWidth = useFilesStore((s) => s.setWidth)
   const refresh = useFilesStore((s) => s.refresh)
+  const rename = useFilesStore((s) => s.rename)
   const t = useT()
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [renaming, setRenaming] = useState<RenameState | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     useFilesStore.getState().setProject(project)
     useGitStore.getState().setProject(project)
   }, [project])
+
+  useEffect(() => {
+    if (menu === null) return
+    const onDown = (e: MouseEvent): void => {
+      if (menuRef.current !== null && !menuRef.current.contains(e.target as Node)) setMenu(null)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMenu(null)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
 
   const startResize = (down: React.MouseEvent): void => {
     down.preventDefault()
@@ -127,8 +193,101 @@ export function FilesPanel(): React.JSX.Element {
       </div>
       <FilesError />
       <div className="files-body">
-        <TreeLevel project={project} dir="" depth={0} />
+        <TreeLevel
+          project={project}
+          dir=""
+          depth={0}
+          onMenu={(path, kind, x, y) => setMenu({ x, y, path, kind })}
+        />
       </div>
+      {menu !== null && (
+        <div
+          className="files-menu"
+          ref={menuRef}
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 210),
+            top: Math.min(menu.y, window.innerHeight - 160)
+          }}
+        >
+          <button
+            className="project-menu-item"
+            onClick={() => {
+              setRenaming({ path: menu.path, value: menu.path.slice(menu.path.lastIndexOf('/') + 1) })
+              setMenu(null)
+            }}
+          >
+            {t('Rename')}
+          </button>
+          <button
+            className="project-menu-item"
+            onClick={() => {
+              void copyText(absolutePath(project.dir, menu.path))
+              setMenu(null)
+            }}
+          >
+            {t('Copy path')}
+          </button>
+          <button
+            className="project-menu-item"
+            onClick={() => {
+              void copyText(menu.path)
+              setMenu(null)
+            }}
+          >
+            {t('Copy relative path')}
+          </button>
+          {menu.kind === 'file' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                injectIntoPrompt(`@${menu.path}`)
+                setMenu(null)
+              }}
+            >
+              {t('Add to chat context')}
+            </button>
+          )}
+        </div>
+      )}
+      {renaming !== null && (
+        <div
+          className="files-rename-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRenaming(null)
+          }}
+        >
+          <div className="files-rename-box">
+            <div className="files-rename-title">{t('Rename')}</div>
+            <input
+              autoFocus
+              value={renaming.value}
+              onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void confirmRename()
+                if (e.key === 'Escape') setRenaming(null)
+              }}
+              onFocus={(e) => e.target.select()}
+            />
+            <div className="files-rename-actions">
+              <button onClick={() => setRenaming(null)}>{t('Cancel')}</button>
+              <button className="primary" onClick={() => void confirmRename()}>
+                {t('Rename')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
+
+  async function confirmRename(): Promise<void> {
+    if (renaming === null || project === null) return
+    const value = renaming.value.trim()
+    if (value.length === 0 || value === renaming.path.slice(renaming.path.lastIndexOf('/') + 1)) {
+      setRenaming(null)
+      return
+    }
+    const ok = await rename(project, renaming.path, value)
+    if (ok) setRenaming(null)
+  }
 }

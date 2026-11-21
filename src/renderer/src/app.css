@@ -2499,6 +2499,84 @@ body {
   text-overflow: ellipsis;
 }
 
+.files-menu {
+  position: fixed;
+  min-width: 190px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.files-rename-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+}
+
+.files-rename-box {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 14px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.files-rename-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.files-rename-box input {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.files-rename-box input:focus {
+  border-color: var(--accent);
+}
+
+.files-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.files-rename-actions button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.files-rename-actions button:hover {
+  background: var(--hover);
+}
+
+.files-rename-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .file-overlay {
   position: absolute;
   inset: 0;

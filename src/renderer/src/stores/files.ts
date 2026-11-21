@@ -27,6 +27,7 @@ interface FilesState extends FilesData {
   toggleDir: (project: ProjectEntry, dir: string) => Promise<void>
   refresh: (project: ProjectEntry) => Promise<void>
   openFile: (project: ProjectEntry, path: string) => Promise<void>
+  rename: (project: ProjectEntry, path: string, newName: string) => Promise<boolean>
   closeTab: (project: ProjectEntry, path: string) => void
   setActiveTab: (path: string) => void
   closeViewer: () => void
@@ -111,6 +112,41 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       contents: { ...state.contents, [path]: result.ok ? result.content : '' },
       error: !result.ok && state.activePath === path ? result.error : state.error
     }))
+  },
+
+  /** Переименование: ремап кэшей дерева/вкладок; открытые файлы остаются открытыми. */
+  rename: async (project, path, newName) => {
+    if (projectKey(project) !== get().projectKey) return false
+    const result = await window.piwright.filesRename(project, path, newName)
+    if (!result.ok) {
+      set({ error: result.error })
+      return false
+    }
+    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const newPath = parent === '' ? newName : `${parent}/${newName}`
+    const remap = (p: string): string =>
+      p === path ? newPath : p.startsWith(`${path}/`) ? `${newPath}${p.slice(path.length)}` : p
+    set((state) => {
+      const tree: FilesState['tree'] = {}
+      for (const [dir, listing] of Object.entries(state.tree)) {
+        tree[remap(dir)] = {
+          loading: listing.loading,
+          entries:
+            dir === parent
+              ? listing.entries.map((e) => (e.name === name ? { ...e, name: newName } : e))
+              : listing.entries
+        }
+      }
+      const expanded: Record<string, boolean> = {}
+      for (const [dir, value] of Object.entries(state.expanded)) expanded[remap(dir)] = value
+      const tabs = state.tabs.map(remap)
+      const contents: Record<string, string> = {}
+      for (const [p, content] of Object.entries(state.contents)) contents[remap(p)] = content
+      return { tree, expanded, tabs, contents, activePath: state.activePath === null ? null : remap(state.activePath) }
+    })
+    void window.piwright.filesWatch(project, get().tabs)
+    return true
   },
 
   closeTab: (project, path) => {

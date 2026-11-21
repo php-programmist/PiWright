@@ -135,6 +135,9 @@ const RU: Record<string, string> = {
 
   // Файлы
   'Refresh tree': 'Обновить дерево',
+  'Copy path': 'Копировать путь',
+  'Copy relative path': 'Копировать относительный путь',
+  'Add to chat context': 'Добавить в контекст',
   'Pick a session to browse its files': 'Выберите сессию, чтобы смотреть файлы',
   'Close tab': 'Закрыть вкладку',
   'Close viewer (back to chat)': 'Закрыть просмотр (вернуться к чату)',

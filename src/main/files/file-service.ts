@@ -4,7 +4,7 @@
 import { promises as fs } from 'node:fs'
 import { win32 } from 'node:path'
 import * as chokidar from 'chokidar'
-import type { FileListResult, FileReadResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
+import type { FileListResult, FileReadResult, FileRenameResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
 const BINARY_PLACEHOLDER = '(binary file)'
@@ -70,6 +70,29 @@ export class FileService {
     try {
       await fs.mkdir(win32.dirname(abs), { recursive: true })
       await fs.writeFile(abs, content, 'utf8')
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async rename(project: ProjectEntry, relPath: string, newName: string): Promise<FileRenameResult> {
+    if (newName.length === 0 || newName === '.' || newName === '..' || /[\\/]/.test(newName)) {
+      return { ok: false, error: 'Invalid name' }
+    }
+    const abs = resolveWithinRoot(project.dir, relPath)
+    if (abs === null) return { ok: false, error: 'Path is outside the project' }
+    const target = win32.join(win32.dirname(abs), newName)
+    if (target !== abs) {
+      try {
+        await fs.stat(target)
+        return { ok: false, error: 'Target already exists' }
+      } catch {
+        // цели нет — можно переименовывать
+      }
+    }
+    try {
+      await fs.rename(abs, target)
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
