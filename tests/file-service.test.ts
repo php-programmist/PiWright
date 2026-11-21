@@ -125,6 +125,43 @@ describe('FileService.rename', () => {
   })
 })
 
+describe('FileService.delete', () => {
+  it('deletes a file and a directory recursively', async () => {
+    expect(await service.delete(project, 'notes/new.md')).toMatchObject({ ok: true, error: null })
+    expect(await service.read(project, 'notes/new.md')).toMatchObject({ ok: false })
+    expect(await service.delete(project, 'sub/deep')).toMatchObject({ ok: true, error: null })
+    expect(await service.read(project, 'sub/deep/c.txt')).toMatchObject({ ok: false })
+    expect(await service.listDir(project, 'sub')).toMatchObject({
+      ok: true,
+      entries: [{ name: 'b.txt', kind: 'file' }]
+    })
+    expect(await service.delete(project, 'sub/deep2')).toMatchObject({ ok: false })
+  })
+
+  it('rejects invalid paths and escapes', async () => {
+    expect(await service.delete(project, '')).toMatchObject({ ok: false, error: 'Invalid path' })
+    expect(await service.delete(project, '..')).toMatchObject({ ok: false, error: 'Invalid path' })
+    expect(await service.delete(project, '../x')).toMatchObject({ ok: false, error: 'Path is outside the project' })
+  })
+})
+
+describe('FileService.mkdir', () => {
+  it('creates a nested directory', async () => {
+    expect(await service.mkdir(project, 'created/nested')).toMatchObject({ ok: true, error: null })
+    expect(await service.listDir(project, 'created')).toMatchObject({
+      ok: true,
+      entries: [{ name: 'nested', kind: 'dir' }]
+    })
+  })
+
+  it('rejects invalid names and escapes', async () => {
+    expect(await service.mkdir(project, '')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.mkdir(project, 'a/..')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.mkdir(project, 'a\\b')).toMatchObject({ ok: false, error: 'Invalid name' })
+    expect(await service.mkdir(project, '../x')).toMatchObject({ ok: false, error: 'Invalid name' })
+  })
+})
+
 describe('resolveWithinRoot', () => {
   const root = 'D:\\r'
 

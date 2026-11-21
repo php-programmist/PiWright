@@ -10,6 +10,8 @@ import {
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_RENAME_CHANNEL,
+  FILES_DELETE_CHANNEL,
+  FILES_MKDIR_CHANNEL,
   FILES_WATCH_CHANNEL,
   FILES_WRITE_CHANNEL,
   GIT_BRANCHES_CHANNEL,
@@ -553,6 +555,20 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request' }
     }
     return files.rename(project, path, newName)
+  })
+
+  ipcMain.handle(FILES_DELETE_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return files.delete(project, path)
+  })
+
+  ipcMain.handle(FILES_MKDIR_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return files.mkdir(project, path)
   })
 
   ipcMain.handle(FILES_WATCH_CHANNEL, (_event, project: unknown, paths: unknown) => {

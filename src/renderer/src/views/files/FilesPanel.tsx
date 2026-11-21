@@ -1,6 +1,6 @@
 /** Панель дерева файлов проекта (справа, паттерн GitPanel): ленивая загрузка каталогов,
- *  клик по файлу — просмотрщик поверх чата, правый клик — меню (переименовать, копировать
- *  путь, добавить в контекст чата). */
+ *  клик по файлу — просмотрщик поверх чата, правый клик — меню (переименовать, удалить,
+ *  копировать путь, обновить, создать папку/файл, добавить в контекст чата). */
 import { useEffect, useRef, useState } from 'react'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
@@ -17,10 +17,11 @@ interface MenuState {
   x: number
   y: number
   path: string
-  kind: EntryKind
+  kind: EntryKind | 'root'
 }
 
-interface RenameState {
+interface DialogState {
+  mode: 'rename' | 'newDir' | 'newFile'
   path: string
   value: string
 }
@@ -135,9 +136,14 @@ export function FilesPanel(): React.JSX.Element {
   const setWidth = useFilesStore((s) => s.setWidth)
   const refresh = useFilesStore((s) => s.refresh)
   const rename = useFilesStore((s) => s.rename)
+  const remove = useFilesStore((s) => s.remove)
+  const createDir = useFilesStore((s) => s.createDir)
+  const createFile = useFilesStore((s) => s.createFile)
+  const reloadFile = useFilesStore((s) => s.reloadFile)
+  const loadDir = useFilesStore((s) => s.loadDir)
   const t = useT()
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const [renaming, setRenaming] = useState<RenameState | null>(null)
+  const [dialog, setDialog] = useState<DialogState | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -195,7 +201,14 @@ export function FilesPanel(): React.JSX.Element {
         <button className="icon" title={t('Refresh tree')} onClick={() => void refresh(project)}>⟲</button>
       </div>
       <FilesError />
-      <div className="files-body">
+      <div
+        className="files-body"
+        onContextMenu={(e) => {
+          if (e.defaultPrevented) return
+          e.preventDefault()
+          setMenu({ x: e.clientX, y: e.clientY, path: '', kind: 'root' })
+        }}
+      >
         <TreeLevel
           project={project}
           dir=""
@@ -209,36 +222,58 @@ export function FilesPanel(): React.JSX.Element {
           ref={menuRef}
           style={{
             left: Math.min(menu.x, window.innerWidth - 210),
-            top: Math.min(menu.y, window.innerHeight - 160)
+            top: Math.min(menu.y, window.innerHeight - 300)
           }}
         >
-          <button
-            className="project-menu-item"
-            onClick={() => {
-              setRenaming({ path: menu.path, value: menu.path.slice(menu.path.lastIndexOf('/') + 1) })
-              setMenu(null)
-            }}
-          >
-            {t('Rename')}
-          </button>
-          <button
-            className="project-menu-item"
-            onClick={() => {
-              void copyText(absolutePath(project.dir, menu.path))
-              setMenu(null)
-            }}
-          >
-            {t('Copy path')}
-          </button>
-          <button
-            className="project-menu-item"
-            onClick={() => {
-              void copyText(menu.path)
-              setMenu(null)
-            }}
-          >
-            {t('Copy relative path')}
-          </button>
+          {menu.kind !== 'root' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                setDialog({ mode: 'rename', path: menu.path, value: menu.path.slice(menu.path.lastIndexOf('/') + 1) })
+                setMenu(null)
+              }}
+            >
+              {t('Rename')}
+            </button>
+          )}
+          {menu.kind !== 'root' && (
+            <button
+              className="project-menu-item danger"
+              onClick={() => {
+                const name = menu.path.slice(menu.path.lastIndexOf('/') + 1)
+                if (!window.confirm(t('Delete "{name}"?', { name }))) {
+                  setMenu(null)
+                  return
+                }
+                void remove(project, menu.path)
+                setMenu(null)
+              }}
+            >
+              {t('Delete')}
+            </button>
+          )}
+          {menu.kind !== 'root' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                void copyText(absolutePath(project.dir, menu.path))
+                setMenu(null)
+              }}
+            >
+              {t('Copy path')}
+            </button>
+          )}
+          {menu.kind !== 'root' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                void copyText(menu.path)
+                setMenu(null)
+              }}
+            >
+              {t('Copy relative path')}
+            </button>
+          )}
           {menu.kind === 'file' && (
             <button
               className="project-menu-item"
@@ -250,31 +285,67 @@ export function FilesPanel(): React.JSX.Element {
               {t('Add to chat context')}
             </button>
           )}
+          {menu.kind !== 'root' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                if (menu.kind === 'file') void reloadFile(project, menu.path)
+                else void loadDir(project, menu.path)
+                setMenu(null)
+              }}
+            >
+              {t('Refresh')}
+            </button>
+          )}
+          {menu.kind !== 'file' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                setDialog({ mode: 'newDir', path: menu.path, value: '' })
+                setMenu(null)
+              }}
+            >
+              {t('New folder')}
+            </button>
+          )}
+          {menu.kind !== 'file' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                setDialog({ mode: 'newFile', path: menu.path, value: '' })
+                setMenu(null)
+              }}
+            >
+              {t('New file')}
+            </button>
+          )}
         </div>
       )}
-      {renaming !== null && (
+      {dialog !== null && (
         <div
           className="files-rename-overlay"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setRenaming(null)
+            if (e.target === e.currentTarget) setDialog(null)
           }}
         >
           <div className="files-rename-box">
-            <div className="files-rename-title">{t('Rename')}</div>
+            <div className="files-rename-title">
+              {dialog.mode === 'rename' ? t('Rename') : dialog.mode === 'newDir' ? t('New folder') : t('New file')}
+            </div>
             <input
               autoFocus
-              value={renaming.value}
-              onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+              value={dialog.value}
+              onChange={(e) => setDialog({ ...dialog, value: e.target.value })}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmRename()
-                if (e.key === 'Escape') setRenaming(null)
+                if (e.key === 'Enter') void confirmDialog()
+                if (e.key === 'Escape') setDialog(null)
               }}
               onFocus={(e) => e.target.select()}
             />
             <div className="files-rename-actions">
-              <button onClick={() => setRenaming(null)}>{t('Cancel')}</button>
-              <button className="primary" onClick={() => void confirmRename()}>
-                {t('Rename')}
+              <button onClick={() => setDialog(null)}>{t('Cancel')}</button>
+              <button className="primary" onClick={() => void confirmDialog()}>
+                {dialog.mode === 'rename' ? t('Rename') : t('Create')}
               </button>
             </div>
           </div>
@@ -283,14 +354,22 @@ export function FilesPanel(): React.JSX.Element {
     </aside>
   )
 
-  async function confirmRename(): Promise<void> {
-    if (renaming === null || project === null) return
-    const value = renaming.value.trim()
-    if (value.length === 0 || value === renaming.path.slice(renaming.path.lastIndexOf('/') + 1)) {
-      setRenaming(null)
+  async function confirmDialog(): Promise<void> {
+    if (dialog === null || project === null) return
+    const value = dialog.value.trim()
+    if (value.length === 0 || value === '.' || value === '..' || /[\\/]/.test(value)) return
+    if (dialog.mode === 'rename') {
+      if (value === dialog.path.slice(dialog.path.lastIndexOf('/') + 1)) {
+        setDialog(null)
+        return
+      }
+      if (await rename(project, dialog.path, value)) setDialog(null)
       return
     }
-    const ok = await rename(project, renaming.path, value)
-    if (ok) setRenaming(null)
+    const ok =
+      dialog.mode === 'newDir'
+        ? await createDir(project, dialog.path, value)
+        : await createFile(project, dialog.path, value)
+    if (ok) setDialog(null)
   }
 }

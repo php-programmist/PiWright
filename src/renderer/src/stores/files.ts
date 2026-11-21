@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import type { FileEntry, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
+import { useTabsStore } from './tabs'
 
 interface FilesData {
   projectKey: string | null
@@ -28,6 +29,11 @@ interface FilesState extends FilesData {
   /** Загрузка содержимого файла (идемпотентно) + watch открытых. */
   openFile: (project: ProjectEntry, path: string) => Promise<void>
   rename: (project: ProjectEntry, path: string, newName: string) => Promise<boolean>
+  remove: (project: ProjectEntry, path: string) => Promise<boolean>
+  createDir: (project: ProjectEntry, parentDir: string, name: string) => Promise<boolean>
+  createFile: (project: ProjectEntry, parentDir: string, name: string) => Promise<boolean>
+  /** Принудительная перечитка файла с диска (пункт меню «Обновить»). */
+  reloadFile: (project: ProjectEntry, path: string) => Promise<void>
   /** Файл закрыт как вкладка — сбросить кэш и пересчитать watch. */
   closeContent: (project: ProjectEntry, path: string) => void
   setError: (error: string | null) => void
@@ -113,7 +119,6 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     })
   },
 
-  /** Переименование: ремап кэшей дерева/содержимого; открытые файлы остаются открытыми. */
   rename: async (project, path, newName) => {
     if (projectKey(project) !== get().projectKey) return false
     const result = await window.piwright.filesRename(project, path, newName)
@@ -145,6 +150,78 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     })
     void window.piwright.filesWatch(project, Object.keys(get().contents))
     return true
+  },
+
+  remove: async (project, path) => {
+    if (projectKey(project) !== get().projectKey) return false
+    const result = await window.piwright.filesDelete(project, path)
+    if (!result.ok) {
+      set({ error: result.error })
+      return false
+    }
+    const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    const deleted: string[] = []
+    set((state) => {
+      const tree: FilesState['tree'] = {}
+      for (const [dir, listing] of Object.entries(state.tree)) {
+        if (dir === path || dir.startsWith(`${path}/`)) continue
+        tree[dir] =
+          dir === parent
+            ? { loading: listing.loading, entries: listing.entries.filter((e) => e.name !== name) }
+            : listing
+      }
+      const expanded: Record<string, boolean> = {}
+      for (const [dir, value] of Object.entries(state.expanded)) {
+        if (dir !== path && !dir.startsWith(`${path}/`)) expanded[dir] = value
+      }
+      const contents: Record<string, string> = {}
+      for (const [p, content] of Object.entries(state.contents)) {
+        if (p === path || p.startsWith(`${path}/`)) {
+          deleted.push(p)
+          continue
+        }
+        contents[p] = content
+      }
+      return { tree, expanded, contents }
+    })
+    const tabs = useTabsStore.getState()
+    for (const p of deleted) tabs.closeTab(project, `file\u0000${p}`)
+    void window.piwright.filesWatch(project, Object.keys(get().contents))
+    return true
+  },
+
+  createDir: async (project, parentDir, name) => {
+    if (projectKey(project) !== get().projectKey) return false
+    const path = parentDir === '' ? name : `${parentDir}/${name}`
+    const result = await window.piwright.filesMkdir(project, path)
+    if (!result.ok) {
+      set({ error: result.error })
+      return false
+    }
+    await get().loadDir(project, parentDir)
+    return true
+  },
+
+  createFile: async (project, parentDir, name) => {
+    if (projectKey(project) !== get().projectKey) return false
+    const path = parentDir === '' ? name : `${parentDir}/${name}`
+    const result = await window.piwright.filesWrite(project, path, '')
+    if (!result.ok) {
+      set({ error: result.error })
+      return false
+    }
+    await get().loadDir(project, parentDir)
+    return true
+  },
+
+  reloadFile: async (project, path) => {
+    if (projectKey(project) !== get().projectKey) return
+    if (get().contents[path] === undefined) return
+    const result = await window.piwright.filesRead(project, path)
+    if (projectKey(project) !== get().projectKey || get().contents[path] === undefined) return
+    if (!result.ok) return
+    set((state) => ({ contents: { ...state.contents, [path]: result.content } }))
   },
 
   closeContent: (project, path) => {

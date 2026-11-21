@@ -147,6 +147,10 @@ const RU: Record<string, string> = {
 
   // Файлы
   'Refresh tree': 'Обновить дерево',
+  'New folder': 'Новая папка',
+  'New file': 'Новый файл',
+  'Create': 'Создать',
+  'Delete "{name}"?': 'Удалить "{name}"?',
   'Copy path': 'Копировать путь',
   'Copy relative path': 'Копировать относительный путь',
   'Add to chat context': 'Добавить в контекст',

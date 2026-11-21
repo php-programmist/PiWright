@@ -99,6 +99,33 @@ export class FileService {
     }
   }
 
+  async delete(project: ProjectEntry, relPath: string): Promise<FileWriteResult> {
+    if (relPath.length === 0 || relPath === '.' || relPath === '..') return { ok: false, error: 'Invalid path' }
+    const abs = resolveWithinRoot(project.dir, relPath)
+    if (abs === null) return { ok: false, error: 'Path is outside the project' }
+    try {
+      await fs.rm(abs, { recursive: true, force: false })
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async mkdir(project: ProjectEntry, relPath: string): Promise<FileWriteResult> {
+    const segments = relPath.split('/')
+    if (relPath.length === 0 || segments.some((s) => s.length === 0 || s === '.' || s === '..' || s.includes('\\'))) {
+      return { ok: false, error: 'Invalid name' }
+    }
+    const abs = resolveWithinRoot(project.dir, relPath)
+    if (abs === null) return { ok: false, error: 'Path is outside the project' }
+    try {
+      await fs.mkdir(abs, { recursive: true })
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
   /** Набор открытых файлов проекта → вотчеры; вызывается renderer'ом при каждом изменении набора. */
   setWatched(project: ProjectEntry, relPaths: string[]): void {
     const key = `${project.kind}\u0000${project.dir}`
