@@ -539,7 +539,7 @@ export function registerIpc(
   ipcMain.handle(REMOTE_CHECK_PORT_CHANNEL, async (_event, port: unknown) => {
     const p = typeof port === 'number' && Number.isFinite(port) ? Math.round(port) : NaN
     if (p < 1 || p > 65535) return { busy: true }
-    // Порт, который уже слушает собственный мост piwright, для проверки НЕ занят (баг 7):
+    // Порт, который уже слушает собственный мост PiWright, для проверки НЕ занят (баг 7):
     // внешний конфликт исключён — сокет держим мы сами.
     const info = notifications?.bridge.connectionInfo()
     if (info !== undefined && info.running && info.port === p) return { busy: false }

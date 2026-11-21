@@ -45,7 +45,7 @@ export function sendTestTelegram(chatId: string, token: string): Promise<string 
   const key = token.trim()
   if (id.length === 0) return Promise.resolve('chat_id is empty')
   if (key.length === 0) return Promise.resolve('bot token is empty')
-  return send(id, key, telegramMessage('piwright', 'settings', 'turnEnd'))
+  return send(id, key, telegramMessage('PiWright', 'settings', 'turnEnd'))
 }
 
 /** Уведомление о событии сессии; ошибки глотаются (fire-and-forget). */

@@ -28,7 +28,7 @@ function createWindow(bg: string): void {
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
-    title: 'Piwright',
+    title: 'PiWright',
     backgroundColor: bg,
     show: false,
     webPreferences: {

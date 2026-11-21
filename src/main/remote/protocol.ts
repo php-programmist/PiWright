@@ -1,5 +1,5 @@
 /** Чистые функции протокола «телефон ↔ десктоп». Порт `core/remote/RemoteProtocol.kt`
- *  (Gson → JSON-объекты piwright, ModelInfo → PiModelInfo, todo — shared/todo). */
+ *  (Gson → JSON-объекты PiWright, ModelInfo → PiModelInfo, todo — shared/todo). */
 import { randomUUID } from 'node:crypto'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
@@ -179,7 +179,7 @@ export function uiAnsweredFrame(id: string, by: string): PiJsonObject {
   return { type: 'ui_answered', id, by }
 }
 
-/** Модель piwright для кадра catalog: key = provider/id. */
+/** Модель PiWright для кадра catalog: key = provider/id. */
 export function catalogModelOf(model: PiModelInfo): CatalogModel {
   return {
     key: `${model.provider}/${model.id}`,

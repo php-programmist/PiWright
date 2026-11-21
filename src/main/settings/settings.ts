@@ -1,4 +1,4 @@
-/** Настройки: JSON в `%APPDATA%\Piwright\settings.json`. Атомарная запись (tmp + rename).
+/** Настройки: JSON в `%APPDATA%\PiWright\settings.json`. Атомарная запись (tmp + rename).
  *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir/piPath) мигтируются:
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'

@@ -1,6 +1,6 @@
 /** Установка вшитого pi-расширения `ask_question` в домашнюю директорию бэкенда проекта
  *  (`~/.pi/agent/piwright/ask-question`) и путь для `pi -e`. Порт `core/PiAskExtension.kt`:
- *  каталог вне `~/.pi/agent/extensions` — расширение живёт только в сессиях piwright.
+ *  каталог вне `~/.pi/agent/extensions` — расширение живёт только в сессиях PiWright.
  *  Файлы — verbatim-копия jb-pi (resources/ask-question), версия в `.version` — обновление. */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'

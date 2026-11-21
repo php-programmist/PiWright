@@ -8,7 +8,7 @@ out/
 release/
 *.tsbuildinfo
 
-# Env и секреты — только в %APPDATA%\Piwright
+# Env и секреты — только в %APPDATA%\PiWright
 .env
 .env.*
 *.local

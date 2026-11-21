@@ -95,7 +95,7 @@ function loginPage(error: boolean): string {
   return `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>piwright remote — вход</title>
+<title>PiWright remote — вход</title>
 <style>
   :root{color-scheme:dark}
   body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -111,8 +111,8 @@ function loginPage(error: boolean): string {
   .err{color:#e07a72;font-size:13px;margin:10px 0 0}
 </style></head><body>
 <form method="post" action="/login">
-  <h1>piwright remote</h1>
-  <p>Введи PIN из настроек Piwright (Notifications → Remote).</p>
+  <h1>PiWright remote</h1>
+  <p>Введи PIN из настроек PiWright (Notifications → Remote).</p>
   <input name="pin" inputmode="numeric" autocomplete="one-time-code" autofocus maxlength="7" placeholder="000 000">
   <button type="submit">Войти</button>
   ${error ? '<div class="err">Неверный PIN или слишком много попыток.</div>' : ''}

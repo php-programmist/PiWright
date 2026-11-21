@@ -1,8 +1,8 @@
-import type { PiwrightApi } from '../../shared/ipc-contracts'
+import type { PiWrightApi } from '../../shared/ipc-contracts'
 
 declare global {
   interface Window {
-    piwright: PiwrightApi
+    piwright: PiWrightApi
   }
 }
 

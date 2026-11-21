@@ -76,7 +76,7 @@ npm run lint           # eslint
 
 ## Settings
 
-App settings live in `%APPDATA%\Piwright\settings.json` and are editable from the in-app settings window: backends, WSL distro, pi path, update feed, appearance, notifications, remote access.
+App settings live in `%APPDATA%\PiWright\settings.json` and are editable from the in-app settings window: backends, WSL distro, pi path, update feed, appearance, notifications, remote access.
 
 ## Project structure
 

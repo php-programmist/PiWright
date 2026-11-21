@@ -77,7 +77,7 @@ import type {
   BackendMode,
   McpScope,
   McpServerEntry,
-  PiwrightApi,
+  PiWrightApi,
   ProjectEntry,
   PromptBehavior,
   QueueTexts,
@@ -93,7 +93,7 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
   }
 }
 
-const api: PiwrightApi = {
+const api: PiWrightApi = {
   getSettings: () => ipcRenderer.invoke(SETTINGS_GET_CHANNEL),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),

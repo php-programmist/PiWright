@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
-  "author": "piwright",
+  "author": "PiWright",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -54,7 +54,7 @@
   },
   "build": {
     "appId": "com.piwright.app",
-    "productName": "Piwright",
+    "productName": "PiWright",
     "directories": {
       "buildResources": "build",
       "output": "release"

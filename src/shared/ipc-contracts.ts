@@ -414,7 +414,7 @@ export interface SkillsListResult {
   skills: SkillEntry[]
 }
 
-export interface PiwrightApi {
+export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
   listSessions(): Promise<SessionsSnapshot>
