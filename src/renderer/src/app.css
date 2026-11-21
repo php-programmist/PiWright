@@ -1819,6 +1819,21 @@ body {
   font: inherit;
 }
 
+/* Чекбокс «Петля» делит поле промпта пополам: сверху задача, снизу условие выхода. */
+.composer-fields {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.composer .loop-exit {
+  flex: none;
+  resize: none;
+  border-style: dashed;
+}
+
 .composer button,
 .settings button {
   background: var(--accent);

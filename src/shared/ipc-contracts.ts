@@ -445,8 +445,8 @@ export interface PiWrightApi {
   /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
   revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
-  /** Стартовать петлю на сессии: промпт будет повторён в новых сессиях, пока агент зовёт loop_next. */
-  loopStart(hostId: string, prompt: string, maxIterations: number): Promise<PromptResult>
+  /** Стартовать петлю на сессии: промпт повторяется в новых сессиях, пока ход содержит вызовы инструментов; exitCondition дописывается в каждую итерацию. */
+  loopStart(hostId: string, prompt: string, maxIterations: number, exitCondition: string): Promise<PromptResult>
   /** Остановить петлю: следующая итерация не начнётся, текущий ход не прерывается. */
   loopStop(hostId: string): Promise<PromptResult>
   /** Изменить оставшееся число итераций активной петли. */

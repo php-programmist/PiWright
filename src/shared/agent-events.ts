@@ -81,8 +81,15 @@ export function percentColor(p: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
+/** Хвост промпта с условием выхода петли: рендер дописывает его к отправляемому промпту,
+ *  контроллер — к промпту каждой новой итерации. Продолжение решает харнесс (автоспавн в конце
+ *  хода); агент вызывает loop_stop, когда условие выхода выполнено. */
+export function loopExitClause(condition: string): string {
+  return `Условие выхода из петли: ${condition}\nЭто петля PiWright: когда твой ход завершится, новая итерация запустится автоматически в свежей сессии с этим же промптом. После завершения шага проверь условие выхода: если оно ВЫПОЛНЕНО — вызови инструмент loop_stop и заверши ход; если ещё нет — просто заверши ход обычным ответом, без loop_stop.`
+}
+
 /** Состояние петли PiWright (чекбокс «Петля»): remaining — сколько итераций ещё можно заспавнить. */
-export type LoopStopReason = 'agent' | 'user' | 'max' | 'short-circuit' | 'error'
+export type LoopStopReason = 'agent' | 'exit' | 'user' | 'max' | 'short-circuit' | 'error'
 
 export interface LoopInfo {
   active: boolean
@@ -151,6 +158,7 @@ export type UiEvent =
   | { type: 'turn_error'; message: string }
   | { type: 'turn_start' }
   | { type: 'turn_end' }
+  | { type: 'subagents_activity'; kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed'; id: string | null }
   | { type: 'loop_state'; info: LoopInfo; previousHostId: string | null }
   | { type: 'assistant_message_start' }
   | { type: 'dialog_open'; id: string; dialog: ExtensionDialog }

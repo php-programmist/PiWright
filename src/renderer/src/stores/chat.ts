@@ -95,6 +95,9 @@ export const atBottomMap = new Map<string, boolean>()
 /** Черновик промпта по hostId (вне reactive-стора: пишет и читает только ChatView). */
 export const draftMap = new Map<string, string>()
 
+/** Черновик условия выхода петли по hostId (вне reactive-стора, как draftMap). */
+export const loopExitMap = new Map<string, string>()
+
 function newId(): number {
   return nextEntryId++
 }
@@ -298,6 +301,8 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
       ownEchoes.set(hostId, 0)
       return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false }
     }
+    case 'subagents_activity':
+      return host
     case 'assistant_message_start': {
       const flushed = withFlushed(hostId, host)
       return { ...flushed, entries: closeOpenBlocks(flushed.entries) }

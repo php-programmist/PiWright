@@ -24,7 +24,8 @@ export function replaySessionEvents(messages: unknown[]): UiEvent[] {
     onCompactionStart: () => {},
     onCompactionEnd: (end) => events.push({ type: 'compaction_end', end }),
     onResult: (usage) => events.push({ type: 'turn_result', usage }),
-    onError: (message) => events.push({ type: 'turn_error', message })
+    onError: (message) => events.push({ type: 'turn_error', message }),
+    onSubagentsActivity: () => {}
   })
   translator.replay(messages)
   return events

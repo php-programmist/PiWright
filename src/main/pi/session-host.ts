@@ -16,7 +16,7 @@ import { stripWslUncPrefix } from './backends/shell'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './extension-ui'
 import { ensureAskExtension } from './ask-extension'
 import { ensureSessionToolsExtension } from './session-tools-extension'
-import { ensureLoopExtension } from './loop-extension'
+import { ensureLoopStopExtension } from './loop-stop-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens } from './handshake'
 import { generateSessionTitle } from './session-title'
@@ -44,7 +44,7 @@ function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Pr
   return Promise.all([
     ensureAskExtension(project, settings),
     ensureSessionToolsExtension(project, settings),
-    ensureLoopExtension(project, settings)
+    ensureLoopStopExtension(project, settings)
   ])
 }
 
@@ -243,7 +243,8 @@ export class SessionHost {
       onCompactionStart: (reason) => this.emit({ type: 'compaction_start', reason }),
       onCompactionEnd: (end) => this.emit({ type: 'compaction_end', end }),
       onResult: (usage) => this.emit({ type: 'turn_result', usage }),
-      onError: (message) => this.emit({ type: 'turn_error', message })
+      onError: (message) => this.emit({ type: 'turn_error', message }),
+      onSubagentsActivity: (kind, id) => this.emit({ type: 'subagents_activity', kind, id })
     })
     const conn = new PiConnection(created.backend.spawner, {
       onEvent: (type, payload) => this.handleEvent(translator, type, payload),

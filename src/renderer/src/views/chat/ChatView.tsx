@@ -4,10 +4,10 @@ import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
-import { useChatStore, atBottomMap, draftMap } from '../../stores/chat'
+import { useChatStore, atBottomMap, draftMap, loopExitMap } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
-import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
+import { cacheHitOf, percentColor, loopExitClause } from '../../../../shared/agent-events'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
@@ -94,6 +94,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const loopMax = chat?.loopMax ?? 20
   const loopActive = loop?.active ?? false
   const loopChecked = loopActive || loopEnabled
+  const loopSplit = loopEnabled && !loopActive
   const toggleTelegram = useSessionsStore((s) => s.toggleTelegram)
   const toggleShare = useSessionsStore((s) => s.toggleShare)
   const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
@@ -102,6 +103,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => {
     if (activeHostId !== null) draftMap.set(activeHostId, input)
   }, [input, activeHostId])
+  const [loopExit, setLoopExit] = useState(() => (activeHostId !== null ? loopExitMap.get(activeHostId) ?? '' : ''))
+  useEffect(() => {
+    if (activeHostId !== null) loopExitMap.set(activeHostId, loopExit)
+  }, [loopExit, activeHostId])
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
@@ -175,18 +180,22 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const send = async (behavior?: PromptBehavior): Promise<void> => {
     const text = input.trim()
     if (text.length === 0) return
+    const startingLoop = !streaming && loopEnabled && !loopActive
+    // Чекбокс «Петля» обязывает прописать условие выхода — без него ход не отправляется.
+    if (startingLoop && loopExit.trim().length === 0) return
+    const fullText = startingLoop ? `${text}\n\n${loopExitClause(loopExit.trim())}` : text
     setInput('')
-    addUserMessage(activeHostId, text)
+    addUserMessage(activeHostId, fullText)
     const images = pendingImagesRef.current
     pendingImagesRef.current = []
     const effective = streaming ? (behavior ?? 'followUp') : undefined
-    const result = await window.piwright.prompt(activeHostId, text, images, effective)
+    const result = await window.piwright.prompt(activeHostId, fullText, images, effective)
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
     // Галка «Петля» + обычная отправка (не steer/followUp) — старт петли с этим промптом.
     if (result.ok && effective === undefined && loopEnabled && !loopActive) {
-      void window.piwright.loopStart(activeHostId, text, loopMax)
+      void window.piwright.loopStart(activeHostId, text, loopMax, loopExit.trim())
       setLoopEnabled(activeHostId, false)
     }
   }
@@ -273,11 +282,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const queuedCount = queue.steering.length + queue.followUp.length
   const loopReasonText = (reason: string): string =>
     reason === 'agent'
-      ? t('completed by the agent')
-      : reason === 'max'
+      ? t('the turn had no tool calls')
+      : reason === 'exit'
+        ? t('exit condition met')
+        : reason === 'max'
         ? t('iteration limit reached')
         : reason === 'short-circuit'
-          ? t('loop requested too fast 3 times in a row')
+          ? t('3 iterations in a row faster than 10 seconds')
           : reason === 'error'
             ? t('failed to start the next iteration')
             : t('stopped by user')
@@ -369,7 +380,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   const loopControls = (
     <>
-      <label className="loop-toggle" title={t('Loop: repeat this prompt in fresh sessions; the agent decides whether to continue')}>
+      <label className="loop-toggle" title={t('Loop: repeat this prompt in fresh sessions; the loop stops when the agent calls loop_stop over the exit condition')}>
         <input type="checkbox" checked={loopChecked} onChange={toggleLoop} />
         <span>{t('Loop')}</span>
       </label>
@@ -544,6 +555,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <div className="loop-bar">{loopControls}</div>
       )}
       <footer className="composer">
+        <div className="composer-fields">
         <textarea
           value={input}
           placeholder={
@@ -551,7 +563,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
               ? t('Ask Pi (Enter to send, Shift+Enter for newline)')
               : t('Ask Pi (Ctrl+Enter to send)')
           }
-          rows={3}
+          rows={loopSplit ? 2 : 3}
           onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => {
             const file = Array.from(e.clipboardData.items)
@@ -574,6 +586,27 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             }
           }}
         />
+        {loopSplit && (
+          <textarea
+            className="loop-exit"
+            value={loopExit}
+            placeholder={t('Loop exit condition (required): the loop stops when the agent calls loop_stop')}
+            rows={1}
+            onChange={(e) => setLoopExit(e.target.value)}
+            onKeyDown={(e) => {
+              if (sendOnEnter) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void send()
+                }
+              } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault()
+                void send()
+              }
+            }}
+          />
+        )}
+        </div>
         <button className="attach" title={t('Attach file')} onClick={() => void attachFile()} disabled={project === null}>
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -596,7 +629,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {t('Steer')}
           </button>
         )}
-        <button onClick={() => void send()} disabled={input.trim().length === 0}>
+        <button onClick={() => void send()} disabled={input.trim().length === 0 || (loopSplit && loopExit.trim().length === 0)}>
           {t('Send')}
         </button>
       </footer>

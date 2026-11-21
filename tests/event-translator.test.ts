@@ -72,6 +72,10 @@ class Recorder implements StreamListener {
   onError(message: string): void {
     this.calls.push(`error:${message}`)
   }
+
+  onSubagentsActivity(kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed', id: string | null): void {
+    this.calls.push(`subagents:${kind}:${id ?? 'null'}`)
+  }
 }
 
 function feed(translator: PiEventTranslator, lines: string[]): void {
@@ -189,6 +193,28 @@ describe('PiEventTranslator', () => {
       '{"type":"agent_settled"}'
     ])
     expect(recorder.calls).toEqual(['error:429 rate limited', 'result:0/0/null/0+0/null'])
+  })
+
+  it('subagent lifecycle events become subagents_activity', () => {
+    const recorder = new Recorder()
+    feed(new PiEventTranslator(recorder), [
+      '{"type":"subagents:created","id":"a1","description":"x","isBackground":true}',
+      '{"type":"subagents:started","id":"a1"}',
+      '{"type":"subagents:workflow_started","id":"w1","name":"wf"}',
+      '{"type":"subagents:completed","id":"a1"}',
+      '{"type":"subagents:failed","id":"a2","error":"boom"}',
+      '{"type":"subagents:workflow_settled","id":"w1"}',
+      '{"type":"subagents:disposed"}'
+    ])
+    expect(recorder.calls).toEqual([
+      'subagents:started:a1',
+      'subagents:started:a1',
+      'subagents:workflow_started:w1',
+      'subagents:completed:a1',
+      'subagents:completed:a2',
+      'subagents:workflow_settled:w1',
+      'subagents:disposed:null'
+    ])
   })
 
   it('unknown context window skips usage updates but keeps context tokens for the result', () => {

@@ -33,7 +33,8 @@ function translateFixture(): UiEvent[] {
     onCompactionStart: (reason) => events.push({ type: 'compaction_start', reason }),
     onCompactionEnd: (end) => events.push({ type: 'compaction_end', end }),
     onResult: (usage) => events.push({ type: 'turn_result', usage }),
-    onError: (message) => events.push({ type: 'turn_error', message })
+    onError: (message) => events.push({ type: 'turn_error', message }),
+    onSubagentsActivity: () => {}
   }
   const translator = new PiEventTranslator(listener)
   translator.contextWindow = 16000

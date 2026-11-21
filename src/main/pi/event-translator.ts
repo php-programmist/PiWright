@@ -27,6 +27,7 @@ export interface StreamListener {
   onCompactionEnd(end: CompactionEnd): void
   onResult(usage: TurnUsage): void
   onError(message: string): void
+  onSubagentsActivity(kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed', id: string | null): void
 }
 
 export function str(obj: PiJsonObject | null, key: string): string | null {
@@ -192,6 +193,23 @@ export class PiEventTranslator {
         return
       case 'compaction_end':
         this.onCompactionEnd(payload)
+        return
+      case 'subagents:created':
+      case 'subagents:started':
+        this.listener.onSubagentsActivity('started', str(payload, 'id'))
+        return
+      case 'subagents:completed':
+      case 'subagents:failed':
+        this.listener.onSubagentsActivity('completed', str(payload, 'id'))
+        return
+      case 'subagents:workflow_started':
+        this.listener.onSubagentsActivity('workflow_started', str(payload, 'id'))
+        return
+      case 'subagents:workflow_settled':
+        this.listener.onSubagentsActivity('workflow_settled', str(payload, 'id'))
+        return
+      case 'subagents:disposed':
+        this.listener.onSubagentsActivity('disposed', null)
         return
       case 'agent_settled':
         this.onSettled()
