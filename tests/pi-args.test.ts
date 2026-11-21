@@ -10,19 +10,21 @@ describe('piArgs', () => {
     expect(piArgs('/s.jsonl')).toEqual(['--mode', 'rpc', '--session', '/s.jsonl'])
   })
 
-  it('extension path is passed with -e before session', () => {
-    expect(piArgs('/s.jsonl', '/ext/ask-question')).toEqual([
+  it('every extension path is passed with -e before session, nulls skipped', () => {
+    expect(piArgs('/s.jsonl', ['/ext/ask-question', null, '/ext/session-tools'])).toEqual([
       '--mode',
       'rpc',
       '-e',
       '/ext/ask-question',
+      '-e',
+      '/ext/session-tools',
       '--session',
       '/s.jsonl'
     ])
   })
 
   it('extra args go last', () => {
-    expect(piArgs(null, null, ['--no-extensions', '-e', 'x'])).toEqual(['--mode', 'rpc', '--no-extensions', '-e', 'x'])
+    expect(piArgs(null, [], ['--no-extensions', '-e', 'x'])).toEqual(['--mode', 'rpc', '--no-extensions', '-e', 'x'])
   })
 })
 

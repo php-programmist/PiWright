@@ -87,7 +87,7 @@ function makeHost(children: ScriptedChild[]): {
   const created: CreateBackendResult = { backend, error: null }
   const host = new SessionHost(() => SETTINGS, listener, PROJECT, {
     createBackend: async () => created,
-    installAskExtension: async () => null
+    installExtensions: async () => []
   })
   return { host, events, statuses, spawnArgs }
 }

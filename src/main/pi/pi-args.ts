@@ -21,13 +21,13 @@ export function splitArgs(extra: string): string[] {
 
 export function piArgs(
   sessionPath?: string | null,
-  extensionPath?: string | null,
+  extensionPaths: readonly (string | null)[] = [],
   extraArgs: string[] = []
 ): string[] {
   return [
     '--mode',
     'rpc',
-    ...(extensionPath ? ['-e', extensionPath] : []),
+    ...extensionPaths.flatMap((path) => (path === null ? [] : ['-e', path])),
     ...(sessionPath ? ['--session', sessionPath] : []),
     ...extraArgs
   ]

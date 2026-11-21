@@ -1,12 +1,8 @@
-/** Установка вшитого pi-расширения `ask_question` в домашнюю директорию бэкенда проекта
- *  (`~/.pi/agent/piwright/ask-question`) и путь для `pi -e`. Порт `core/PiAskExtension.kt`:
- *  каталог вне `~/.pi/agent/extensions` — расширение живёт только в сессиях PiWright.
- *  Файлы — verbatim-копия jb-pi (resources/ask-question), версия в `.version` — обновление. */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
+/** Вшитое pi-расширение `ask_question` (порт `core/PiAskExtension.kt`): файлы — verbatim-копия
+ *  jb-pi из `resources/ask-question`, выкладываются в каталог бэкенда проекта (см.
+ *  `bundled-extensions.ts`), путь уходит в `pi -e`. */
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
-import { listWslDistros, resolveWslHome } from './backends/wsl'
+import { installBundledExtension, piwrightExtensionDir } from './bundled-extensions'
 import askIndexTs from '../../../resources/ask-question/index.ts?raw'
 import askLicense from '../../../resources/ask-question/LICENSE?raw'
 import askNotice from '../../../resources/ask-question/NOTICE?raw'
@@ -33,40 +29,15 @@ const ASK_EXTENSION_FILES: Record<string, string> = {
   'src/rpc.ts': askRpcTs
 }
 
-/** Каталог расширения в fs бэкенда; null — бэкенд недоступен. */
-export async function askExtensionDir(project: ProjectEntry, settings: Settings): Promise<string | null> {
-  if (project.kind === 'native') {
-    return join(homedir(), '.pi', 'agent', 'piwright', 'ask-question')
-  }
-  const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
-  if (distro === undefined) return null
-  const home = await resolveWslHome(distro)
-  if (home === null) return null
-  return join(`\\\\wsl.localhost\\${distro}`, home, '.pi', 'agent', 'piwright', 'ask-question')
-}
-
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */
 export async function installAskExtension(dir: string): Promise<string> {
-  try {
-    const current = (await readFile(join(dir, '.version'), 'utf8')).trim()
-    if (current === ASK_EXTENSION_VERSION) return dir
-  } catch {
-    // нет маркера — ставим заново
-  }
-  await mkdir(dir, { recursive: true })
-  for (const [rel, text] of Object.entries(ASK_EXTENSION_FILES)) {
-    const target = join(dir, ...rel.split('/'))
-    await mkdir(dirname(target), { recursive: true })
-    await writeFile(target, text, 'utf8')
-  }
-  await writeFile(join(dir, '.version'), `${ASK_EXTENSION_VERSION}\n`, 'utf8')
-  return dir
+  return installBundledExtension(dir, ASK_EXTENSION_VERSION, ASK_EXTENSION_FILES)
 }
 
 /** Путь для `pi -e`; null — поставить не удалось (сессия стартует без расширения, как в jb-pi). */
 export async function ensureAskExtension(project: ProjectEntry, settings: Settings): Promise<string | null> {
   try {
-    const dir = await askExtensionDir(project, settings)
+    const dir = await piwrightExtensionDir(project, settings, 'ask-question')
     if (dir === null) return null
     return await installAskExtension(dir)
   } catch {
