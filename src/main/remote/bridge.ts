@@ -367,7 +367,9 @@ export class RemoteBridge {
     try {
       const messages = await remote.host.requestRemote('get_messages')
       if (messages.success) {
-        socket.send(JSON.stringify(snapshotFrame(arrayOf(messages.data), null, null, remote.streaming)))
+        const data = objectOf(messages.data)
+        const list = data !== null && Array.isArray(data['messages']) ? data['messages'] : []
+        socket.send(JSON.stringify(snapshotFrame(list, null, null, remote.streaming)))
       }
     } catch {
       if (attempt < SNAPSHOT_ATTEMPTS) {
@@ -627,10 +629,6 @@ function widgetLinesOf(remote: RemoteSession): Record<string, string[]> {
   const result: Record<string, string[]> = {}
   for (const [key, lines] of remote.widgetLines) result[key] = lines
   return result
-}
-
-function arrayOf(data: unknown): unknown[] {
-  return Array.isArray(data) ? data : []
 }
 
 function objectOf(data: unknown): PiJsonObject | null {

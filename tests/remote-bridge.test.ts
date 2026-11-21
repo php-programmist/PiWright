@@ -20,12 +20,15 @@ function fakeSocket(seq: number): FakeSocket {
 }
 
 /** Фейковый SessionHost: только то, что читает мост. */
-function fakeHost(overrides: Partial<Record<'streaming' | 'displayTitle', unknown>> = {}): SessionHost {
+function fakeHost(
+  overrides: Partial<Record<'streaming' | 'displayTitle' | 'messages', unknown>> = {}
+): SessionHost {
   const host = {
     id: 'host-1',
     project,
     streaming: overrides['streaming'] ?? false,
     displayTitle: overrides['displayTitle'] ?? 'fix auth',
+    messages: overrides['messages'] ?? [],
     telegramEnabled: false,
     remoteTaps: [] as ((line: string) => void)[],
     sentLines: [] as string[],
@@ -40,7 +43,7 @@ function fakeHost(overrides: Partial<Record<'streaming' | 'displayTitle', unknow
       host.sentLines.push(line)
     },
     requestRemote(_type: string): Promise<PiResponse> {
-      return Promise.resolve({ id: '1', command: _type, success: true, data: { messages: [] }, error: null })
+      return Promise.resolve({ id: '1', command: _type, success: true, data: { messages: host.messages ?? [] }, error: null })
     },
     respondRemoteUi(id: string, fields: unknown) {
       host.respondUiCalls.push([id, fields])
@@ -130,6 +133,19 @@ describe('RemoteBridge', () => {
     expect(frames.filter((f) => f.type === 'extension_ui_request')).toEqual([
       { type: 'extension_ui_request', id: 'ui-1', method: 'confirm', title: 'run?', timeout: 5000 }
     ])
+  })
+
+  it('snapshot carries messages from get_messages ({messages:[...]})', async () => {
+    const host = fakeHost({ messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] })
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const snapshot = socket.lines
+      .map((l) => JSON.parse(l) as { type: string; messages?: unknown[] })
+      .find((f) => f.type === 'snapshot' && Array.isArray(f.messages))
+    expect(snapshot?.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }])
   })
 
   it('phone prompt is forwarded with rewritten id; response is routed back with original id', () => {
