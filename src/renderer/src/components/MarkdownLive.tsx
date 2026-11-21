@@ -79,6 +79,7 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
             key={i}
             className="md-block"
             onMouseDown={(e) => {
+              e.preventDefault()
               e.stopPropagation()
               if (activeRef.current !== null) commit()
               startEdit(i)
