@@ -169,7 +169,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
   const setShowAll = useSessionsStore((s) => s.setShowAll)
   const t = useT()
-  const [renaming, setRenaming] = useState(false)
+  const [renamingHostId, setRenamingHostId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [projRenaming, setProjRenaming] = useState(false)
@@ -218,9 +218,22 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     void refreshHistory(row.project)
   }
 
-  const renameSession = async (hostId: string): Promise<void> => {
-    if (renameText.trim().length > 0) await window.piwright.renameSession(hostId, renameText.trim())
-    setRenaming(false)
+  const startSessionRename = (hostId: string, title: string): void => {
+    setRenameText(title)
+    setRenamingHostId(hostId)
+  }
+
+  const submitSessionRename = async (hostId: string): Promise<void> => {
+    setRenamingHostId(null)
+    const name = renameText.trim()
+    setRenameText('')
+    if (name.length === 0) return
+    const result = await window.piwright.renameSession(hostId, name)
+    if (!result.ok && result.error !== null) window.alert(result.error)
+  }
+
+  const cancelSessionRename = (): void => {
+    setRenamingHostId(null)
     setRenameText('')
   }
 
@@ -414,23 +427,23 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                   ) : (
                     <span className="sub-toggle" />
                   )}
-                  {renaming ? (
+                  {renamingHostId === s.hostId ? (
                     <input
                       autoFocus
                       value={renameText}
                       onChange={(e) => setRenameText(e.target.value)}
-                      onBlur={() => void renameSession(s.hostId)}
+                      onBlur={() => void submitSessionRename(s.hostId)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') void renameSession(s.hostId)
-                        if (e.key === 'Escape') setRenaming(false)
+                        if (e.key === 'Enter') void submitSessionRename(s.hostId)
+                        if (e.key === 'Escape') cancelSessionRename()
                       }}
                     />
                   ) : (
-                    <span className="session-title" onDoubleClick={() => setRenaming(true)}>{s.title}</span>
+                    <span className="session-title" onDoubleClick={() => startSessionRename(s.hostId, s.title)}>{s.title}</span>
                   )}
                   {wt !== null && <span className="kind-badge" title={s.project.dir}>{wt.name}</span>}
                   <span className="spacer" />
-                  <button className="icon" title={t('Rename (or double-click title)')} onClick={() => setRenaming(true)}>✎</button>
+                  <button className="icon" title={t('Rename (or double-click title)')} onClick={() => startSessionRename(s.hostId, s.title)}>✎</button>
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
