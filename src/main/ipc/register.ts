@@ -1,6 +1,6 @@
 /** Регистрация IPC-каналов: настройки, проекты, сессии (список/история/новая/открыть/закрыть/
  *  переименовать), prompt/abort/модель/thinking, диалоги расширений. */
-import { dialog, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
 import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { IpcMain } from 'electron'
@@ -52,6 +52,7 @@ import {
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
+  APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SKILLS_LIST_CHANNEL,
@@ -140,6 +141,8 @@ export function registerIpc(
   notifications?: NotificationServices
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
+
+  ipcMain.handle(APP_VERSION_CHANNEL, () => app.getVersion())
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
     const safe: Partial<Settings> = {}

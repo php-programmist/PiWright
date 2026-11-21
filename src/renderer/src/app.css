@@ -629,6 +629,14 @@ body {
   border-top: 1px solid var(--border);
 }
 
+.app-version {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+  user-select: text;
+  cursor: default;
+}
+
 .settings-screen {
   display: flex;
   flex-direction: column;

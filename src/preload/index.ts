@@ -61,6 +61,7 @@ import {
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
+  APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   TERM_CLOSE_CHANNEL,
@@ -97,6 +98,7 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
 const api: PiWrightApi = {
   getSettings: () => ipcRenderer.invoke(SETTINGS_GET_CHANNEL),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
+  appVersion: () => ipcRenderer.invoke(APP_VERSION_CHANNEL),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),
   sessionHistory: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_HISTORY_CHANNEL, project),
   sessionTranscript: (project: ProjectEntry, sessionPath: string) =>

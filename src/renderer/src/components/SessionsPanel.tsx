@@ -485,6 +485,11 @@ export function SessionsPanel(): React.JSX.Element {
   const openSettings = useSessionsStore((s) => s.openSettings)
   const t = useT()
   const [adding, setAdding] = useState(false)
+  const [version, setVersion] = useState('')
+
+  useEffect(() => {
+    void window.piwright.appVersion().then(setVersion)
+  }, [])
 
   return (
     <aside className="sessions-panel">
@@ -499,6 +504,7 @@ export function SessionsPanel(): React.JSX.Element {
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
+        {version.length > 0 && <span className="app-version" title={t('Version')}>v{version}</span>}
       </div>
     </aside>
   )

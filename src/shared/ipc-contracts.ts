@@ -426,6 +426,7 @@ export interface SkillsListResult {
 export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
+  appVersion(): Promise<string>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
   /** Транскрипт сессии без запуска pi: UiEvent-ы из JSONL (для просмотра сессии субагента). */
@@ -512,6 +513,7 @@ export interface PiWrightApi {
 
 export const SETTINGS_GET_CHANNEL = 'settings:get'
 export const SETTINGS_SET_CHANNEL = 'settings:set'
+export const APP_VERSION_CHANNEL = 'app:version'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'
 export const SESSIONS_TRANSCRIPT_CHANNEL = 'sessions:transcript'

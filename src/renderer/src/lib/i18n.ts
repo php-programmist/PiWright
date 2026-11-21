@@ -17,6 +17,7 @@ const RU: Record<string, string> = {
   'Add project': 'Добавить проект',
   'Add a project to start': 'Добавьте проект, чтобы начать',
   'Settings': 'Настройки',
+  'Version': 'Версия',
   'Session history': 'История сессий',
   'New session': 'Новая сессия',
   'Remove project': 'Удалить проект',
