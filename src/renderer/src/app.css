@@ -231,6 +231,7 @@ body {
 }
 
 .session-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -979,6 +980,7 @@ body {
 }
 
 .history-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1027,6 +1029,7 @@ body {
 }
 
 .dot {
+  flex: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;
