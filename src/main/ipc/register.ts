@@ -366,19 +366,16 @@ export function registerIpc(
     return h.abort()
   })
 
-  ipcMain.handle(
-    LOOP_START_CHANNEL,
-    (_event, hostId: unknown, prompt: unknown, maxIterations: unknown, exitCondition: unknown) => {
-      if (typeof hostId !== 'string' || typeof prompt !== 'string' || prompt.trim().length === 0 || typeof maxIterations !== 'number') {
-        return { ok: false, error: 'Invalid loop request' }
-      }
-      if (typeof exitCondition !== 'string' || exitCondition.trim().length === 0) {
-        return { ok: false, error: 'Loop exit condition is required' }
-      }
-      const info = loops.start(hostId, prompt, maxIterations, exitCondition.trim())
-      return info === null ? { ok: false, error: 'Session not found' } : { ok: true, error: null }
+  ipcMain.handle(LOOP_START_CHANNEL, (_event, hostId: unknown, prompt: unknown, maxIterations: unknown, exitCondition: unknown) => {
+    if (typeof hostId !== 'string' || typeof prompt !== 'string' || prompt.trim().length === 0 || typeof maxIterations !== 'number') {
+      return { ok: false, error: 'Invalid loop request' }
     }
-  )
+    if (typeof exitCondition !== 'string' || exitCondition.trim().length === 0) {
+      return { ok: false, error: 'Loop exit condition is required' }
+    }
+    const info = loops.start(hostId, prompt, maxIterations, exitCondition.trim())
+    return info === null ? { ok: false, error: 'Session not found' } : { ok: true, error: null }
+  })
 
   ipcMain.handle(LOOP_STOP_CHANNEL, (_event, hostId: unknown) => {
     if (typeof hostId !== 'string') return { ok: false, error: 'Invalid loop request' }

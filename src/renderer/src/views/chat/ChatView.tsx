@@ -7,7 +7,7 @@ import { ToolBlock } from '../../components/ToolBlock'
 import { useChatStore, atBottomMap, draftMap, loopExitMap } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
-import { cacheHitOf, percentColor, loopExitClause } from '../../../../shared/agent-events'
+import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
@@ -183,18 +183,17 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     const startingLoop = !streaming && loopEnabled && !loopActive
     // Чекбокс «Петля» обязывает прописать условие выхода — без него ход не отправляется.
     if (startingLoop && loopExit.trim().length === 0) return
-    const fullText = startingLoop ? `${text}\n\n${loopExitClause(loopExit.trim())}` : text
     setInput('')
-    addUserMessage(activeHostId, fullText)
+    addUserMessage(activeHostId, text)
     const images = pendingImagesRef.current
     pendingImagesRef.current = []
     const effective = streaming ? (behavior ?? 'followUp') : undefined
-    const result = await window.piwright.prompt(activeHostId, fullText, images, effective)
+    const result = await window.piwright.prompt(activeHostId, text, images, effective)
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
     // Галка «Петля» + обычная отправка (не steer/followUp) — старт петли с этим промптом.
-    if (result.ok && effective === undefined && loopEnabled && !loopActive) {
+    if (result.ok && effective === undefined && startingLoop) {
       void window.piwright.loopStart(activeHostId, text, loopMax, loopExit.trim())
       setLoopEnabled(activeHostId, false)
     }

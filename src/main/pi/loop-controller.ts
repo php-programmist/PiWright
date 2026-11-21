@@ -1,10 +1,10 @@
-/** Контроллер петли PiWright: продолжение решает харнесс, а не агент. Когда ход завершился
- *  и в нём были вызовы инструментов, спавнится новая сессия того же проекта с тем же промптом.
- *  Ход без вызовов инструментов = петля завершена. Ход с ожидающим диалогом или работающими
- *  субагентами/воркфлоу продолжения не получает, пока они не разрешились. Страховки: счётчик
- *  итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие сессии. */
+/** Контроллер петли PiWright: продолжение решает харнесс, а не агент. Когда рабочий ход
+ *  завершился с вызовами инструментов, харнесс шлёт в ту же сессию check-промпт «выполнено ли
+ *  условие выхода»: ход с loop_stop = петля остановлена, ход без — спавнится новая сессия
+ *  того же проекта с тем же промптом. Рабочий ход без инструментов = стоп. Ход с ожидающим
+ *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
+ *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие. */
 import type { LoopInfo, LoopStopReason, UiEvent } from '../../shared/agent-events'
-import { loopExitClause } from '../../shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../../shared/ipc-contracts'
 import type { PiHost } from './pi-host'
 import { LOOP_STOP_TOOL_NAME } from './loop-stop-extension'
@@ -16,7 +16,7 @@ const MAX_ITERATIONS = 999
 
 interface LoopState {
   prompt: string
-  /** Условие выхода из петли: дописывается в промпт каждой итерации; ход без инструментов = стоп. */
+  /** Условие выхода петли: проверяется check-промптом после каждого рабочего хода. */
   exitCondition: string
   remaining: number
   active: boolean
@@ -26,10 +26,14 @@ interface LoopState {
   spawnTimes: number[]
   /** Был ли в текущем ходе хотя бы один вызов инструмента верхнего уровня. */
   toolSeenThisTurn: boolean
+  /** Агент вызвал loop_stop в текущем ходе. */
+  stopRequested: boolean
+  /** Текущий ход — check-ход (проверка условия выхода), а не рабочий. */
+  checkingCondition: boolean
+  /** turn_end этого хода уже обработан (agent_end и agent_settled дают два события). */
+  turnEndHandled: boolean
   /** Ход завершился, но в фоне ещё работают субагенты/воркфлоу — ждём их завершения. */
   waitingSubagents: boolean
-  /** Агент вызвал loop_stop — условие выхода выполнено, после хода петля останавливается. */
-  stopRequested: boolean
   /** Активные субагенты (subagents:created/started … completed/failed). */
   subagents: Set<string>
   /** Активные воркфлоу (subagents:workflow_started … workflow_settled). */
@@ -62,8 +66,10 @@ export class LoopController {
       project: host.project,
       spawnTimes: [],
       toolSeenThisTurn: false,
-      waitingSubagents: false,
       stopRequested: false,
+      checkingCondition: false,
+      turnEndHandled: false,
+      waitingSubagents: false,
       subagents: new Set(),
       workflows: new Set(),
       iteration: 1,
@@ -114,6 +120,7 @@ export class LoopController {
       state.toolSeenThisTurn = false
       state.stopRequested = false
       state.waitingSubagents = false
+      state.turnEndHandled = false
       return
     }
     if (event.type === 'subagents_activity') {
@@ -162,32 +169,67 @@ export class LoopController {
   }
 
   private proceedTurnEnd(hostId: string, state: LoopState): void {
-    // turn_end приходит и на agent_end, и на agent_settled — флаг гасит двойной спавн.
-    if (!state.toolSeenThisTurn || state.stopRequested) {
-      // Ход без единого вызова инструмента — агенту нечего продолжать; loop_stop — условие
-      // выхода выполнено, агент попросил остановиться.
-      if (state.active) {
-        state.active = false
-        state.reason = state.stopRequested ? 'exit' : 'agent'
-        this.emitState(hostId, state, null)
+    // agent_end и agent_settled дают два turn_end — второй гасим, иначе двойной спавн/стоп.
+    if (state.turnEndHandled) return
+    state.turnEndHandled = true
+    if (state.checkingCondition) {
+      state.checkingCondition = false
+      state.toolSeenThisTurn = false
+      if (state.stopRequested) {
+        this.stopLoop(hostId, state, 'exit')
+        return
       }
+      this.spawnNext(hostId, state)
+      return
+    }
+    if (!state.toolSeenThisTurn || state.stopRequested) {
+      // Рабочий ход без единого вызова инструмента — агенту нечего продолжать;
+      // loop_stop в рабочем ходу — агент сам понял, что условие выхода выполнено.
+      if (state.active) this.stopLoop(hostId, state, state.stopRequested ? 'exit' : 'agent')
       return
     }
     state.toolSeenThisTurn = false
     if (!state.active) return
     if (state.remaining <= 0) {
-      state.active = false
-      state.reason = 'max'
-      this.emitState(hostId, state, null)
+      this.stopLoop(hostId, state, 'max')
       return
     }
     if (this.isShortCircuit(state)) {
-      state.active = false
-      state.reason = 'short-circuit'
-      this.emitState(hostId, state, null)
+      this.stopLoop(hostId, state, 'short-circuit')
       return
     }
-    this.spawnNext(hostId, state)
+    this.sendCheckPrompt(hostId, state)
+  }
+
+  private stopLoop(hostId: string, state: LoopState, reason: LoopStopReason): void {
+    state.active = false
+    state.reason = reason
+    this.emitState(hostId, state, null)
+  }
+
+  /** Check-ход: агент в той же сессии проверяет условие выхода — у него весь контекст работы. */
+  private sendCheckPrompt(hostId: string, state: LoopState): void {
+    state.checkingCondition = true
+    const host = this.piHost.get(hostId)
+    if (host === null) {
+      state.checkingCondition = false
+      this.spawnNext(hostId, state)
+      return
+    }
+    void host
+      .prompt(checkPrompt(state.exitCondition))
+      .then((result) => {
+        if (!result.ok && this.states.get(hostId) === state && state.checkingCondition) {
+          state.checkingCondition = false
+          this.stopLoop(hostId, state, 'error')
+        }
+      })
+      .catch(() => {
+        if (this.states.get(hostId) === state && state.checkingCondition) {
+          state.checkingCondition = false
+          this.stopLoop(hostId, state, 'error')
+        }
+      })
   }
 
   /** Три спавна подряд с интервалом < 10 с — петля крутится вхолостую. */
@@ -219,7 +261,7 @@ export class LoopController {
     void created
       .rename(`${state.baseName} (${state.iteration})`)
       .catch(() => {})
-      .then(() => created.prompt(loopIterationPrompt(state)))
+      .then(() => created.prompt(state.prompt))
       .then((result) => {
         if (!result.ok) {
           this.states.delete(created.id)
@@ -243,6 +285,11 @@ export class LoopController {
   }
 }
 
+/** Check-промпт: агент только что закончил рабочий ход — контекст у него есть. */
+function checkPrompt(exitCondition: string): string {
+  return `Проверь условие выхода из петли: «${exitCondition}». Если оно ВЫПОЛНЕНО — вызови инструмент loop_stop и заверши ход. Если НЕ выполнено — ответь одним коротким предложением, что условие пока не выполнено, БЕЗ вызова каких-либо инструментов.`
+}
+
 function clampIterations(value: number): number {
   if (!Number.isFinite(value)) return MIN_ITERATIONS
   return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, Math.round(value)))
@@ -252,10 +299,4 @@ function clampIterations(value: number): number {
 function cleanLoopTitle(title: string): string {
   const cleaned = title.replace(/\s*\(\d+\)\s*$/, '').trim()
   return cleaned.length > 0 ? cleaned : title.trim()
-}
-
-/** Промпт итерации: задача + условие выхода. Стоп-механика петли — ход без вызовов
- *  инструментов, поэтому агент обязан завершить ход текстом, когда условие выполнено. */
-function loopIterationPrompt(state: LoopState): string {
-  return `${state.prompt}\n\n${loopExitClause(state.exitCondition)}`
 }

@@ -1,11 +1,11 @@
 /** Вшитое pi-расширение `loop-stop` (инструмент `loop_stop`): verbatim-копия `resources/loop-stop`,
- *  выкладывается в каталог бэкенда проекта, путь уходит в `pi -e`. Агент зовёт инструмент,
- *  когда выполнено условие выхода петли; продолжение решает контроллер, не агент. */
+ *  выкладывается в каталог бэкенда проекта, путь уходит в `pi -e`. Агент зовёт инструмент в ответ
+ *  на check-промпт контроллера петли, когда условие выхода выполнено. */
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { installBundledExtension, piwrightExtensionDir } from './bundled-extensions'
 import loopStopIndexTs from '../../../resources/loop-stop/index.ts?raw'
 
-export const LOOP_STOP_EXTENSION_VERSION = 'loop-stop-1'
+export const LOOP_STOP_EXTENSION_VERSION = 'loop-stop-2'
 /** Имя инструмента выхода петли; дублирует константу в resources/loop-stop/index.ts (verbatim-копия грузится только pi). */
 export const LOOP_STOP_TOOL_NAME = 'loop_stop'
 

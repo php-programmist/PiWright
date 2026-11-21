@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { LoopController } from '../src/main/pi/loop-controller'
 import type { LoopInfo, UiEvent } from '../src/shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../src/shared/ipc-contracts'
@@ -13,25 +13,40 @@ interface CreatedSession {
   renames: string[]
 }
 
-/** Р¤РµР№РєРѕРІС‹Р№ PiHost: create() РІС‹РґР°С‘С‚ СЃРµСЃСЃРёРё host-1, host-2вЂ¦ СЃ РЅР°СЃС‚СЂР°РёРІР°РµРјС‹РјРё РґРёР°Р»РѕРіР°РјРё. */
-function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: CreatedSession[] } {
+/** Фейковый PiHost: create() выдаёт сессии host-2, host-3…; host-1 умеет принимать check-промпты. */
+function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: CreatedSession[]; checks: string[] } {
   const created: CreatedSession[] = []
+  const checks: string[] = []
   let n = 0
   const piHost = {
-    get: (hostId: string) =>
-      hostId === 'host-1'
-        ? ({
-            id: hostId,
-            project,
-            displayTitle: 'base',
-            getPendingDialogs: () => pendingDialogs.map((id) => ({ id }))
-          } as unknown as SessionHost)
-        : ({
-            id: hostId,
-            project,
-            displayTitle: 'base',
-            getPendingDialogs: () => []
-          } as unknown as SessionHost),
+    get: (hostId: string) => {
+      if (hostId === 'host-1') {
+        return {
+          id: hostId,
+          project,
+          displayTitle: 'base',
+          getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
+          prompt: (text: string) => {
+            checks.push(text)
+            return Promise.resolve({ ok: true, error: null })
+          }
+        }
+      }
+      const made = created.find((c) => c.id === hostId)
+      if (made !== undefined) {
+        return {
+          id: hostId,
+          project,
+          displayTitle: 'base',
+          getPendingDialogs: () => [],
+          prompt: (text: string) => {
+            made.prompts.push(text)
+            return Promise.resolve({ ok: true, error: null })
+          }
+        }
+      }
+      return { id: hostId, project, displayTitle: 'base', getPendingDialogs: () => [] }
+    },
     create: () => {
       n += 1
       const session: CreatedSession = { id: `host-${n + 1}`, prompts: [], renames: [] }
@@ -52,7 +67,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
       } as unknown as SessionHost
     }
   } as unknown as PiHost
-  return { piHost, created }
+  return { piHost, created, checks }
 }
 
 function collector(): { events: Map<string, UiEvent[]>; emit: (hostId: string, event: UiEvent) => void } {
@@ -71,12 +86,11 @@ function ev(hostId: string, event: UiEvent): PiEventMessage {
   return { hostId, event }
 }
 
-/** РЎРїР°РІРЅ Рё РїСЂРѕРјРїС‚ СѓС…РѕРґСЏС‚ С‡РµСЂРµР· РјРёРєСЂРѕС‚Р°СЃРєРё вЂ” РґР°С‘Рј С†РµРїРѕС‡РєРµ РїСЂРѕРјРёСЃРѕРІ РґРѕР№С‚Рё РґРѕ РєРѕРЅС†Р°. */
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
-
 function loopState(controller: LoopController, hostId: string): LoopInfo | null {
   return controller.get(hostId)
 }
+
+const EXIT = 'stop when the file has 3 lines'
 
 function turnWithTool(hostId: string): PiEventMessage[] {
   return [
@@ -91,52 +105,67 @@ function turnWithoutTool(hostId: string): PiEventMessage[] {
   return [ev(hostId, { type: 'turn_start' }), ev(hostId, { type: 'turn_end' })]
 }
 
-describe('LoopController (auto-continue)', () => {
-  it('turn with a tool call spawns the next iteration with the same prompt', async () => {
-    const { piHost, created } = fakePiHost()
+/** Спавн и промпт уходят через микротаски — даём цепочке промисов дойти до конца. */
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+describe('LoopController (auto-continue with check turn)', () => {
+  it('work turn with tools sends a check prompt into the same session', async () => {
+    const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    expect(controller.start('host-1', 'do the task', 5, 'stop when the file has 3 lines')).toMatchObject({ active: true, remaining: 5 })
+    expect(controller.start('host-1', 'do the task', 5, EXIT)).toMatchObject({ active: true, remaining: 5 })
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
+    expect(created).toHaveLength(0)
+    expect(checks).toHaveLength(1)
+    expect(checks[0]).toContain(EXIT)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true })
+  })
+
+  it('duplicate turn_end (agent_end + agent_settled) is processed once', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(created).toHaveLength(0)
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
     expect(created).toHaveLength(1)
-    expect(created[0].prompts).toHaveLength(1)
-    expect(created[0].prompts[0]).toContain('do the task')
-    expect(created[0].prompts[0]).toContain('Условие выхода из петли')
+  })
+
+  it('check turn without loop_stop spawns the next iteration with the plain prompt', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit)
+    controller.start('host-1', 'do the task', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(1)
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts).toEqual(['do the task'])
     expect(created[0].renames).toEqual(['base (2)'])
     expect(loopState(controller, 'host-1')).toBeNull()
     expect(loopState(controller, 'host-2')).toMatchObject({ active: true, remaining: 4 })
   })
 
-  it('nested tool calls (parentToolCallId) do not count as turn activity by themselves', () => {
-    const { piHost, created } = fakePiHost()
+  it('check turn with loop_stop stops the loop with reason exit', async () => {
+    const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(1)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
-    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: 'p1' } }))
-    controller.onEvent(ev('host-1', { type: 'turn_end' }))
-    expect(created).toHaveLength(0)
-    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'agent' })
-  })
-
-  it('turn without tool calls stops the loop with reason agent', () => {
-    const { piHost, created } = fakePiHost()
-    const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
-    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
-    expect(created).toHaveLength(0)
-    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'agent' })
-  })
-
-  it('loop_stop tool call stops the loop with reason exit even when the turn used tools', async () => {
-    const { piHost, created } = fakePiHost()
-    const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
-    controller.onEvent(ev('host-1', { type: 'turn_start' }))
-    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't2', name: 'loop_stop', args: {}, parentToolCallId: null } }))
     controller.onEvent(ev('host-1', { type: 'turn_end' }))
     await flush()
@@ -144,11 +173,26 @@ describe('LoopController (auto-continue)', () => {
     expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'exit' })
   })
 
-  it('nested loop_stop (parentToolCallId) does not stop the loop', () => {
+  it('loop_stop in a work turn stops the loop without a check prompt', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't2', name: 'loop_stop', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(0)
+    expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'exit' })
+  })
+
+  it('nested loop_stop (parentToolCallId) does not stop the loop', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'loop_stop', args: {}, parentToolCallId: 'p1' } }))
     controller.onEvent(ev('host-1', { type: 'turn_end' }))
@@ -156,101 +200,128 @@ describe('LoopController (auto-continue)', () => {
     expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'agent' })
   })
 
-  it('turn ending with a pending dialog waits instead of spawning', () => {
-    const { piHost, created } = fakePiHost(['dlg-1'])
+  it('work turn without tool calls stops the loop with reason agent', async () => {
+    const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
-    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(0)
     expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'agent' })
+  })
+
+  it('work turn ending with a pending dialog waits instead of checking', async () => {
+    const { piHost, checks } = fakePiHost(['dlg-1'])
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(0)
     expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
   })
 
-  it('turn ending with running subagents defers the spawn until they complete', async () => {
-    const { piHost, created } = fakePiHost()
+  it('work turn ending with running subagents defers the check until they complete', async () => {
+    const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'started', id: 'sa-1' }))
     controller.onEvent(ev('host-1', { type: 'turn_end' }))
-    expect(created).toHaveLength(0)
+    await flush()
+    expect(checks).toHaveLength(0)
     expect(loopState(controller, 'host-1')).toMatchObject({ active: true })
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'completed', id: 'sa-1' }))
     await flush()
+    expect(checks).toHaveLength(1)
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    await flush()
     expect(created).toHaveLength(1)
-    expect(created[0].prompts[0]).toContain('p')
-    expect(created[0].prompts[0]).toContain('Условие выхода из петли')
+    expect(created[0].prompts[0]).toBe('p')
   })
 
-  it('workflow_started/workflow_settled defer the spawn the same way', async () => {
-    const { piHost, created } = fakePiHost()
+  it('workflow_started/workflow_settled defer the check the same way', async () => {
+    const { piHost, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'workflow', args: {}, parentToolCallId: null } }))
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'workflow_started', id: 'w1' }))
     controller.onEvent(ev('host-1', { type: 'turn_end' }))
-    expect(created).toHaveLength(0)
+    expect(checks).toHaveLength(0)
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'workflow_settled', id: 'w1' }))
     await flush()
-    expect(created).toHaveLength(1)
+    expect(checks).toHaveLength(1)
   })
 
   it('subagents:disposed clears the wait', async () => {
-    const { piHost, created } = fakePiHost()
+    const { piHost, checks } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'started', id: 'sa-1' }))
     controller.onEvent(ev('host-1', { type: 'turn_end' }))
-    expect(created).toHaveLength(0)
+    expect(checks).toHaveLength(0)
     controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'disposed', id: null }))
     await flush()
-    expect(created).toHaveLength(1)
+    expect(checks).toHaveLength(1)
   })
 
   it('remaining 0 stops the loop with reason max', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 1, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 1, EXIT)
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
     await flush()
     expect(created).toHaveLength(1)
     expect(loopState(controller, 'host-2')).toMatchObject({ active: true, remaining: 0 })
     for (const m of turnWithTool('host-2')) controller.onEvent(m)
+    await flush()
+    for (const m of turnWithoutTool('host-2')) controller.onEvent(m)
     expect(created).toHaveLength(1)
     expect(loopState(controller, 'host-2')).toMatchObject({ active: false, reason: 'max' })
   })
 
-  it('stop() marks the loop stopped by user', () => {
+  it('stop() marks the loop stopped by user', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 5, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 5, EXIT)
     controller.stop('host-1')
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
     expect(created).toHaveLength(0)
     expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'user' })
   })
 
-  it('three iterations faster than 10s each trip the short-circuit guard', () => {
+  it('three iterations faster than 10s each trip the short-circuit guard', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
     const controller = new LoopController(piHost, emit)
-    controller.start('host-1', 'p', 20, 'stop when the file has 3 lines')
+    controller.start('host-1', 'p', 20, EXIT)
     for (let i = 0; i < 2; i++) {
       const hostId = i === 0 ? 'host-1' : created[created.length - 1].id
       for (const m of turnWithTool(hostId)) controller.onEvent(m)
+      await flush()
+      for (const m of turnWithoutTool(hostId)) controller.onEvent(m)
+      await flush()
     }
     expect(created).toHaveLength(2)
     const lastId = created[created.length - 1].id
     for (const m of turnWithTool(lastId)) controller.onEvent(m)
+    await flush()
+    for (const m of turnWithoutTool(lastId)) controller.onEvent(m)
     expect(created).toHaveLength(2)
     const finalHostId = created[created.length - 1].id
     expect(loopState(controller, finalHostId)).toMatchObject({ active: false, reason: 'short-circuit' })
