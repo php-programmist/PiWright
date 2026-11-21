@@ -56,6 +56,20 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
     setActiveIdx(i)
   }
 
+  const toggleCheckbox = (i: number, line: number): void => {
+    const lines = doc.blocks[i].split('\n')
+    const idx = line - 1
+    const target = lines[idx]
+    if (target === undefined) return
+    const m = /^\s*(?:[-*+]|\d{1,9}[.)])\s+\[[ xX]\]/
+    if (!m.test(target)) return
+    lines[idx] = target.replace(/^(\s*(?:[-*+]|\d{1,9}[.)])\s+\[)([ xX])(\])/, (_, a, c, b) => `${a}${c === ' ' ? 'x' : ' '}${b}`)
+    const blocks = doc.blocks.slice()
+    blocks[i] = lines.join('\n')
+    const text = joinMarkdownDoc({ ...doc, blocks })
+    if (text !== content) void saveContent(project, path, text)
+  }
+
   return (
     <div
       className={`md-live${wordWrap ? ' wrap' : ''}`}
@@ -110,7 +124,7 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
               startEdit(i)
             }}
           >
-            <Markdown text={block.replace(/\s+$/, '')} />
+            <Markdown text={block.replace(/\s+$/, '')} onToggleCheckbox={(line) => toggleCheckbox(i, line)} />
           </div>
         )
       )}

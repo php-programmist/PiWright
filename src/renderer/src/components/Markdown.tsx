@@ -1,4 +1,4 @@
-import { isValidElement, useEffect, useState } from 'react'
+import { createContext, useContext, isValidElement, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
@@ -44,8 +44,24 @@ function CodeBlock({ code, language }: { code: string; language: string | null }
   )
 }
 
+interface MarkdownProps {
+  text: string
+  /** line — 1-based номер строки в text с чекбоксом. */
+  onToggleCheckbox?: (line: number) => void
+}
+
+/** У input-ноды GFM нет position, строку берём из li.task-list-item. */
+const CheckboxLineContext = createContext<number | undefined>(undefined)
+
+interface HastNodeProp {
+  node?: {
+    position?: { start?: { line?: number } }
+    properties?: Record<string, unknown>
+  }
+}
+
 /** Markdown ассистента: GFM, fenced-блоки — через Shiki. */
-export function Markdown({ text }: { text: string }): React.JSX.Element {
+export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.Element {
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -57,6 +73,36 @@ export function Markdown({ text }: { text: string }): React.JSX.Element {
               return <CodeBlock key={`${extracted.language}:${extracted.code}`} code={extracted.code} language={extracted.language} />
             }
             return <pre>{children}</pre>
+          },
+          li: ({ node, children, ...rest }: React.JSX.IntrinsicElements['li'] & HastNodeProp) => {
+            const className = node?.properties?.className
+            const isTask = Array.isArray(className) && className.includes('task-list-item')
+            const line = node?.position?.start?.line
+            if (!isTask || typeof line !== 'number') return <li {...rest}>{children}</li>
+            return (
+              <li {...rest}>
+                <CheckboxLineContext.Provider value={line}>{children}</CheckboxLineContext.Provider>
+              </li>
+            )
+          },
+          input: ({ checked, ...rest }: React.JSX.IntrinsicElements['input'] & HastNodeProp) => {
+            const line = useContext(CheckboxLineContext)
+            const canToggle = onToggleCheckbox !== undefined && typeof line === 'number'
+            return (
+              <input
+                {...rest}
+                type="checkbox"
+                checked={checked ?? false}
+                readOnly
+                disabled={!canToggle}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (canToggle && typeof line === 'number') onToggleCheckbox(line)
+                }}
+              />
+            )
           }
         }}
       >

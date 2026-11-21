@@ -1137,6 +1137,20 @@ body {
   padding: 0;
 }
 
+.markdown li.task-list-item {
+  list-style: none;
+}
+
+.markdown li.task-list-item input[type='checkbox'] {
+  cursor: pointer;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.markdown li.task-list-item input[type='checkbox']:disabled {
+  cursor: default;
+}
+
 .code-block {
   border-radius: 6px;
   overflow-x: auto;
