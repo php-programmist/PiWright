@@ -2,10 +2,12 @@
  *  клик по файлу — просмотрщик поверх чата. */
 import { useEffect, useMemo } from 'react'
 import { useFilesStore } from '../../stores/files'
+import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useT } from '../../lib/i18n'
-import type { ProjectEntry } from '../../../../shared/ipc-contracts'
+import { fileStatusClass } from '../../lib/git-file-class'
+import type { GitStatus, ProjectEntry } from '../../../../shared/ipc-contracts'
 
 function TreeLevel({ project, dir, depth }: { project: ProjectEntry; dir: string; depth: number }): React.JSX.Element | null {
   const t = useT()
@@ -46,6 +48,7 @@ function FileRow({ project, dir, name, depth }: { project: ProjectEntry; dir: st
   const path = dir === '' ? name : `${dir}/${name}`
   const activePath = useFilesStore((s) => s.activePath)
   const openFile = useFilesStore((s) => s.openFile)
+  const statusClass = useGitStore((s) => statusClassOf(s.status, path))
   return (
     <div
       className={`tree-row file${activePath === path ? ' current' : ''}`}
@@ -53,9 +56,14 @@ function FileRow({ project, dir, name, depth }: { project: ProjectEntry; dir: st
       title={path}
       onClick={() => void openFile(project, path)}
     >
-      <span className="tree-name">{name}</span>
+      <span className={`tree-name${statusClass === '' ? '' : ` ${statusClass}`}`}>{name}</span>
     </div>
   )
+}
+
+function statusClassOf(status: GitStatus | null, path: string): string {
+  const entry = status?.entries.find((e) => e.path === path)
+  return entry === undefined ? '' : fileStatusClass(entry)
 }
 
 function FilesError(): React.JSX.Element | null {
@@ -81,6 +89,7 @@ export function FilesPanel(): React.JSX.Element {
 
   useEffect(() => {
     useFilesStore.getState().setProject(project)
+    useGitStore.getState().setProject(project)
   }, [project])
 
   const startResize = (down: React.MouseEvent): void => {

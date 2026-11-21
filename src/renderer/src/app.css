@@ -2238,27 +2238,33 @@ body {
 }
 
 /* Цвет имени по статусу (фича 41): modified — синий, new — светло-зелёный, untracked — красный. */
-.git-file-name.mod {
+.git-file-name.mod,
+.tree-name.mod {
   color: var(--blue);
 }
 
-.git-file-name.add {
+.git-file-name.add,
+.tree-name.add {
   color: var(--green);
 }
 
-.git-file-name.del {
+.git-file-name.del,
+.tree-name.del {
   color: var(--red);
 }
 
-.git-file-name.ren {
+.git-file-name.ren,
+.tree-name.ren {
   color: var(--blue);
 }
 
-.git-file-name.unt {
+.git-file-name.unt,
+.tree-name.unt {
   color: var(--red);
 }
 
-.git-file-name.conflict {
+.git-file-name.conflict,
+.tree-name.conflict {
   color: var(--red);
 }
 

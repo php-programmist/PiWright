@@ -3,18 +3,8 @@ import { useGitStore } from '../../stores/git'
 import { useSessionsStore } from '../../stores/sessions'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useLang, useT } from '../../lib/i18n'
+import { BADGE_CLASS } from '../../lib/git-file-class'
 import type { GitFileEntry, ProjectEntry, UiLanguage } from '../../../../shared/ipc-contracts'
-
-const BADGE_CLASS: Record<string, string> = {
-  M: 'mod',
-  A: 'add',
-  D: 'del',
-  R: 'ren',
-  C: 'ren',
-  T: 'mod',
-  U: 'conflict',
-  '?': 'unt'
-}
 
 export function baseName(path: string): string {
   const parts = path.split('/')

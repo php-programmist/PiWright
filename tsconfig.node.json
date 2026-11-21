@@ -25,6 +25,7 @@
     "src/renderer/src/stores/panels-prefs.ts",
     "src/renderer/src/stores/git.ts",
     "src/renderer/src/stores/files.ts",
+    "src/renderer/src/lib/git-file-class.ts",
     "src/renderer/src/views/terminal/term-registry.ts",
     "src/renderer/src/global.d.ts",
     "tests/**/*.ts",
