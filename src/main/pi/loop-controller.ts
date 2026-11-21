@@ -20,6 +20,10 @@ interface LoopState {
   project: ProjectEntry
   callTimes: number[]
   toolSeenThisTurn: boolean
+  /** Номер текущей итерации (стартовая сессия = 1); растёт с каждым спавном. */
+  iteration: number
+  /** Имя стартовой сессии без индекса — база для имён «имя (2)», «имя (3)»… */
+  baseName: string
 }
 
 export class LoopController {
@@ -42,7 +46,9 @@ export class LoopController {
       reason: null,
       project: host.project,
       callTimes: [],
-      toolSeenThisTurn: false
+      toolSeenThisTurn: false,
+      iteration: 1,
+      baseName: cleanLoopTitle(host.displayTitle)
     }
     this.states.set(hostId, state)
     this.emitState(hostId, state, null)
@@ -119,6 +125,7 @@ export class LoopController {
 
   private spawnNext(previousHostId: string, state: LoopState): void {
     state.remaining -= 1
+    state.iteration += 1
     const created = this.piHost.create(state.project)
     this.states.delete(previousHostId)
     this.states.set(created.id, state)
@@ -130,7 +137,9 @@ export class LoopController {
     })
     this.emitState(created.id, state, previousHostId)
     void created
-      .prompt(state.prompt)
+      .rename(`${state.baseName} (${state.iteration})`)
+      .catch(() => {})
+      .then(() => created.prompt(state.prompt))
       .then((result) => {
         if (!result.ok) {
           this.states.delete(created.id)
@@ -157,4 +166,10 @@ export class LoopController {
 function clampIterations(value: number): number {
   if (!Number.isFinite(value)) return MIN_ITERATIONS
   return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, Math.round(value)))
+}
+
+/** База имени петли: срезает индекс прошлой петли « (N)», чтобы индексы не наслаивались. */
+function cleanLoopTitle(title: string): string {
+  const cleaned = title.replace(/\s*\(\d+\)\s*$/, '').trim()
+  return cleaned.length > 0 ? cleaned : title.trim()
 }
