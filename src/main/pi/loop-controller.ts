@@ -11,6 +11,8 @@ import { LOOP_STOP_TOOL_NAME } from './loop-stop-extension'
 
 const SHORT_CIRCUIT_CALLS = 3
 const SHORT_CIRCUIT_GAP_MS = 10_000
+/** Событие subagents:started может прийти после turn_end (спавн ушел асинхронно) — столько ждём его перед check-промптом. */
+const SUBAGENT_GRACE_MS = 2000
 const MIN_ITERATIONS = 1
 const MAX_ITERATIONS = 999
 
@@ -30,14 +32,20 @@ interface LoopState {
   stopRequested: boolean
   /** Текущий ход — check-ход (проверка условия выхода), а не рабочий. */
   checkingCondition: boolean
-  /** turn_end этого хода уже обработан (agent_end и agent_settled дают два события). */
+  /** turn_end этого хода уже разрешён (стоп/спавн/check отправлен) — дубликат agent_end/agent_settled гасим. */
   turnEndHandled: boolean
+  /** Обработка конца хода начата (грейс-пауза/дефер) — повторный turn_end этого же хода гасим. */
+  turnEndPending: boolean
+  /** Идёт внешний ход (nudge субагента/follow_up) — в логике петли не участвует. */
+  externalTurn: boolean
   /** Ход завершился, но в фоне ещё работают субагенты/воркфлоу — ждём их завершения. */
   waitingSubagents: boolean
   /** Активные субагенты (subagents:created/started … completed/failed). */
   subagents: Set<string>
   /** Активные воркфлоу (subagents:workflow_started … workflow_settled). */
   workflows: Set<string>
+  /** Отложенный check-промпт: таймер грейс-паузы перед отправкой. */
+  checkTimer: ReturnType<typeof setTimeout> | null
   /** Номер текущей итерации (стартовая сессия = 1); растёт с каждым спавном. */
   iteration: number
   /** Имя стартовой сессии без индекса — база для имён «имя (2)», «имя (3)»… */
@@ -51,7 +59,9 @@ export class LoopController {
     private readonly piHost: PiHost,
     private readonly emit: (hostId: string, event: UiEvent) => void,
     /** Мост для копирования флагов прошлой сессии (Remote, Telegram) в новую. */
-    private readonly onSpawned?: (previousHostId: string, createdHostId: string) => void
+    private readonly onSpawned?: (previousHostId: string, createdHostId: string) => void,
+    /** Грейс-пауза перед check-промптом (переопределяется в тестах). */
+    private readonly graceMs: number = SUBAGENT_GRACE_MS
   ) {}
 
   start(hostId: string, prompt: string, maxIterations: number, exitCondition: string): LoopInfo | null {
@@ -69,7 +79,10 @@ export class LoopController {
       stopRequested: false,
       checkingCondition: false,
       turnEndHandled: false,
+      turnEndPending: false,
+      externalTurn: false,
       waitingSubagents: false,
+      checkTimer: null,
       subagents: new Set(),
       workflows: new Set(),
       iteration: 1,
@@ -83,6 +96,7 @@ export class LoopController {
   stop(hostId: string): LoopInfo | null {
     const state = this.states.get(hostId)
     if (state === undefined) return null
+    this.clearCheckTimer(state)
     state.active = false
     state.reason = 'user'
     this.emitState(hostId, state, null)
@@ -103,12 +117,15 @@ export class LoopController {
   }
 
   forget(hostId: string): void {
+    const state = this.states.get(hostId)
+    if (state !== undefined) this.clearCheckTimer(state)
     this.states.delete(hostId)
   }
 
   /** Настройка «Петли» выключена — гасим все активные петли. */
   stopAll(): void {
     for (const [hostId, state] of this.states) {
+      this.clearCheckTimer(state)
       if (!state.active) continue
       state.active = false
       state.reason = 'user'
@@ -122,15 +139,26 @@ export class LoopController {
     const event = message.event
     if (event.type === 'tool_start') {
       if (event.call.parentToolCallId !== null) return
+      if (state.externalTurn) return
       state.toolSeenThisTurn = true
       if (event.call.name === LOOP_STOP_TOOL_NAME) state.stopRequested = true
       return
     }
     if (event.type === 'turn_start') {
+      if (event.external === true) {
+        // Внешний ход (nudge субагента) поверх петли: флаги рабочего хода и запланированный
+        // check не трогаем, ход целиком игнорируем вплоть до его turn_end.
+        state.externalTurn = true
+        state.turnEndPending = true
+        return
+      }
+      this.clearCheckTimer(state)
+      state.externalTurn = false
       state.toolSeenThisTurn = false
       state.stopRequested = false
       state.waitingSubagents = false
       state.turnEndHandled = false
+      state.turnEndPending = false
       return
     }
     if (event.type === 'subagents_activity') {
@@ -171,6 +199,16 @@ export class LoopController {
     // Ожидающий диалог (ask_question/confirm) — агент приостановлен и продолжит ход после ответа.
     const host = this.piHost.get(hostId)
     if (host !== null && host.getPendingDialogs().length > 0) return
+    if (state.externalTurn) {
+      // Конец внешнего хода: петля его не видела; turnEndPending остаётся — гасит дубль
+      // turn_end (agent_end + agent_settled) этого же хода.
+      state.externalTurn = false
+      return
+    }
+    // agent_end и agent_settled дают два turn_end — второй гасим; повторная обработка
+    // после сброса toolSeenThisTurn ошибочно стопила бы петлю с reason 'agent'.
+    if (state.turnEndHandled || state.turnEndPending) return
+    state.turnEndPending = true
     if (state.subagents.size > 0 || state.workflows.size > 0) {
       state.waitingSubagents = true
       return
@@ -179,10 +217,11 @@ export class LoopController {
   }
 
   private proceedTurnEnd(hostId: string, state: LoopState): void {
-    // agent_end и agent_settled дают два turn_end — второй гасим, иначе двойной спавн/стоп.
-    if (state.turnEndHandled) return
-    state.turnEndHandled = true
+    // turnEndHandled ставится только в точках разрешения хода (стоп/спавн/отправка check) —
+    // грейс-пауза и дефер по субагентам ход ещё не разрешают.
     if (state.checkingCondition) {
+      if (state.turnEndHandled) return
+      state.turnEndHandled = true
       state.checkingCondition = false
       state.toolSeenThisTurn = false
       if (state.stopRequested) {
@@ -195,23 +234,55 @@ export class LoopController {
     if (!state.toolSeenThisTurn || state.stopRequested) {
       // Рабочий ход без единого вызова инструмента — агенту нечего продолжать;
       // loop_stop в рабочем ходу — агент сам понял, что условие выхода выполнено.
+      state.turnEndHandled = true
       if (state.active) this.stopLoop(hostId, state, state.stopRequested ? 'exit' : 'agent')
       return
     }
-    state.toolSeenThisTurn = false
     if (!state.active) return
     if (state.remaining <= 0) {
+      state.turnEndHandled = true
       this.stopLoop(hostId, state, 'max')
       return
     }
     if (this.isShortCircuit(state)) {
+      state.turnEndHandled = true
       this.stopLoop(hostId, state, 'short-circuit')
       return
     }
-    this.sendCheckPrompt(hostId, state)
+    this.scheduleCheck(hostId, state)
+  }
+
+  /** Check-промпт уходит с задержкой graceMs: спавн субагента уходит асинхронно, и
+   *  subagents:started часто приходит после turn_end — без паузы check уходит при живом субагенте. */
+  private scheduleCheck(hostId: string, state: LoopState): void {
+    this.clearCheckTimer(state)
+    state.checkTimer = setTimeout(() => {
+      state.checkTimer = null
+      if (this.states.get(hostId) !== state || !state.active) return
+      // Внешний ход ещё стримится — prompt ушёл бы в очередь pi; переносим отправку.
+      if (state.externalTurn) {
+        this.scheduleCheck(hostId, state)
+        return
+      }
+      if (state.subagents.size > 0 || state.workflows.size > 0) {
+        state.waitingSubagents = true
+        return
+      }
+      state.turnEndHandled = true
+      state.toolSeenThisTurn = false
+      this.sendCheckPrompt(hostId, state)
+    }, this.graceMs)
+  }
+
+  private clearCheckTimer(state: LoopState): void {
+    if (state.checkTimer !== null) {
+      clearTimeout(state.checkTimer)
+      state.checkTimer = null
+    }
   }
 
   private stopLoop(hostId: string, state: LoopState, reason: LoopStopReason): void {
+    this.clearCheckTimer(state)
     state.active = false
     state.reason = reason
     this.emitState(hostId, state, null)

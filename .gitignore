@@ -40,3 +40,4 @@ Desktop.ini
 # Локальные инструкции агента
 AGENTS.md
 .pi
+.pi/attachments/

@@ -17,6 +17,7 @@ import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './
 import { ensureAskExtension } from './ask-extension'
 import { ensureSessionToolsExtension } from './session-tools-extension'
 import { ensureLoopStopExtension } from './loop-stop-extension'
+import { ensureSubagentBridgeExtension } from './subagent-bridge-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens } from './handshake'
 import { generateSessionTitle } from './session-title'
@@ -44,6 +45,7 @@ function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Pr
   const extensions = [
     ensureAskExtension(project, settings),
     ensureSessionToolsExtension(project, settings),
+    ensureSubagentBridgeExtension(project, settings),
     ...(settings.loopsEnabled ? [ensureLoopStopExtension(project, settings)] : [])
   ]
   return Promise.all(extensions)
@@ -67,6 +69,8 @@ export class SessionHost {
   readonly id = randomUUID()
 
   private conn: PiConnection | null = null
+  /** Ожидается agent_start от нашего prompt (не nudge/follow_up из pi) — сбрасывается первым agent_start. */
+  private ownPromptPending = false
   private backend: PiBackend | null = null
   private sessionFile: string | null
   private startPromise: Promise<void> | null = null
@@ -306,7 +310,9 @@ export class SessionHost {
 
   private handleEvent(translator: PiEventTranslator, type: string, payload: Record<string, unknown>): void {
     if (type === 'agent_start') {
-      this.emit({ type: 'turn_start' })
+      const external = !this.ownPromptPending
+      this.ownPromptPending = false
+      this.emit({ type: 'turn_start', external })
       this.status('streaming')
     } else if (type === 'agent_settled' || type === 'agent_end') {
       translator.onEvent(type, payload)
@@ -563,6 +569,9 @@ export class SessionHost {
   private async sendPrompt(text: string, images: string[], behavior?: PromptBehavior): Promise<PromptResult> {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    // Ход, начатый этим prompt'ом — «свой»; agent_start без него — внешний ход (nudge субагента,
+    // follow_up из pi) — петля его не считает продолжением работы пользователя.
+    if (behavior === undefined) this.ownPromptPending = true
     const fields: PiJsonObject = { message: text }
     // Модель без `input: image` картинку не примет — остаётся ссылка `@путь` в тексте.
     if (images.length > 0 && (this.handshake?.model?.imageInput ?? false)) {
@@ -573,6 +582,7 @@ export class SessionHost {
     const command = behavior === 'steer' && this.streaming ? 'steer' : behavior === 'followUp' && this.streaming ? 'follow_up' : 'prompt'
     const response = await conn.request(command, fields)
     if (!response.success) {
+      if (behavior === undefined) this.ownPromptPending = false
       const error = `${response.command} failed: ${response.error ?? 'no details'}`
       this.status('error', error)
       return { ok: false, error }

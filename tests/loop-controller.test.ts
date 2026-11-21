@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { LoopController } from '../src/main/pi/loop-controller'
 import type { LoopInfo, UiEvent } from '../src/shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../src/shared/ipc-contracts'
@@ -13,7 +13,7 @@ interface CreatedSession {
   renames: string[]
 }
 
-/** Фейковый PiHost: create() выдаёт сессии host-2, host-3…; host-1 умеет принимать check-промпты. */
+/** Р¤РµР№РєРѕРІС‹Р№ PiHost: create() РІС‹РґР°С‘С‚ СЃРµСЃСЃРёРё host-2, host-3вЂ¦; host-1 СѓРјРµРµС‚ РїСЂРёРЅРёРјР°С‚СЊ check-РїСЂРѕРјРїС‚С‹. */
 function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: CreatedSession[]; checks: string[] } {
   const created: CreatedSession[] = []
   const checks: string[] = []
@@ -105,14 +105,15 @@ function turnWithoutTool(hostId: string): PiEventMessage[] {
   return [ev(hostId, { type: 'turn_start' }), ev(hostId, { type: 'turn_end' })]
 }
 
-/** Спавн и промпт уходят через микротаски — даём цепочке промисов дойти до конца. */
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+/** РЎРїР°РІРЅ Рё РїСЂРѕРјРїС‚ СѓС…РѕРґСЏС‚ С‡РµСЂРµР· РјРёРєСЂРѕС‚Р°СЃРєРё вЂ” РґР°С‘Рј С†РµРїРѕС‡РєРµ РїСЂРѕРјРёСЃРѕРІ РґРѕР№С‚Рё РґРѕ РєРѕРЅС†Р°. */
+const GRACE_MS = 10
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, GRACE_MS * 3))
 
 describe('LoopController (auto-continue with check turn)', () => {
   it('work turn with tools sends a check prompt into the same session', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     expect(controller.start('host-1', 'do the task', 5, EXIT)).toMatchObject({ active: true, remaining: 5 })
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
@@ -125,7 +126,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('duplicate turn_end (agent_end + agent_settled) is processed once', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
@@ -143,7 +144,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('check turn without loop_stop spawns the next iteration with the plain prompt', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'do the task', 5, EXIT)
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
@@ -160,7 +161,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('check turn with loop_stop stops the loop with reason exit', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
@@ -176,7 +177,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('loop_stop in a work turn stops the loop without a check prompt', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
@@ -191,7 +192,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('nested loop_stop (parentToolCallId) does not stop the loop', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'loop_stop', args: {}, parentToolCallId: 'p1' } }))
@@ -203,7 +204,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('work turn without tool calls stops the loop with reason agent', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
     await flush()
@@ -215,7 +216,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('work turn ending with a pending dialog waits instead of checking', async () => {
     const { piHost, checks } = fakePiHost(['dlg-1'])
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
@@ -226,7 +227,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('work turn ending with running subagents defers the check until they complete', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
@@ -247,7 +248,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('workflow_started/workflow_settled defer the check the same way', async () => {
     const { piHost, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'workflow', args: {}, parentToolCallId: null } }))
@@ -259,10 +260,79 @@ describe('LoopController (auto-continue with check turn)', () => {
     expect(checks).toHaveLength(1)
   })
 
+  it('subagents:started arriving after turn_end (grace window) defers the check', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    // Спавн ушел асинхронно: started приходит уже после turn_end, но в пределах грейс-паузы
+    controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'started', id: 'sa-1' }))
+    await flush()
+    expect(checks).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true })
+    controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'completed', id: 'sa-1' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(1)
+  })
+
+  it('grace window expires with no subagents — check is sent as before', async () => {
+    const { piHost, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    expect(checks).toHaveLength(0)
+    await flush()
+    expect(checks).toHaveLength(1)
+  })
+
+  it('external nudge turn between work turn and check does not kill the loop', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(1)
+    // Check-ход завершился без loop_stop — должен спавниться, но перед этим пришёл
+    // внешний nudge-ход субагента (без инструментов) — он петлю не останавливает.
+    controller.onEvent(ev('host-1', { type: 'turn_start', external: true }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
+    for (const m of turnWithoutTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts[0]).toBe('p')
+  })
+
+  it('external turn during grace window defers the check until it ends', async () => {
+    const { piHost, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    // Внешний ход начался в пределах грейс-паузы — check переносится до его конца.
+    controller.onEvent(ev('host-1', { type: 'turn_start', external: true }))
+    await flush()
+    expect(checks).toHaveLength(0)
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true })
+  })
+
   it('subagents:disposed clears the wait', async () => {
     const { piHost, checks } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.onEvent(ev('host-1', { type: 'turn_start' }))
     controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
@@ -277,7 +347,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('remaining 0 stops the loop with reason max', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 1, EXIT)
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
     await flush()
@@ -295,7 +365,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('stop() marks the loop stopped by user', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.stop('host-1')
     for (const m of turnWithTool('host-1')) controller.onEvent(m)
@@ -308,7 +378,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('three iterations faster than 10s each trip the short-circuit guard', async () => {
     const { piHost, created } = fakePiHost()
     const { emit } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 20, EXIT)
     for (let i = 0; i < 2; i++) {
       const hostId = i === 0 ? 'host-1' : created[created.length - 1].id
@@ -330,7 +400,7 @@ describe('LoopController (auto-continue with check turn)', () => {
   it('stopAll stops every active loop (setting turned off)', async () => {
     const { piHost } = fakePiHost()
     const { emit, events } = collector()
-    const controller = new LoopController(piHost, emit)
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
     controller.start('host-1', 'p', 5, EXIT)
     controller.start('host-9', 'p', 5, EXIT)
     controller.stop('host-9')

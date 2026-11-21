@@ -217,6 +217,19 @@ describe('PiEventTranslator', () => {
     ])
   })
 
+  it('subagent bridge entries (entry_appended) become subagents_activity', () => {
+    const recorder = new Recorder()
+    feed(new PiEventTranslator(recorder), [
+      '{"type":"entry_appended","entry":{"type":"custom","customType":"piwright:subagents","data":{"kind":"started","id":"a1"}}}',
+      '{"type":"entry_appended","entry":{"type":"custom","customType":"piwright:subagents","data":{"kind":"completed","id":"a1"}}}',
+      '{"type":"entry_appended","entry":{"type":"custom","customType":"piwright:subagents","data":{"kind":"disposed","id":null}}}',
+      // чужие custom-entry и entry без customType — игнор
+      '{"type":"entry_appended","entry":{"type":"custom","customType":"subagents:record","data":{"kind":"started","id":"x"}}}',
+      '{"type":"entry_appended","entry":{"type":"message"}}'
+    ])
+    expect(recorder.calls).toEqual(['subagents:started:a1', 'subagents:completed:a1', 'subagents:disposed:null'])
+  })
+
   it('unknown context window skips usage updates but keeps context tokens for the result', () => {
     const recorder = new Recorder()
     feed(new PiEventTranslator(recorder), [

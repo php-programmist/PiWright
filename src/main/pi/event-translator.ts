@@ -194,6 +194,18 @@ export class PiEventTranslator {
       case 'compaction_end':
         this.onCompactionEnd(payload)
         return
+      case 'entry_appended': {
+        // Мост subagent-bridge пересылает события pi-subagents как custom-entry:
+        // шина pi.events в RPC-stdout не попадает, а entry_appended — попадает.
+        const entry = obj(payload, 'entry')
+        if (str(entry, 'customType') !== 'piwright:subagents') return
+        const data = obj(entry, 'data')
+        const kind = str(data, 'kind')
+        if (kind === 'started' || kind === 'completed' || kind === 'workflow_started' || kind === 'workflow_settled' || kind === 'disposed') {
+          this.listener.onSubagentsActivity(kind, str(data, 'id'))
+        }
+        return
+      }
       case 'subagents:created':
       case 'subagents:started':
         this.listener.onSubagentsActivity('started', str(payload, 'id'))

@@ -149,7 +149,7 @@ export type UiEvent =
   | { type: 'compaction_end'; end: CompactionEnd }
   | { type: 'turn_result'; usage: TurnUsage }
   | { type: 'turn_error'; message: string }
-  | { type: 'turn_start' }
+  | { type: 'turn_start'; external?: boolean }
   | { type: 'turn_end' }
   | { type: 'subagents_activity'; kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed'; id: string | null }
   | { type: 'loop_state'; info: LoopInfo; previousHostId: string | null }
