@@ -546,6 +546,7 @@ export class RemoteBridge {
     const id = frameString(frame, 'id')
     const method = frameString(frame, 'method')
     if (id === null || method === null) return
+    if (decodeExtensionUi(method, frame) !== null) return
     const timeoutRaw = frame['timeout']
     const timeoutMs = typeof timeoutRaw === 'number' && Number.isFinite(timeoutRaw) ? timeoutRaw : null
     const pending: PendingUi = {
