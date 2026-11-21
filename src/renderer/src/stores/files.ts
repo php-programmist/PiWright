@@ -1,16 +1,15 @@
+/** Состояние браузера файлов для активного проекта; смена проекта сбрасывает всё, кроме open/width.
+ *  Открытые файлы — вкладки проекта (stores/tabs.ts), здесь только кэш содержимого + watch. */
 import { create } from 'zustand'
 import type { FileEntry, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
 
-/** Состояние браузера файлов для активного проекта; смена проекта сбрасывает всё, кроме open/width. */
 interface FilesData {
   projectKey: string | null
   /** Кэш листингов: ключ — каталог проекта ('' — корень). */
   tree: Record<string, { entries: FileEntry[]; loading: boolean }>
   expanded: Record<string, boolean>
-  viewerOpen: boolean
-  tabs: string[]
-  activePath: string | null
+  /** Кэш содержимого открытых файлов — ключи синхронизированы с файловыми вкладками tabs-стора. */
   contents: Record<string, string>
   error: string | null
 }
@@ -26,11 +25,11 @@ interface FilesState extends FilesData {
   loadDir: (project: ProjectEntry, dir: string) => Promise<void>
   toggleDir: (project: ProjectEntry, dir: string) => Promise<void>
   refresh: (project: ProjectEntry) => Promise<void>
+  /** Загрузка содержимого файла (идемпотентно) + watch открытых. */
   openFile: (project: ProjectEntry, path: string) => Promise<void>
   rename: (project: ProjectEntry, path: string, newName: string) => Promise<boolean>
-  closeTab: (project: ProjectEntry, path: string) => void
-  setActiveTab: (path: string) => void
-  closeViewer: () => void
+  /** Файл закрыт как вкладка — сбросить кэш и пересчитать watch. */
+  closeContent: (project: ProjectEntry, path: string) => void
   setError: (error: string | null) => void
   toggleWordWrap: () => void
   /** Оптимистичная запись md-файла (live-preview): контент сразу в сторе, при ошибке — перечит. */
@@ -43,9 +42,6 @@ function resetState(): FilesData {
     projectKey: null,
     tree: {},
     expanded: {},
-    viewerOpen: false,
-    tabs: [],
-    activePath: null,
     contents: {},
     error: null
   }
@@ -103,18 +99,21 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   openFile: async (project, path) => {
     if (projectKey(project) !== get().projectKey) return
-    const tabs = get().tabs.includes(path) ? get().tabs : [...get().tabs, path]
-    set({ tabs, activePath: path, viewerOpen: true, error: null })
-    void window.piwright.filesWatch(project, tabs)
+    if (get().contents[path] !== undefined) {
+      void window.piwright.filesWatch(project, Object.keys(get().contents))
+      return
+    }
+    set({ error: null })
     const result = await window.piwright.filesRead(project, path)
     if (projectKey(project) !== get().projectKey) return
-    set((state) => ({
-      contents: { ...state.contents, [path]: result.ok ? result.content : '' },
-      error: !result.ok && state.activePath === path ? result.error : state.error
-    }))
+    set((state) => {
+      const contents = result.ok ? { ...state.contents, [path]: result.content } : state.contents
+      void window.piwright.filesWatch(project, Object.keys(contents))
+      return { contents, error: !result.ok ? result.error : state.error }
+    })
   },
 
-  /** Переименование: ремап кэшей дерева/вкладок; открытые файлы остаются открытыми. */
+  /** Переименование: ремап кэшей дерева/содержимого; открытые файлы остаются открытыми. */
   rename: async (project, path, newName) => {
     if (projectKey(project) !== get().projectKey) return false
     const result = await window.piwright.filesRename(project, path, newName)
@@ -140,29 +139,20 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       }
       const expanded: Record<string, boolean> = {}
       for (const [dir, value] of Object.entries(state.expanded)) expanded[remap(dir)] = value
-      const tabs = state.tabs.map(remap)
       const contents: Record<string, string> = {}
       for (const [p, content] of Object.entries(state.contents)) contents[remap(p)] = content
-      return { tree, expanded, tabs, contents, activePath: state.activePath === null ? null : remap(state.activePath) }
+      return { tree, expanded, contents }
     })
-    void window.piwright.filesWatch(project, get().tabs)
+    void window.piwright.filesWatch(project, Object.keys(get().contents))
     return true
   },
 
-  closeTab: (project, path) => {
-    const index = get().tabs.indexOf(path)
-    if (index < 0) return
-    const tabs = get().tabs.filter((p) => p !== path)
+  closeContent: (project, path) => {
     const contents = { ...get().contents }
     delete contents[path]
-    const activePath = get().activePath === path ? (tabs[Math.min(index, tabs.length - 1)] ?? null) : get().activePath
-    set({ tabs, contents, activePath, viewerOpen: tabs.length > 0 ? get().viewerOpen : false })
-    void window.piwright.filesWatch(project, tabs)
+    set({ contents })
+    void window.piwright.filesWatch(project, Object.keys(contents))
   },
-
-  setActiveTab: (path) => set({ activePath: path }),
-
-  closeViewer: () => set({ viewerOpen: false }),
 
   setError: (error) => set({ error }),
 
@@ -181,9 +171,9 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   applyFileChanged: async (project, path) => {
     const state = get()
-    if (projectKey(project) !== state.projectKey || !state.tabs.includes(path)) return
+    if (projectKey(project) !== state.projectKey || state.contents[path] === undefined) return
     const result = await window.piwright.filesRead(project, path)
-    if (projectKey(project) !== get().projectKey || !get().tabs.includes(path)) return
+    if (projectKey(project) !== get().projectKey || get().contents[path] === undefined) return
     set((s) => ({ contents: { ...s.contents, [path]: result.ok ? result.content : (s.contents[path] ?? '') } }))
   }
 }))

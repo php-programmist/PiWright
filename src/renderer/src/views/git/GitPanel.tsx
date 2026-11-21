@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useGitStore } from '../../stores/git'
-import { useSessionsStore } from '../../stores/sessions'
+import { useTabsStore, useCenterProject } from '../../stores/tabs'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useLang, useT } from '../../lib/i18n'
 import { BADGE_CLASS } from '../../lib/git-file-class'
@@ -362,9 +362,7 @@ function BranchSelect({ project, branch, detached }: { project: ProjectEntry; br
 }
 
 export function GitPanel(): React.JSX.Element {
-  const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const active = useSessionsStore((s) => s.active)
-  const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
+  const project = useCenterProject()
   const width = useGitStore((s) => s.width)
   const setWidth = useGitStore((s) => s.setWidth)
   const t = useT()
@@ -406,7 +404,6 @@ export function GitPanel(): React.JSX.Element {
   const log = useGitStore((s) => s.log)
   const logOpen = useGitStore((s) => s.logOpen)
   const refresh = useGitStore((s) => s.refresh)
-  const openFile = useGitStore((s) => s.openFile)
   const stage = useGitStore((s) => s.stage)
   const unstage = useGitStore((s) => s.unstage)
   const commit = useGitStore((s) => s.commit)
@@ -467,7 +464,10 @@ export function GitPanel(): React.JSX.Element {
               action="−"
               collapsed={collapsed}
               toggleCollapsed={toggleCollapsed}
-              onOpen={(path) => void openFile(project, path)}
+              onOpen={(path) => {
+                useTabsStore.getState().openTab(project, { kind: 'diff', path })
+                void useGitStore.getState().openFile(project, path)
+              }}
               onToggle={(path) => void unstage(project, [path])}
               lang={lang}
             />
@@ -479,7 +479,10 @@ export function GitPanel(): React.JSX.Element {
               action="+"
               collapsed={collapsed}
               toggleCollapsed={toggleCollapsed}
-              onOpen={(path) => void openFile(project, path)}
+              onOpen={(path) => {
+                useTabsStore.getState().openTab(project, { kind: 'diff', path })
+                void useGitStore.getState().openFile(project, path)
+              }}
               onToggle={(path) => void stage(project, [path])}
               lang={lang}
             />

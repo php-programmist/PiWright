@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
+import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
@@ -65,6 +66,8 @@ function HistoryItem({
       if (result.error !== null) window.alert(result.error)
       return
     }
+    useTabsStore.getState().setActiveProject(parentTabKey(project))
+    useTabsStore.getState().activateSession(project)
     useSessionsStore.getState().setActive(result.hostId)
   }
   return (
@@ -178,10 +181,15 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const [subOpen, setSubOpen] = useState<Record<string, boolean>>({})
   const [wtCreating, setWtCreating] = useState(false)
   const [wtName, setWtName] = useState('')
-  const openTranscript = useSessionsStore((s) => s.openTranscript)
+
+  const openTranscript = (summary: SessionSummary): void => {
+    useTabsStore.getState().openTranscript(row.project, summary)
+  }
 
   const newSession = async (): Promise<void> => {
     const ref = await window.piwright.newSession(row.project)
+    useTabsStore.getState().setActiveProject(parentTabKey(row.project))
+    useTabsStore.getState().activateSession(row.project)
     useSessionsStore.getState().setActive(ref.hostId)
     if (!expanded) toggleExpanded(key)
   }
@@ -197,6 +205,8 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
       return
     }
     const ref = await window.piwright.newSession({ kind: row.project.kind, dir: result.dir })
+    useTabsStore.getState().setActiveProject(parentTabKey({ kind: row.project.kind, dir: result.dir }))
+    useTabsStore.getState().activateSession({ kind: row.project.kind, dir: result.dir })
     useSessionsStore.getState().setActive(ref.hostId)
     if (!expanded) toggleExpanded(key)
   }
@@ -275,6 +285,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
       })
     )
     if (!answer) return
+    useTabsStore.getState().forgetProject(projectKey(row.project))
     await removeProject(row.project)
   }
 
@@ -311,7 +322,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
             }}
           />
         ) : (
-          <span className="project-name" title={row.project.dir}>{projectName}</span>
+          <span className="project-name" title={row.project.dir} onClick={() => useTabsStore.getState().setActiveProject(key)}>{projectName}</span>
         )}
         <span className="kind-badge">{kindLabel(row.project.kind)}</span>
         <span className="spacer" />
@@ -410,7 +421,11 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
               <div key={s.hostId}>
                 <div
                   className={`session-row${s.hostId === activeHostId ? ' current' : ''}`}
-                  onClick={() => useSessionsStore.getState().setActive(s.hostId)}
+                  onClick={() => {
+                    useTabsStore.getState().setActiveProject(parentTabKey(s.project))
+                    useTabsStore.getState().activateSession(s.project)
+                    useSessionsStore.getState().setActive(s.hostId)
+                  }}
                 >
                   <SessionDot hostId={s.hostId} dot={s.dot} />
                   {sub.length > 0 ? (
@@ -447,7 +462,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
-                  sub.map((c) => <TranscriptItem key={c.path} summary={c} onOpen={(x) => openTranscript(row.project, x)} />)}
+                  sub.map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
               </div>
             )
           })}
@@ -466,7 +481,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                 onDelete={() => void deleteHistory(h)}
               />
               {subOpen[h.path] &&
-                (childrenOf.get(h.path) ?? []).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={(x) => openTranscript(row.project, x)} />)}
+                (childrenOf.get(h.path) ?? []).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
             </div>
           ))}
           {!row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (

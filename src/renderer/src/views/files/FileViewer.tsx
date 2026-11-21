@@ -1,61 +1,36 @@
-/** Просмотрщик файлов поверх ленты чата (паттерн DiffOverlay): вкладки открытых файлов,
- *  крестик вкладки закрывает её, крестик справа — обратно к чату (вкладки сохраняются). */
-import { useMemo } from 'react'
+/** Просмотрщик файла — контент вкладки проекта (вкладками управляет TabBar):
+ *  перенос длинных строк, live-редактирование md, кэш содержимого в files-сторе. */
+import { useEffect } from 'react'
 import { FileEditor } from '../../components/FileEditor'
 import { MarkdownLive } from '../../components/MarkdownLive'
 import { useFilesStore } from '../../stores/files'
-import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
-import { baseName } from '../git/GitPanel'
+import type { ProjectTab } from '../../stores/tabs'
 
-export function FileViewer(): React.JSX.Element | null {
+export function FileViewer({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const t = useT()
-  const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const active = useSessionsStore((s) => s.active)
-  const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
-  const viewerOpen = useFilesStore((s) => s.viewerOpen)
-  const tabs = useFilesStore((s) => s.tabs)
-  const activePath = useFilesStore((s) => s.activePath)
   const contents = useFilesStore((s) => s.contents)
   const error = useFilesStore((s) => s.error)
-  const setActiveTab = useFilesStore((s) => s.setActiveTab)
-  const closeTab = useFilesStore((s) => s.closeTab)
-  const closeViewer = useFilesStore((s) => s.closeViewer)
   const setError = useFilesStore((s) => s.setError)
   const wordWrap = useFilesStore((s) => s.wordWrap)
   const toggleWordWrap = useFilesStore((s) => s.toggleWordWrap)
+  const path = tab.path ?? ''
 
-  if (!viewerOpen || project === null || activePath === null) return null
+  useEffect(() => {
+    const files = useFilesStore.getState()
+    files.setProject(tab.project)
+    void files.openFile(tab.project, path)
+  }, [tab.project, path])
 
   return (
-    <div className="file-overlay">
-      <div className="file-tabs">
-        {tabs.map((tab) => (
-          <div key={tab} className={`file-tab${tab === activePath ? ' active' : ''}`} title={tab} onClick={() => setActiveTab(tab)}>
-            <span className="file-tab-name">{baseName(tab)}</span>
-            <button
-              className="icon"
-              title={t('Close tab')}
-              onClick={(e) => {
-                e.stopPropagation()
-                closeTab(project, tab)
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
+    <div className="file-view">
+      <div className="file-view-head">
         <span className="spacer" />
-        {!/\.(md|markdown)$/i.test(activePath) && (
-          <button
-            className={`diff-mode${wordWrap ? ' active' : ''}`}
-            title={t('Soft wrap long lines')}
-            onClick={toggleWordWrap}
-          >
+        {!/\.(md|markdown)$/i.test(path) && (
+          <button className={`diff-mode${wordWrap ? ' active' : ''}`} title={t('Soft wrap long lines')} onClick={toggleWordWrap}>
             {t('Wrap')}
           </button>
         )}
-        <button className="icon file-close" title={t('Close viewer (back to chat)')} onClick={closeViewer}>×</button>
       </div>
       {error !== null && (
         <div className="files-error">
@@ -64,10 +39,10 @@ export function FileViewer(): React.JSX.Element | null {
         </div>
       )}
       <div className="file-body">
-        {/\.(md|markdown)$/i.test(activePath) ? (
-          <MarkdownLive key={activePath} project={project} path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
+        {/\.(md|markdown)$/i.test(path) ? (
+          <MarkdownLive key={path} project={tab.project} path={path} content={contents[path] ?? ''} wordWrap={wordWrap} />
         ) : (
-          <FileEditor project={project} path={activePath} content={contents[activePath] ?? ''} wordWrap={wordWrap} />
+          <FileEditor project={tab.project} path={path} content={contents[path] ?? ''} wordWrap={wordWrap} />
         )}
       </div>
     </div>

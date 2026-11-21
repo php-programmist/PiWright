@@ -1,10 +1,10 @@
 /** Панель дерева файлов проекта (справа, паттерн GitPanel): ленивая загрузка каталогов,
  *  клик по файлу — просмотрщик поверх чата, правый клик — меню (переименовать, копировать
  *  путь, добавить в контекст чата). */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
-import { useSessionsStore } from '../../stores/sessions'
+import { useTabsStore, useCenterProject } from '../../stores/tabs'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useT } from '../../lib/i18n'
 import { injectIntoPrompt } from '../../lib/prompt-inject'
@@ -88,15 +88,20 @@ function DirRow({ project, parentDir, name, depth, onMenu }: { project: ProjectE
 
 function FileRow({ project, dir, name, depth, onMenu }: { project: ProjectEntry; dir: string; name: string; depth: number; onMenu: (path: string, kind: EntryKind, x: number, y: number) => void }): React.JSX.Element {
   const path = dir === '' ? name : `${dir}/${name}`
-  const activePath = useFilesStore((s) => s.activePath)
-  const openFile = useFilesStore((s) => s.openFile)
+  const activePath = useTabsStore((s) => {
+    const entry = s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined
+    return entry !== undefined && entry.activeId === `file\u0000${path}` ? path : null
+  })
   const statusClass = useGitStore((s) => statusClassOf(s.status, path))
   return (
     <div
       className={`tree-row file${activePath === path ? ' current' : ''}`}
       style={{ paddingLeft: 6 + depth * 14 + 16 }}
       title={path}
-      onClick={() => void openFile(project, path)}
+      onClick={() => {
+        useTabsStore.getState().openTab(project, { kind: 'file', path })
+        void useFilesStore.getState().openFile(project, path)
+      }}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(path, 'file', e.clientX, e.clientY)
@@ -125,9 +130,7 @@ function FilesError(): React.JSX.Element | null {
 }
 
 export function FilesPanel(): React.JSX.Element {
-  const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const active = useSessionsStore((s) => s.active)
-  const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
+  const project = useCenterProject()
   const width = useFilesStore((s) => s.width)
   const setWidth = useFilesStore((s) => s.setWidth)
   const refresh = useFilesStore((s) => s.refresh)

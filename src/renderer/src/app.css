@@ -2594,6 +2594,120 @@ body {
   z-index: 20;
 }
 
+/* Таб-бар workspace: вкладки активного проекта */
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+  overflow-x: auto;
+  min-height: 30px;
+  flex: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  color: var(--muted);
+  max-width: 220px;
+  min-width: 0;
+  background: var(--input-bg);
+  user-select: none;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  background: var(--active);
+  color: var(--text);
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tab-close {
+  flex: none;
+  font-size: 12px;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+.tab-close:hover {
+  color: var(--red);
+}
+
+.tab .dot {
+  flex: none;
+}
+
+.tab.renaming input {
+  width: 140px;
+  font-size: 12px;
+}
+
+.tab-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tab-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tab-menu-item:hover {
+  background: var(--hover);
+}
+
+.center-empty {
+  flex: 1;
+}
+
+.file-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-view-head {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
 .file-tabs {
   display: flex;
   align-items: center;

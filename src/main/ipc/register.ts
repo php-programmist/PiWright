@@ -82,6 +82,7 @@ import type { PiHost } from '../pi/pi-host'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
+import { mergeProjectTabs } from '../../shared/project-tabs'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
@@ -199,6 +200,12 @@ export function registerIpc(
       }
       if (raw['terminalTabs'] !== null && typeof raw['terminalTabs'] === 'object' && !Array.isArray(raw['terminalTabs'])) {
         safe.terminalTabs = mergeTerminalTabs(raw['terminalTabs'])
+      }
+      if (raw['projectTabs'] !== null && typeof raw['projectTabs'] === 'object' && !Array.isArray(raw['projectTabs'])) {
+        safe.projectTabs = mergeProjectTabs(raw['projectTabs'])
+      }
+      if (typeof raw['lastProjectKey'] === 'string' || raw['lastProjectKey'] === null) {
+        safe.lastProjectKey = raw['lastProjectKey'] as string | null
       }
     }
     const next = settings.set(safe)

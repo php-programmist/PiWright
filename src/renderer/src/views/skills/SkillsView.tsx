@@ -1,13 +1,12 @@
 /** Навыки проекта: юзерские каталога агента бэкенда + проектные (.pi/skills, .agents/skills),
  *  тогглы через settings.json бэкенда, открытие папки. */
 import { useEffect, useState } from 'react'
-import { useSessionsStore } from '../../stores/sessions'
+import { useCenterProject } from '../../stores/tabs'
 import { useT } from '../../lib/i18n'
 import type { SkillEntry } from '../../../../shared/ipc-contracts'
 
 export function SkillsView({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const project = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.project ?? null)
+  const project = useCenterProject()
   const t = useT()
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +44,7 @@ export function SkillsView({ onClose }: { onClose: () => void }): React.JSX.Elem
     await reload(project)
   }
 
-  if (project === null || activeHostId === null) {
+  if (project === null) {
     return (
       <main className="center-view">
         <header className="center-head">

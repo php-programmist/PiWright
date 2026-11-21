@@ -32,12 +32,8 @@ interface SessionsState {
   activeHostId: string | null
   expanded: Record<string, boolean>
   settingsOpen: boolean
-  /** Просмотр транскрипта сессии субагента вместо чата (лениво, без spawn pi). */
-  transcript: { project: ProjectEntry; summary: SessionSummary } | null
   openSettings: () => void
   closeSettings: () => void
-  openTranscript: (project: ProjectEntry, summary: SessionSummary) => void
-  closeTranscript: () => void
   load: () => Promise<void>
   applyStatus: (status: import('../../../shared/ipc-contracts').PiStatus) => void
   forgetHost: (hostId: string) => void
@@ -75,13 +71,9 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   expanded: {},
   settingsOpen: false,
   settings: null,
-  transcript: null,
 
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
-  openTranscript: (project, summary) => set({ transcript: { project, summary } }),
-  closeTranscript: () => set({ transcript: null }),
-
   load: async () => {
     const [snapshot, settings] = await Promise.all([window.piwright.listSessions(), window.piwright.getSettings()])
     set((state) => ({
@@ -132,7 +124,7 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     })
   },
 
-  setActive: (hostId) => set({ activeHostId: hostId, transcript: null }),
+  setActive: (hostId) => set({ activeHostId: hostId }),
 
   toggleTelegram: (hostId) => {
     const row = get().active.find((r) => r.hostId === hostId)

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
+import { TabBar } from './components/TabBar'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
 import { FilesPanel } from './views/files/FilesPanel'
@@ -14,7 +15,8 @@ import { SettingsView } from './views/settings/SettingsView'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
-import { useSessionsStore } from './stores/sessions'
+import { useSessionsStore, projectKey } from './stores/sessions'
+import { parentTabKey, tabId, useTabsStore } from './stores/tabs'
 import { useTerminalStore } from './stores/terminal'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { applyAppearance } from './lib/appearance'
@@ -30,13 +32,13 @@ export function App(): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const settingsOpen = useSessionsStore((s) => s.settingsOpen)
   const gitOpen = useGitStore((s) => s.open)
-  const diffOpen = useGitStore((s) => s.selectedPath !== null)
   const filesOpen = useFilesStore((s) => s.open)
-  const viewerOpen = useFilesStore((s) => s.viewerOpen)
   const termOpen = useTerminalStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
-  const transcript = useSessionsStore((s) => s.transcript)
-  const [centerView, setCenterView] = useState<'chat' | 'mcp' | 'skills'>('chat')
+  const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
+  const tabEntry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
+  const activeAll = useSessionsStore((s) => s.active)
+  const projects = useSessionsStore((s) => s.projects)
   const hydratedRef = useRef(false)
   const theme = settings?.theme ?? 'dark'
   const chatFontSize = settings?.chatFontSize ?? 14
@@ -50,6 +52,31 @@ export function App(): React.JSX.Element {
     hydratedRef.current = true
     hydratePanels(settings)
   }, [settings])
+
+  // Первый активный проект: после загрузки сессий/настроек (один раз).
+  const sessionsLoaded = useSessionsStore((s) => s.settings !== null)
+  useEffect(() => {
+    if (sessionsLoaded) useTabsStore.getState().ensureInitialProject()
+  }, [sessionsLoaded, activeAll.length, projects.length])
+
+  // MCP/навыки — вкладки проекта: тоггл из вертикальной панели справа.
+  const toggleCenterTab = (kind: 'mcp' | 'skills'): void => {
+    const tabsStore = useTabsStore.getState()
+    const key = tabsStore.activeProjectKey
+    if (key === null) return
+    const entry = tabsStore.byProject[key]
+    const existing = entry?.tabs.find((tab) => tab.kind === kind)
+    if (existing !== undefined && entry.activeId === tabId(existing)) {
+      tabsStore.closeTab(existing.project, tabId(existing))
+      return
+    }
+    const st = useSessionsStore.getState()
+    const project = st.active.find((r) => r.hostId === st.activeHostId)?.project
+      ?? st.projects.find((p) => projectKey(p.project) === key)?.project
+      ?? existing?.project
+    if (project === undefined) return
+    tabsStore.openTab(project, { kind })
+  }
 
   // Git и Files делят одно пространство: открытие одного закрывает другое (фича 24).
   const toggleGit = (): void => {
@@ -79,6 +106,12 @@ export function App(): React.JSX.Element {
     useTerminalStore.getState().ensureTabs(project)
   }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
+  const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
+  const sessionActive = sessionRows.some((r) => r.hostId === activeHostId) && (tabEntry?.activeId ?? null) === null
+  const activeTab = !sessionActive && tabEntry !== undefined ? (tabEntry.tabs.find((tab) => tabId(tab) === tabEntry.activeId) ?? null) : null
+  const closeActiveTab = (): void => {
+    if (activeTab !== null) useTabsStore.getState().closeTab(activeTab.project, tabId(activeTab))
+  }
 
   useEffect(() => {
     const offEvent = window.piwright.onPiEvent((message) => {
@@ -134,15 +167,22 @@ export function App(): React.JSX.Element {
           <div className="workspace">
             <div className="content-row">
               <div className="chat-column">
-                {transcript !== null ? (
-                  <TranscriptView key={transcript.summary.path} project={transcript.project} summary={transcript.summary} />
+                <TabBar />
+                {sessionActive ? (
+                  <ChatView key={activeHostId ?? 'none'} chat={chat ?? null} />
+                ) : activeTab === null ? (
+                  <div className="center-empty" />
+                ) : activeTab.kind === 'file' ? (
+                  <FileViewer key={activeTab.path} tab={activeTab} />
+                ) : activeTab.kind === 'diff' ? (
+                  <DiffOverlay key={activeTab.path} tab={activeTab} />
+                ) : activeTab.kind === 'mcp' ? (
+                  <McpView onClose={closeActiveTab} />
+                ) : activeTab.kind === 'skills' ? (
+                  <SkillsView onClose={closeActiveTab} />
                 ) : (
-                  centerView === 'chat' && <ChatView key={activeHostId ?? 'none'} chat={chat ?? null} />
+                  <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}
-                {centerView === 'mcp' && <McpView onClose={() => setCenterView('chat')} />}
-                {centerView === 'skills' && <SkillsView onClose={() => setCenterView('chat')} />}
-                {diffOpen && <DiffOverlay />}
-                {viewerOpen && <FileViewer />}
               </div>
               <div className="right-side">
                 {gitOpen && <GitPanel />}
@@ -170,9 +210,9 @@ export function App(): React.JSX.Element {
               </svg>
             </button>
             <button
-              className={centerView === 'mcp' ? 'active' : ''}
+              className={activeTab?.kind === 'mcp' ? 'active' : ''}
               title={t('MCP servers')}
-              onClick={() => setCenterView((v) => (v === 'mcp' ? 'chat' : 'mcp'))}
+              onClick={() => toggleCenterTab('mcp')}
             >
               <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="1.5" y="1.5" width="13" height="5" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
@@ -182,9 +222,9 @@ export function App(): React.JSX.Element {
               </svg>
             </button>
             <button
-              className={centerView === 'skills' ? 'active' : ''}
+              className={activeTab?.kind === 'skills' ? 'active' : ''}
               title={t('Skills')}
-              onClick={() => setCenterView((v) => (v === 'skills' ? 'chat' : 'skills'))}
+              onClick={() => toggleCenterTab('skills')}
             >
               <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
                 <path

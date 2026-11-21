@@ -24,6 +24,8 @@ const baseSettings: Settings = {
   panels: {},
   expandedProjects: {},
   terminalTabs: {},
+  projectTabs: {},
+  lastProjectKey: null,
   lastModel: null,
   lastThinkingLevel: null,
   notifications: {

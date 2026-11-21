@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { mergeProjectTabs } from '../../shared/project-tabs'
 
 /** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -31,6 +32,8 @@ export const DEFAULT_SETTINGS: Settings = {
   panels: {},
   expandedProjects: {},
   terminalTabs: {},
+  projectTabs: {},
+  lastProjectKey: null,
   notifications: DEFAULT_NOTIFICATIONS,
   lastModel: null,
   lastThinkingLevel: null,
@@ -160,8 +163,10 @@ export class SettingsService {
       merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
       merged.expandedProjects = mergeExpandedProjects((raw as Partial<Settings>)['expandedProjects'])
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
+  merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null
+      if (typeof merged.lastProjectKey !== 'string') merged.lastProjectKey = null
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

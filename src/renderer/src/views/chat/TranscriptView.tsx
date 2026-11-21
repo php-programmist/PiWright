@@ -4,14 +4,16 @@ import { useEffect, useRef, useState } from 'react'
 import { EntryView } from './ChatView'
 import { transcriptEntries } from '../../stores/chat'
 import type { Entry } from '../../stores/chat'
-import { useSessionsStore } from '../../stores/sessions'
+import { tabId, useTabsStore } from '../../stores/tabs'
 import { useLang, useT } from '../../lib/i18n'
 import type { ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
 
 export function TranscriptView({ project, summary }: { project: ProjectEntry; summary: SessionSummary }): React.JSX.Element {
   const t = useT()
   const lang = useLang()
-  const closeTranscript = useSessionsStore((s) => s.closeTranscript)
+  const closeTranscript = (): void => {
+    useTabsStore.getState().closeTab(project, tabId({ kind: 'transcript', path: summary.path }))
+  }
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)

@@ -1,6 +1,7 @@
 /** Типизированный IPC-контракт renderer ↔ main. Единственная точка — preload (`window.piwright`). */
 import type { DialogAnswer, ExtensionDialog, UiEvent } from './agent-events'
 import type { PiModelInfo } from './protocol-types'
+import type { ProjectTabsSnapshot } from './project-tabs'
 
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
 export type BackendMode = 'native' | 'wsl'
@@ -47,6 +48,10 @@ export interface Settings {
   expandedProjects: Record<string, boolean>
   /** Вкладки терминала на проект (ключ projectKey) — переименованные вкладки переоткрываются после перезапуска. */
   terminalTabs: Record<string, TerminalTabsSnapshot>
+  /** Вкладки проекта (файлы/диффы/MCP/навыки; ключ projectKey) — переживают перезапуск, сессии не сохраняются. */
+  projectTabs: Record<string, ProjectTabsSnapshot>
+  /** Последний активный проект (ключ projectKey) — восстанавливается при старте. */
+  lastProjectKey: string | null
   /** Звуки, telegram и remote-мост (вкладка Notifications). */
   notifications: NotificationSettings
   /** Последняя выбранная модель (provider/id) — подставляется в новые сессии; пишет только main. */
