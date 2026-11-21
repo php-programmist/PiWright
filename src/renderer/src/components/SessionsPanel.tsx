@@ -439,7 +439,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
             )
           })}
           {active.length === 0 && <div className="panel-hint">{t('no active sessions')}</div>}
-          <div className="history-head">{t('history')}</div>
+          <div className="history-head">{t('History')}</div>
           {row.historyLoading && <div className="panel-hint">{t('loading…')}</div>}
           {!row.historyLoading && topLevel.length === 0 && <div className="panel-hint">{t('no past sessions')}</div>}
           {visible.map((h) => (
@@ -458,7 +458,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
           ))}
           {!row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (
             <button className="show-all" onClick={() => setShowAll(key, !row.showAllHistory)}>
-              {row.showAllHistory ? t('show less') : t('show all ({count})', { count: topLevel.length })}
+              {row.showAllHistory ? t('Show less') : t('Show all ({count})', { count: topLevel.length })}
             </button>
           )}
         </div>

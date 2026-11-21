@@ -28,11 +28,11 @@ const RU: Record<string, string> = {
   'Rename (or double-click title)': 'Переименовать (или двойной клик по названию)',
   'Close session': 'Закрыть сессию',
   'no active sessions': 'нет активных сессий',
-  'history': 'история',
+  'History': 'История',
   'loading…': 'загрузка…',
   'no past sessions': 'нет прошлых сессий',
-  'show less': 'свернуть',
-  'show all ({count})': 'показать все ({count})',
+  'Show less': 'Свернуть',
+  'Show all ({count})': 'Показать все ({count})',
   'Delete session from disk': 'Удалить сессию с диска',
   'Delete session "{title}" from disk?\n\nIts session file will be removed permanently.':
     'Удалить сессию «{title}» с диска?\n\nФайл сессии будет удалён безвозвратно.',
@@ -139,7 +139,7 @@ const RU: Record<string, string> = {
   'Close tab': 'Закрыть вкладку',
   'Close viewer (back to chat)': 'Закрыть просмотр (вернуться к чату)',
   'Soft wrap long lines': 'Мягкий перенос длинных строк',
-  'wrap': 'перенос',
+  'Wrap': 'Перенос',
 
   // Дифф
   'Previous file': 'Предыдущий файл',
@@ -147,8 +147,8 @@ const RU: Record<string, string> = {
   'Unified diff': 'Единый дифф',
   'Side-by-side diff': 'Дифф в две колонки',
   'Close diff (back to chat)': 'Закрыть дифф (вернуться к чату)',
-  'unified': 'единый',
-  'split': 'две колонки',
+  'Unified': 'Единый',
+  'Split': 'Две колонки',
 
   // Терминал
   'Pick a session to open a terminal': 'Выберите сессию, чтобы открыть терминал',

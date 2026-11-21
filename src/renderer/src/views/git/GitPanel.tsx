@@ -505,7 +505,7 @@ export function GitPanel(): React.JSX.Element {
               </div>
             </div>
             <div className="git-log">
-              <button className="git-log-head" onClick={toggleLog}>{logOpen ? '▾' : '▸'} {t('history')}</button>
+              <button className="git-log-head" onClick={toggleLog}>{logOpen ? '▾' : '▸'} {t('History')}</button>
               {logOpen && log.map((e) => (
                 <div key={e.hash} className="git-log-entry" title={e.subject}>
                   <span className="git-hash">{e.hash.slice(0, 7)}</span>

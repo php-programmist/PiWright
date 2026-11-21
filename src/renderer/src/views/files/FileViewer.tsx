@@ -51,7 +51,7 @@ export function FileViewer(): React.JSX.Element | null {
           title={t('Soft wrap long lines')}
           onClick={toggleWordWrap}
         >
-          {t('wrap')}
+          {t('Wrap')}
         </button>
         <button className="icon file-close" title={t('Close viewer (back to chat)')} onClick={closeViewer}>×</button>
       </div>

@@ -45,10 +45,10 @@ export function DiffOverlay(): React.JSX.Element | null {
         <span className="diff-title" title={selectedPath}>{baseName(selectedPath)}</span>
         <span className="spacer" />
         <button className={`diff-mode${sideBySide ? '' : ' active'}`} title={t('Unified diff')} onClick={() => setSideBySide(false)}>
-          {t('unified')}
+          {t('Unified')}
         </button>
         <button className={`diff-mode${sideBySide ? ' active' : ''}`} title={t('Side-by-side diff')} onClick={() => setSideBySide(true)}>
-          {t('split')}
+          {t('Split')}
         </button>
         <button className="icon diff-close" title={t('Close diff (back to chat)')} onClick={closeFile}>×</button>
       </div>
