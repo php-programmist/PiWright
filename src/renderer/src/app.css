@@ -263,6 +263,7 @@ body {
 /* Иконки строки проекта и настроек — крупнее, чтобы различались (2x базового 12.5px). */
 .project-row .expand,
 .project-row .icon,
+.panel-head .icon,
 .panel-foot .icon {
   font-size: 25px;
   line-height: 1;
