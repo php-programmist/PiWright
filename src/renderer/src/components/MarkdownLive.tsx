@@ -1,8 +1,9 @@
 /** Markdown live-preview в стиле Obsidian (фича 29): блоки рендерятся, клик по блоку
  *  открывает его исходник в textarea, уход фокуса/Escape/Ctrl+S — запись в файл. */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectEntry } from '../../../shared/ipc-contracts'
 import { joinMarkdownDoc, splitMarkdownDoc } from '../../../shared/markdown-blocks'
+import { continueListItem } from '../../../shared/markdown-enter'
 import { useFilesStore } from '../stores/files'
 import { Markdown } from './Markdown'
 
@@ -19,7 +20,16 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
   const [draft, setDraft] = useState('')
   const activeRef = useRef<number | null>(null)
   const draftRef = useRef('')
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const caretRef = useRef<number | null>(null)
   const saveContent = useFilesStore((s) => s.saveContent)
+
+  useLayoutEffect(() => {
+    const pos = caretRef.current
+    if (pos === null) return
+    caretRef.current = null
+    textareaRef.current?.setSelectionRange(pos, pos)
+  }, [draft])
 
   useEffect(() => {
     activeRef.current = activeIdx
@@ -58,6 +68,7 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
         i === activeIdx ? (
           <textarea
             key={i}
+            ref={textareaRef}
             className="md-edit"
             value={draft}
             autoFocus
@@ -71,6 +82,20 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
               } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
                 e.preventDefault()
                 commit()
+              } else if (
+                e.key === 'Enter' &&
+                !e.shiftKey &&
+                !e.altKey &&
+                !e.ctrlKey &&
+                !e.metaKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                const el = e.currentTarget
+                const next = continueListItem(draft, el.selectionStart ?? 0, el.selectionEnd ?? 0)
+                if (next === null) return
+                e.preventDefault()
+                caretRef.current = next.caret
+                setDraft(next.text)
               }
             }}
           />
