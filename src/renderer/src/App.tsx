@@ -126,6 +126,11 @@ export function App(): React.JSX.Element {
           useChatStore.getState().hosts[message.hostId]?.muted ?? false
         )
       }
+      // Петля перешла на новую сессию: если юзер смотрел прошлую — следуем за петлёй.
+      if (message.event.type === 'loop_state' && message.event.info.active && message.event.previousHostId !== null) {
+        const st = useSessionsStore.getState()
+        if (st.activeHostId === message.event.previousHostId) st.setActive(message.hostId)
+      }
       if (message.event.type !== 'turn_end') return
       const watching = useSessionsStore.getState().activeHostId === message.hostId && atBottomMap.get(message.hostId) === true
       if (!watching) useChatStore.getState().markUnread(message.hostId)

@@ -1,5 +1,5 @@
 /** Типизированный IPC-контракт renderer ↔ main. Единственная точка — preload (`window.piwright`). */
-import type { DialogAnswer, ExtensionDialog, UiEvent } from './agent-events'
+import type { DialogAnswer, ExtensionDialog, LoopInfo, UiEvent } from './agent-events'
 import type { PiModelInfo } from './protocol-types'
 import type { ProjectTabsSnapshot } from './project-tabs'
 
@@ -445,6 +445,14 @@ export interface PiWrightApi {
   /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
   revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
+  /** Стартовать петлю на сессии: промпт будет повторён в новых сессиях, пока агент зовёт loop_next. */
+  loopStart(hostId: string, prompt: string, maxIterations: number): Promise<PromptResult>
+  /** Остановить петлю: следующая итерация не начнётся, текущий ход не прерывается. */
+  loopStop(hostId: string): Promise<PromptResult>
+  /** Изменить оставшееся число итераций активной петли. */
+  loopSetRemaining(hostId: string, remaining: number): Promise<PromptResult>
+  /** Состояние петли сессии (после перезагрузки renderer'а); null — петли нет. */
+  loopGet(hostId: string): Promise<LoopInfo | null>
   abort(hostId: string): Promise<PromptResult>
   /** Очистить очередь целиком, тексты вернутся в cleared. */
   queueClear(hostId: string): Promise<PromptResult>
@@ -530,6 +538,10 @@ export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'
 export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
+export const LOOP_START_CHANNEL = 'loop:start'
+export const LOOP_STOP_CHANNEL = 'loop:stop'
+export const LOOP_SET_REMAINING_CHANNEL = 'loop:set-remaining'
+export const LOOP_GET_CHANNEL = 'loop:get'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'

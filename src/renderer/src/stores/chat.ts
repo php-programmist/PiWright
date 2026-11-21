@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { compactionBannerText, compactionSummaryText } from '../../../shared/agent-events'
-import type { ExtensionDialog, SessionTokens, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
+import type { ExtensionDialog, LoopInfo, SessionTokens, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
 import type { PiEventMessage, PiStatus } from '../../../shared/ipc-contracts'
 
 export interface ToolEntry {
@@ -46,6 +46,12 @@ export interface HostChat {
   muted: boolean
   /** Ход завершился, а сессия не долистана/работала в фоне — зелёная точка в панели. */
   unread: boolean
+  /** Состояние петли PiWright (источник истины — main); null — петли нет. */
+  loop: LoopInfo | null
+  /** Намерение: галка «Петля» стоит, петля стартует при следующей отправке промпта. */
+  loopEnabled: boolean
+  /** Максимум итераций петли для следующего старта (по умолчанию 20). */
+  loopMax: number
 }
 
 interface ChatState {
@@ -57,6 +63,8 @@ interface ChatState {
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
   toggleToolsHidden: (hostId: string) => void
   toggleMuted: (hostId: string) => void
+  setLoopEnabled: (hostId: string, enabled: boolean) => void
+  setLoopMax: (hostId: string, max: number) => void
   markUnread: (hostId: string) => void
   markRead: (hostId: string) => void
   resetTranscript: (hostId: string) => void
@@ -109,7 +117,10 @@ function emptyHostChat(): HostChat {
     widgets: {},
     toolsHidden: false,
     muted: false,
-    unread: false
+    unread: false,
+    loop: null,
+    loopEnabled: false,
+    loopMax: 20
   }
 }
 
@@ -405,6 +416,8 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'session_name':
       return host
+    case 'loop_state':
+      return { ...host, loop: event.info }
   }
 }
 
@@ -479,6 +492,18 @@ export const useChatStore = create<ChatState>((set) => ({
       const host = state.hosts[hostId]
       if (host === undefined) return state
       return { hosts: { ...state.hosts, [hostId]: { ...host, muted: !host.muted } } }
+    }),
+  setLoopEnabled: (hostId, enabled) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, loopEnabled: enabled } } }
+    }),
+  setLoopMax: (hostId, max) =>
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, loopMax: max } } }
     }),
   markUnread: (hostId) =>
     set((state) => {

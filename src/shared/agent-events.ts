@@ -81,6 +81,15 @@ export function percentColor(p: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
+/** Состояние петли PiWright (чекбокс «Петля»): remaining — сколько итераций ещё можно заспавнить. */
+export type LoopStopReason = 'agent' | 'user' | 'max' | 'short-circuit' | 'error'
+
+export interface LoopInfo {
+  active: boolean
+  remaining: number
+  reason: LoopStopReason | null
+}
+
 /** Итог компакции (`compaction_end`). reason — `manual` / `threshold` / `overflow`. */
 export interface CompactionEnd {
   reason: string
@@ -142,6 +151,7 @@ export type UiEvent =
   | { type: 'turn_error'; message: string }
   | { type: 'turn_start' }
   | { type: 'turn_end' }
+  | { type: 'loop_state'; info: LoopInfo; previousHostId: string | null }
   | { type: 'assistant_message_start' }
   | { type: 'dialog_open'; id: string; dialog: ExtensionDialog }
   | { type: 'dialog_expired'; id: string }

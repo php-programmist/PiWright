@@ -58,6 +58,10 @@ import {
   SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
+  LOOP_START_CHANNEL,
+  LOOP_STOP_CHANNEL,
+  LOOP_SET_REMAINING_CHANNEL,
+  LOOP_GET_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
@@ -113,6 +117,11 @@ const api: PiWrightApi = {
   revealProject: (project: ProjectEntry) => ipcRenderer.invoke(PROJECTS_REVEAL_CHANNEL, project),
   prompt: (hostId: string, text: string, images?: string[], behavior?: PromptBehavior) =>
     ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
+  loopStart: (hostId: string, prompt: string, maxIterations: number) =>
+    ipcRenderer.invoke(LOOP_START_CHANNEL, hostId, prompt, maxIterations),
+  loopStop: (hostId: string) => ipcRenderer.invoke(LOOP_STOP_CHANNEL, hostId),
+  loopSetRemaining: (hostId: string, remaining: number) => ipcRenderer.invoke(LOOP_SET_REMAINING_CHANNEL, hostId, remaining),
+  loopGet: (hostId: string) => ipcRenderer.invoke(LOOP_GET_CHANNEL, hostId),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),
   queueClear: (hostId: string) => ipcRenderer.invoke(SESSION_QUEUE_CLEAR_CHANNEL, hostId),
   queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>

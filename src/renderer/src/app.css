@@ -1834,6 +1834,49 @@ body {
   border: 1px solid var(--accent);
 }
 
+.loop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 0;
+}
+
+.loop-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.loop-toggle input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.loop-max {
+  width: 4.2em;
+  align-self: center;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.loop-stopped-text {
+  color: var(--yellow);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .composer button:disabled {
   background: var(--border-strong);
   color: var(--disabled-2);

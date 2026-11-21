@@ -49,6 +49,10 @@ import {
   SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
+  LOOP_START_CHANNEL,
+  LOOP_STOP_CHANNEL,
+  LOOP_SET_REMAINING_CHANNEL,
+  LOOP_GET_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
@@ -79,6 +83,7 @@ import type { FileService } from '../files/file-service'
 import type { TerminalService } from '../terminal/terminal-service'
 import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
+import type { LoopController } from '../pi/loop-controller'
 import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
@@ -139,6 +144,7 @@ export function registerIpc(
   git: GitService,
   files: FileService,
   terminals: TerminalService,
+  loops: LoopController,
   notifications?: NotificationServices
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
@@ -306,6 +312,7 @@ export function registerIpc(
   })
 
   ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown) => {
+    if (typeof hostId === 'string') loops.forget(hostId)
     piHost.close(typeof hostId === 'string' ? hostId : '')
     return { ok: true, error: null }
   })
@@ -357,6 +364,30 @@ export function registerIpc(
     const h = host(piHost, hostId)
     if (h === null) return { ok: false, error: 'Session not found' }
     return h.abort()
+  })
+
+  ipcMain.handle(LOOP_START_CHANNEL, (_event, hostId: unknown, prompt: unknown, maxIterations: unknown) => {
+    if (typeof hostId !== 'string' || typeof prompt !== 'string' || prompt.trim().length === 0 || typeof maxIterations !== 'number') {
+      return { ok: false, error: 'Invalid loop request' }
+    }
+    const info = loops.start(hostId, prompt, maxIterations)
+    return info === null ? { ok: false, error: 'Session not found' } : { ok: true, error: null }
+  })
+
+  ipcMain.handle(LOOP_STOP_CHANNEL, (_event, hostId: unknown) => {
+    if (typeof hostId !== 'string') return { ok: false, error: 'Invalid loop request' }
+    const info = loops.stop(hostId)
+    return info === null ? { ok: false, error: 'Loop is not active' } : { ok: true, error: null }
+  })
+
+  ipcMain.handle(LOOP_SET_REMAINING_CHANNEL, (_event, hostId: unknown, remaining: unknown) => {
+    if (typeof hostId !== 'string' || typeof remaining !== 'number') return { ok: false, error: 'Invalid loop request' }
+    const info = loops.setRemaining(hostId, remaining)
+    return info === null ? { ok: false, error: 'Loop is not active' } : { ok: true, error: null }
+  })
+
+  ipcMain.handle(LOOP_GET_CHANNEL, (_event, hostId: unknown) => {
+    return typeof hostId === 'string' ? loops.get(hostId) : null
   })
 
   ipcMain.handle(SESSION_QUEUE_CLEAR_CHANNEL, (_event, hostId: unknown) => {

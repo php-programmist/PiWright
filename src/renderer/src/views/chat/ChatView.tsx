@@ -87,6 +87,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const setDialogReceipt = useChatStore((s) => s.setDialogReceipt)
   const toggleToolsHidden = useChatStore((s) => s.toggleToolsHidden)
   const toggleMuted = useChatStore((s) => s.toggleMuted)
+  const setLoopEnabled = useChatStore((s) => s.setLoopEnabled)
+  const setLoopMax = useChatStore((s) => s.setLoopMax)
+  const loop = chat?.loop ?? null
+  const loopEnabled = chat?.loopEnabled ?? false
+  const loopMax = chat?.loopMax ?? 20
+  const loopActive = loop?.active ?? false
+  const loopChecked = loopActive || loopEnabled
   const toggleTelegram = useSessionsStore((s) => s.toggleTelegram)
   const toggleShare = useSessionsStore((s) => s.toggleShare)
   const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
@@ -177,6 +184,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
+    // Галка «Петля» + обычная отправка (не steer/followUp) — старт петли с этим промптом.
+    if (result.ok && effective === undefined && loopEnabled && !loopActive) {
+      void window.piwright.loopStart(activeHostId, text, loopMax)
+      setLoopEnabled(activeHostId, false)
+    }
   }
 
   const restoreCleared = (cleared?: QueueTexts): void => {
@@ -259,6 +271,30 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   }
 
   const queuedCount = queue.steering.length + queue.followUp.length
+  const loopReasonText = (reason: string): string =>
+    reason === 'agent'
+      ? t('completed by the agent')
+      : reason === 'max'
+        ? t('iteration limit reached')
+        : reason === 'short-circuit'
+          ? t('loop requested too fast 3 times in a row')
+          : reason === 'error'
+            ? t('failed to start the next iteration')
+            : t('stopped by user')
+  const toggleLoop = (): void => {
+    if (loopActive) {
+      void window.piwright.loopStop(activeHostId)
+      return
+    }
+    setLoopEnabled(activeHostId, !loopEnabled)
+  }
+  const changeLoopMax = (raw: string): void => {
+    const value = Math.round(Number(raw))
+    if (!Number.isFinite(value)) return
+    const clamped = Math.min(999, Math.max(1, value))
+    if (loopActive) void window.piwright.loopSetRemaining(activeHostId, clamped)
+    else setLoopMax(activeHostId, clamped)
+  }
   const modelKey = status.model
   const selectedModel = status.models.find((m) => `${m.provider}/${m.id}` === modelKey)
   const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
@@ -331,6 +367,30 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     </>
   )
 
+  const loopControls = (
+    <>
+      <label className="loop-toggle" title={t('Loop: repeat this prompt in fresh sessions; the agent decides whether to continue')}>
+        <input type="checkbox" checked={loopChecked} onChange={toggleLoop} />
+        <span>{t('Loop')}</span>
+      </label>
+      {loopChecked && (
+        <input
+          className="loop-max"
+          type="number"
+          min={1}
+          max={999}
+          value={loopActive ? (loop?.remaining ?? loopMax) : loopMax}
+          title={t('Loop iterations left')}
+          onChange={(e) => changeLoopMax(e.target.value)}
+        />
+      )}
+      {loop !== null && !loopActive && loop.reason !== null && (
+        <span className="loop-stopped-text">
+          {t('Loop stopped')}: {loopReasonText(loop.reason)}
+        </span>
+      )}
+    </>
+  )
   return (
     <>
       <header className="header">
@@ -478,7 +538,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         {streaming && <div className="cursor">▍</div>}
         <div ref={bottomRef} />
       </main>
-      {placement === 'bottom' && <div className="selector-bar">{controls}</div>}
+      {placement === 'bottom' ? (
+        <div className="selector-bar">{controls}{loopControls}</div>
+      ) : (
+        <div className="loop-bar">{loopControls}</div>
+      )}
       <footer className="composer">
         <textarea
           value={input}

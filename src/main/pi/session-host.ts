@@ -16,6 +16,7 @@ import { stripWslUncPrefix } from './backends/shell'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './extension-ui'
 import { ensureAskExtension } from './ask-extension'
 import { ensureSessionToolsExtension } from './session-tools-extension'
+import { ensureLoopExtension } from './loop-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens } from './handshake'
 import { generateSessionTitle } from './session-title'
@@ -40,7 +41,11 @@ function modelKey(model: { provider: string; id: string } | null | undefined): s
 
 /** Вшитые PiWright расширения, ставятся перед спавном pi; порядок = порядок `-e`. */
 function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Promise<(string | null)[]> {
-  return Promise.all([ensureAskExtension(project, settings), ensureSessionToolsExtension(project, settings)])
+  return Promise.all([
+    ensureAskExtension(project, settings),
+    ensureSessionToolsExtension(project, settings),
+    ensureLoopExtension(project, settings)
+  ])
 }
 
 export interface SessionHostOptions {

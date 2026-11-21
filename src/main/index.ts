@@ -7,6 +7,7 @@ import { FileService } from './files/file-service'
 import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
+import { LoopController } from './pi/loop-controller'
 import { SettingsService } from './settings/settings'
 import { loadWindowState, saveWindowState } from './window-state'
 import { TelegramTokenStore } from './notifications/token-store'
@@ -21,6 +22,7 @@ let fileService: FileService | null = null
 let terminalService: TerminalService | null = null
 let bridge: RemoteBridge | null = null
 let hub: NotificationHub | null = null
+let loopController: LoopController | null = null
 let windowStatePath = ''
 
 function createWindow(bg: string): void {
@@ -71,11 +73,15 @@ app.whenReady().then(() => {
     {
       onStatus: (status) => mainWindow?.webContents.send(PI_STATUS_CHANNEL, status),
       onEvent: (message) => {
+        loopController?.onEvent(message)
         mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
         hub?.onEvent(message)
       }
     }
   )
+  loopController = new LoopController(piHost, (hostId, event) => {
+    mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
+  })
   const auth = new RemoteAuth(generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth)
   bridge.applySettings(settings.get())
@@ -84,7 +90,7 @@ app.whenReady().then(() => {
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
-  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, {
+  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, {
     tokenStore,
     bridge,
     onSettingsChanged: (next) => bridge?.applySettings(next)
