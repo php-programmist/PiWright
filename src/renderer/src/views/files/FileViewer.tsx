@@ -46,13 +46,15 @@ export function FileViewer(): React.JSX.Element | null {
           </div>
         ))}
         <span className="spacer" />
-        <button
-          className={`diff-mode${wordWrap ? ' active' : ''}`}
-          title={t('Soft wrap long lines')}
-          onClick={toggleWordWrap}
-        >
-          {t('Wrap')}
-        </button>
+        {!/\.(md|markdown)$/i.test(activePath) && (
+          <button
+            className={`diff-mode${wordWrap ? ' active' : ''}`}
+            title={t('Soft wrap long lines')}
+            onClick={toggleWordWrap}
+          >
+            {t('Wrap')}
+          </button>
+        )}
         <button className="icon file-close" title={t('Close viewer (back to chat)')} onClick={closeViewer}>×</button>
       </div>
       {error !== null && (
