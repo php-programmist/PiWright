@@ -21,11 +21,12 @@ export class PiHost {
     private readonly getSettings: () => Settings,
     private readonly sink: PiHostSink,
     private readonly createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>,
-    private readonly installAskExtension?: (project: ProjectEntry, settings: Settings) => Promise<string | null>
+    private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
   ) {}
 
   create(project: ProjectEntry, sessionFile?: string | null): SessionHost {
     const seed = this.catalogs.get(project.kind)
+    const settings = this.getSettings()
     const listener: SessionHostListener = {
       onStatus: (status) => {
         if (status.models.length > 0) this.catalogs.set(project.kind, { models: status.models, thinkingLevels: status.thinkingLevels })
@@ -36,9 +37,12 @@ export class PiHost {
     const host = new SessionHost(this.getSettings, listener, project, {
       sessionFile,
       createBackend: this.createBackend,
-      installAskExtension: this.installAskExtension,
+      installExtensions: this.installExtensions,
       seedModels: seed?.models,
-      seedThinkingLevels: seed?.thinkingLevels
+      seedThinkingLevels: seed?.thinkingLevels,
+      // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
+      initialModel: sessionFile == null ? settings.lastModel : null,
+      initialThinkingLevel: sessionFile == null ? settings.lastThinkingLevel : null
     })
     this.hosts.set(host.id, host)
     return host

@@ -62,7 +62,8 @@ function makePiHost(children: ScriptedChild[]): {
       onStatus: (s) => statuses.push(s),
       onEvent: (m) => events.push(m)
     },
-    async () => created
+    async () => created,
+    async () => []
   )
   return { piHost, events, statuses }
 }
@@ -176,7 +177,7 @@ describe('PiHost', () => {
       () => SETTINGS,
       { onStatus: (s) => statuses.push(s), onEvent: (m) => events.push(m) },
       async () => ({ backend, error: null }),
-      async () => null
+      async () => []
     )
     const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
     await host.prompt('go')
@@ -188,5 +189,50 @@ describe('PiHost', () => {
     expect(last.dot).toBe('confirm')
     expect(last.title).toBe('earlier')
     host.dispose()
+  })
+
+  it('lastModel/lastThinkingLevel from settings seed new sessions, not resumed ones', async () => {
+    const makeChild = (): ScriptedChild => {
+      const self = new ScriptedChild((type) => {
+        if (type === 'get_state') {
+          return {
+            sessionId: 's-1',
+            sessionFile: 'C:\\proj\\a.jsonl',
+            model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+            thinkingLevel: 'off',
+            autoCompactionEnabled: false
+          }
+        }
+        if (type === 'get_available_models') {
+          return { models: [{ provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+        }
+        if (type === 'get_commands') return { commands: [] }
+        if (type === 'get_available_thinking_levels') return { levels: ['off', 'low'] }
+        if (type === 'prompt') {
+          queueMicrotask(() => {
+            self.emitData('{"type":"agent_start"}\n{"type":"agent_settled","aborted":false}\n')
+          })
+          return { disposition: 'started' }
+        }
+        return null
+      })
+      return self
+    }
+    const freshChild = makeChild()
+    currentChild = freshChild
+    SETTINGS.lastModel = 'p/m2'
+    SETTINGS.lastThinkingLevel = 'low'
+    const { piHost } = makePiHost([freshChild, makeChild()])
+    const fresh = piHost.create(PROJECT)
+    expect(fresh.lastStatus()?.model).toBe('p/m2')
+    await fresh.prompt('ping')
+    expect(freshChild.sent.some((c) => c['type'] === 'set_model' && c['provider'] === 'p' && c['modelId'] === 'm2')).toBe(true)
+    fresh.dispose()
+
+    const resumed = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
+    expect(resumed.lastStatus()?.model).toBeNull()
+    resumed.dispose()
+    SETTINGS.lastModel = null
+    SETTINGS.lastThinkingLevel = null
   })
 })

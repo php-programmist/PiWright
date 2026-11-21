@@ -371,7 +371,11 @@ export function registerIpc(
     if (typeof key !== 'string' || key.trim().length === 0) {
       return { ok: false, error: 'Model key is empty' }
     }
-    return h.setModel(key)
+    const result = h.setModel(key)
+    return result.then((r) => {
+      if (r.ok) settings.set({ lastModel: key })
+      return r
+    })
   })
 
   ipcMain.handle(SESSION_SET_THINKING_CHANNEL, (_event, hostId: unknown, level: unknown) => {
@@ -380,7 +384,11 @@ export function registerIpc(
     if (typeof level !== 'string' || level.trim().length === 0) {
       return { ok: false, error: 'Thinking level is empty' }
     }
-    return h.setThinkingLevel(level)
+    const result = h.setThinkingLevel(level)
+    return result.then((r) => {
+      if (r.ok) settings.set({ lastThinkingLevel: level })
+      return r
+    })
   })
 
   ipcMain.handle(SESSION_RESPOND_DIALOG_CHANNEL, (_event, hostId: unknown, id: unknown, answer: unknown) => {

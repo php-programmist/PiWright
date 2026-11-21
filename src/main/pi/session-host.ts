@@ -15,6 +15,7 @@ import { PiEventTranslator } from './event-translator'
 import { stripWslUncPrefix } from './backends/shell'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './extension-ui'
 import { ensureAskExtension } from './ask-extension'
+import { ensureSessionToolsExtension } from './session-tools-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens } from './handshake'
 import { generateSessionTitle } from './session-title'
@@ -37,15 +38,23 @@ function modelKey(model: { provider: string; id: string } | null | undefined): s
   return model ? `${model.provider}/${model.id}` : null
 }
 
+/** Вшитые PiWright расширения, ставятся перед спавном pi; порядок = порядок `-e`. */
+function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Promise<(string | null)[]> {
+  return Promise.all([ensureAskExtension(project, settings), ensureSessionToolsExtension(project, settings)])
+}
+
 export interface SessionHostOptions {
   /** Файл сессии для возобновления — спавн с `--session <путь>` и реплей истории. */
   sessionFile?: string | null
   createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
-  /** Установка расширения ask_question; null — стартовать без него (по умолчанию — вшитое). */
-  installAskExtension?: (project: ProjectEntry, settings: Settings) => Promise<string | null>
+  /** Установка вшитых расширений; null в списке — стартовать без этого расширения. */
+  installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
   /** Каталог моделей/уровней thinking из кэша прошлых сессий — виден в UI до хендшейка. */
   seedModels?: PiModelInfo[]
   seedThinkingLevels?: string[]
+  /** Последний выбор пользователя (настройки) — применяется в новой сессии сразу после хендшейка. */
+  initialModel?: string | null
+  initialThinkingLevel?: string | null
 }
 
 export class SessionHost {
@@ -75,7 +84,7 @@ export class SessionHost {
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
-  private readonly installAskExtension: (project: ProjectEntry, settings: Settings) => Promise<string | null>
+  private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -85,9 +94,11 @@ export class SessionHost {
   ) {
     this.sessionFile = opts.sessionFile ?? null
     this.createBackend = opts.createBackend ?? createPiBackend
-    this.installAskExtension = opts.installAskExtension ?? ensureAskExtension
+    this.installExtensions = opts.installExtensions ?? ensurePiwrightExtensions
     this.seedModels = opts.seedModels ?? []
     this.seedThinkingLevels = opts.seedThinkingLevels ?? []
+    this.desiredModel = opts.initialModel ?? null
+    this.desiredThinkingLevel = opts.initialThinkingLevel ?? null
     this.status('idle')
   }
 
@@ -110,7 +121,7 @@ export class SessionHost {
       error,
       models: this.handshake?.models ?? this.seedModels,
       thinkingLevels: this.handshake?.thinkingLevels ?? this.seedThinkingLevels,
-      thinkingLevel: this.handshake?.thinkingLevel ?? null,
+      thinkingLevel: this.handshake?.thinkingLevel ?? this.desiredThinkingLevel,
       project: this.project,
       title: this.title,
       dot: sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind))
@@ -244,11 +255,12 @@ export class SessionHost {
       }
     })
     try {
-      const installed = await this.installAskExtension(this.project, settings)
+      const installed = await this.installExtensions(this.project, settings)
       // WSL: pi внутри дистрибутива UNC-путь не видит — для `-e` нужен POSIX-путь.
-      const askExtensionPath =
-        installed !== null && this.project.kind === 'wsl' ? (stripWslUncPrefix(installed) ?? installed) : installed
-      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, askExtensionPath, splitArgs(settings.piExtraArgs)) })
+      const extensionPaths = installed.map((path) =>
+        path !== null && this.project.kind === 'wsl' ? (stripWslUncPrefix(path) ?? path) : path
+      )
+      await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, extensionPaths, splitArgs(settings.piExtraArgs)) })
       const handshake = await runHandshake(conn, {
         desiredThinkingLevel: this.desiredThinkingLevel,
         sessionName: this.desiredSessionName
@@ -273,7 +285,10 @@ export class SessionHost {
         if (Array.isArray(messages)) translator.replay(messages)
       }
       if (this.desiredModel !== null && this.desiredModel !== modelKey(handshake.model)) {
-        await this.applyModelKey(this.desiredModel)
+        // Модели нет в каталоге этого бэкенда (выбор из другого) — оставляем дефолт pi.
+        if (handshake.models.some((m) => `${m.provider}/${m.id}` === this.desiredModel)) {
+          await this.applyModelKey(this.desiredModel)
+        }
       }
       this.status('ready')
     } catch (err) {

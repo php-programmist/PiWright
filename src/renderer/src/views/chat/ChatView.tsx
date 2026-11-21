@@ -260,6 +260,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   const queuedCount = queue.steering.length + queue.followUp.length
   const modelKey = status.model
+  const selectedModel = status.models.find((m) => `${m.provider}/${m.id}` === modelKey)
+  const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
   const toolsHidden = chat?.toolsHidden ?? false
   const muted = chat?.muted ?? false
   const visibleEntries = toolsHidden
@@ -305,7 +307,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         </select>
       )}
       {modelKey === null && status.model !== null && <span className="model">{status.model}</span>}
-      {status.thinkingLevels.length > 0 && (
+      {thinkingLevels.length > 0 && (
         <select
           className="thinking-select"
           value={status.thinkingLevel ?? ''}
@@ -316,7 +318,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
               {t('thinking')}
             </option>
           )}
-          {status.thinkingLevels.map((level) => (
+          {thinkingLevels.map((level) => (
             <option key={level} value={level}>
               {t('thinking: {level}', { level })}
             </option>

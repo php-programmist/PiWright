@@ -24,6 +24,8 @@ const baseSettings: Settings = {
   panels: {},
   expandedProjects: {},
   terminalTabs: {},
+  lastModel: null,
+  lastThinkingLevel: null,
   notifications: {
     sounds: { completion: '', await: '', error: '' },
     telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true } },

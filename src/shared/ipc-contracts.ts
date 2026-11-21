@@ -49,6 +49,10 @@ export interface Settings {
   terminalTabs: Record<string, TerminalTabsSnapshot>
   /** Звуки, telegram и remote-мост (вкладка Notifications). */
   notifications: NotificationSettings
+  /** Последняя выбранная модель (provider/id) — подставляется в новые сессии; пишет только main. */
+  lastModel: string | null
+  /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
+  lastThinkingLevel: string | null
   projects: ProjectEntry[]
 }
 

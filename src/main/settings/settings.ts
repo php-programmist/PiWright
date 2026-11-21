@@ -32,6 +32,8 @@ export const DEFAULT_SETTINGS: Settings = {
   expandedProjects: {},
   terminalTabs: {},
   notifications: DEFAULT_NOTIFICATIONS,
+  lastModel: null,
+  lastThinkingLevel: null,
   projects: []
 }
 
@@ -158,6 +160,8 @@ export class SettingsService {
       merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
       merged.expandedProjects = mergeExpandedProjects((raw as Partial<Settings>)['expandedProjects'])
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
+      if (typeof merged.lastModel !== 'string') merged.lastModel = null
+      if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

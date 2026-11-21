@@ -51,7 +51,7 @@ function makeHost(
   const created: CreateBackendResult = { backend, error: null }
   const host = new SessionHost(() => settings, listener, PROJECT, {
     createBackend: async () => created,
-    installAskExtension: async () => null,
+    installExtensions: async () => [],
     ...hostOpts
   })
   return { host, events, statuses, spawnArgs }
@@ -308,14 +308,21 @@ describe('SessionHost', () => {
     }
     const host = new SessionHost(() => SETTINGS, { onEvent: (e) => events.push(e), onStatus: (s) => statuses.push(s) }, PROJECT, {
       createBackend: async () => ({ backend, error: null }),
-      installAskExtension: async () => 'C:\\ext\\ask-question'
+      installExtensions: async () => ['C:\\ext\\ask-question', 'C:\\ext\\session-tools']
     })
     await host.prompt('ping')
-    expect(spawnArgs[0]).toEqual(['--mode', 'rpc', '-e', 'C:\\ext\\ask-question'])
+    expect(spawnArgs[0]).toEqual([
+      '--mode',
+      'rpc',
+      '-e',
+      'C:\\ext\\ask-question',
+      '-e',
+      'C:\\ext\\session-tools'
+    ])
     host.dispose()
   })
 
-  it('WSL ask extension UNC path is converted to POSIX for pi args', async () => {
+  it('WSL bundled extension UNC paths are converted to POSIX for pi args', async () => {
     const child = scriptedChild('/home/u/proj/.pi/sessions/a.jsonl')
     currentChild = child
     const spawnArgs: string[][] = []
@@ -334,11 +341,21 @@ describe('SessionHost', () => {
       { kind: 'wsl', dir: '\\\\wsl.localhost\\Ubuntu\\home\\u\\proj' },
       {
         createBackend: async () => ({ backend, error: null }),
-        installAskExtension: async () => '\\\\wsl.localhost\\Ubuntu\\home\\u\\.pi\\agent\\piwright\\ask-question'
+        installExtensions: async () => [
+          '\\\\wsl.localhost\\Ubuntu\\home\\u\\.pi\\agent\\piwright\\ask-question',
+          '\\\\wsl.localhost\\Ubuntu\\home\\u\\.pi\\agent\\piwright\\session-tools'
+        ]
       }
     )
     await host.prompt('ping')
-    expect(spawnArgs[0]).toEqual(['--mode', 'rpc', '-e', '/home/u/.pi/agent/piwright/ask-question'])
+    expect(spawnArgs[0]).toEqual([
+      '--mode',
+      'rpc',
+      '-e',
+      '/home/u/.pi/agent/piwright/ask-question',
+      '-e',
+      '/home/u/.pi/agent/piwright/session-tools'
+    ])
     host.dispose()
   })
 
@@ -418,7 +435,7 @@ describe('SessionHost', () => {
           },
           error: null
         }),
-        installAskExtension: async () => null
+        installExtensions: async () => []
       })
       return { host: h, child: c }
     }
@@ -518,6 +535,51 @@ describe('SessionHost', () => {
     expect(child.sent.some((c) => c['type'] === 'set_thinking_level' && c['level'] === 'low')).toBe(true)
     expect(statuses.some((s) => s.thinkingLevel === 'low')).toBe(true)
     host.dispose()
+  })
+
+  it('initialModel/initialThinkingLevel apply after handshake; unknown model is skipped', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\proj\.pi\sessions\a.jsonl')
+      if (type === 'get_available_models') {
+        return {
+          models: [
+            { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+            { provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] }
+          ]
+        }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'low'] }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child], SETTINGS, {
+      initialModel: 'p/m2',
+      initialThinkingLevel: 'low'
+    })
+    expect(host.lastStatus()?.model).toBe('p/m2')
+    expect(host.lastStatus()?.thinkingLevel).toBe('low')
+    await host.prompt('go')
+    expect(child.sent.some((c) => c['type'] === 'set_model' && c['provider'] === 'p' && c['modelId'] === 'm2')).toBe(true)
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'ready' && s.model === 'p/m2')).toBe(true)
+    })
+    host.dispose()
+
+    const unknown = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\proj\.pi\sessions\b.jsonl')
+      if (type === 'get_available_models') {
+        return { models: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      return null
+    })
+    currentChild = unknown
+    const second = makeHost([unknown], SETTINGS, { initialModel: 'x/y' })
+    await second.host.prompt('go')
+    expect(unknown.sent.some((c) => c['type'] === 'set_model')).toBe(false)
+    second.host.dispose()
   })
 
   it('prompt with behavior sends steer/follow_up during the turn and prompt when idle', async () => {
