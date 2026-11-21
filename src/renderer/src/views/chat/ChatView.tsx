@@ -4,7 +4,7 @@ import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
-import { useChatStore, atBottomMap } from '../../stores/chat'
+import { useChatStore, atBottomMap, draftMap } from '../../stores/chat'
 import type { Entry, HostChat } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
@@ -91,7 +91,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const toggleShare = useSessionsStore((s) => s.toggleShare)
   const telegramEnabled = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.telegram ?? false)
   const shared = useSessionsStore((s) => s.active.find((r) => r.hostId === s.activeHostId)?.shared ?? false)
-  const [input, setInput] = useState('')
+  const [input, setInput] = useState(() => (activeHostId !== null ? draftMap.get(activeHostId) ?? '' : ''))
+  useEffect(() => {
+    if (activeHostId !== null) draftMap.set(activeHostId, input)
+  }, [input, activeHostId])
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)

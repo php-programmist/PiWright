@@ -82,6 +82,9 @@ const ownEchoes = new Map<string, number>()
  *  скролл частый, ререндер не нужен). Нет записи = сессия не видна (фон). */
 export const atBottomMap = new Map<string, boolean>()
 
+/** Черновик промпта по hostId (вне reactive-стора: пишет и читает только ChatView). */
+export const draftMap = new Map<string, string>()
+
 function newId(): number {
   return nextEntryId++
 }

@@ -137,7 +137,7 @@ export function App(): React.JSX.Element {
                 {transcript !== null ? (
                   <TranscriptView key={transcript.summary.path} project={transcript.project} summary={transcript.summary} />
                 ) : (
-                  centerView === 'chat' && <ChatView chat={chat ?? null} />
+                  centerView === 'chat' && <ChatView key={activeHostId ?? 'none'} chat={chat ?? null} />
                 )}
                 {centerView === 'mcp' && <McpView onClose={() => setCenterView('chat')} />}
                 {centerView === 'skills' && <SkillsView onClose={() => setCenterView('chat')} />}
