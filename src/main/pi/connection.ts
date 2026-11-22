@@ -37,6 +37,8 @@ export class PiConnection {
   private child: ChildProcess | null = null
   private closed = false
   private disconnected = false
+  private exited = false
+  private readonly exitWaiters = new Set<() => void>()
   private readonly stderrTail: string[] = []
   private readonly rawSinks = new Set<(line: string) => void>()
 
@@ -76,10 +78,12 @@ export class PiConnection {
 
     child.on('error', (err: Error) => {
       this.handleDisconnect(err.message, null)
+      this.markExited()
     })
     child.on('close', (code: number | null) => {
       accumulator.flush()
       this.handleDisconnect(null, code)
+      this.markExited()
     })
   }
 
@@ -160,6 +164,30 @@ export class PiConnection {
     const stdin = this.child?.stdin
     if (stdin === null || stdin === undefined || stdin.destroyed || this.closed) return
     stdin.write(line + '\n')
+  }
+
+  private markExited(): void {
+    if (this.exited) return
+    this.exited = true
+    for (const waiter of [...this.exitWaiters]) waiter()
+    this.exitWaiters.clear()
+  }
+
+  /** Дождаться выхода процесса (или таймаута) — нужно перед удалением worktree-каталога. */
+  waitForExit(timeoutMs = 3000): Promise<void> {
+    if (this.exited || this.child === null) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      let timer: NodeJS.Timeout
+      const finish = (): void => {
+        clearTimeout(timer)
+        this.exitWaiters.delete(waiter)
+        resolve()
+      }
+      const waiter = (): void => finish()
+      timer = setTimeout(finish, timeoutMs)
+      timer.unref()
+      this.exitWaiters.add(waiter)
+    })
   }
 
   /** Закрытие stdin — штатное завершение pi; процесс добиваем, если завис. */

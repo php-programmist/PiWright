@@ -15,7 +15,7 @@ import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachm
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
 import { onPromptInject } from '../../lib/prompt-inject'
-import { splitWorktreeHostDir } from '../../../../shared/worktree'
+import { sameProjectDir, splitWorktreeHostDir } from '../../../../shared/worktree'
 import { slashTokenOf, filterSlashCommands } from '../../../../shared/slash-commands'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 import type { PiSlashCommand } from '../../../../shared/protocol-types'
@@ -435,18 +435,25 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   const removeWorktree = async (): Promise<void> => {
     if (worktree === null || project === null) return
-    if (!(await confirmDialog({ message: t("Remove worktree '{name}'?", { name: worktree.name }), confirmLabel: t('Delete'), danger: true }))) return
-    let result = await window.piwright.worktreeRemove(project, worktree.name, false)
+    const siblings = useSessionsStore.getState().active.filter((r) => {
+      const w = splitWorktreeHostDir(r.project.dir)
+      return w !== null && w.name === worktree.name && sameProjectDir(w.root, worktree.root)
+    })
+    const hostIds = [...new Set(siblings.map((r) => r.hostId))]
+    const closingNote = hostIds.length > 0 ? t('\n\nRunning sessions ({count}) will be closed.', { count: hostIds.length }) : ''
+    if (!(await confirmDialog({ message: t("Remove worktree '{name}'?", { name: worktree.name }) + closingNote, confirmLabel: t('Delete'), danger: true }))) return
+    let result = await window.piwright.worktreeRemove(project, worktree.name, false, hostIds)
     if (!result.ok && result.uncommitted && (await confirmDialog({ message: t('There are uncommitted changes. Force remove?') }))) {
-      result = await window.piwright.worktreeRemove(project, worktree.name, true)
+      result = await window.piwright.worktreeRemove(project, worktree.name, true, hostIds)
     }
     if (!result.ok) {
       window.alert(result.error)
       return
     }
-    await window.piwright.closeSession(activeHostId)
-    useChatStore.getState().removeHost(activeHostId)
-    useSessionsStore.getState().forgetHost(activeHostId)
+    for (const hostId of hostIds) {
+      useChatStore.getState().removeHost(hostId)
+      useSessionsStore.getState().forgetHost(hostId)
+    }
   }
 
   /** Редактирование промпта: fork сессии на момент сообщения + новый prompt; лента обрезается. */

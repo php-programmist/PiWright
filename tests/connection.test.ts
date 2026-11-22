@@ -134,4 +134,21 @@ describe('PiConnection', () => {
     await expect(pending).rejects.toThrow('pi connection was closed')
     expect(conn.running).toBe(false)
   })
+
+  it('waitForExit resolves on process exit and falls back to timeout', async () => {
+    const child = new FakeChild()
+    const conn = new PiConnection(spawnerFor(child), makeRecorder())
+    await conn.start({ cwd: 'C:\\w', args: [] })
+    const wait = conn.waitForExit(1000)
+    child.closeWith(0)
+    await wait
+    await conn.waitForExit(1000)
+
+    const idle = new FakeChild()
+    const conn2 = new PiConnection(spawnerFor(idle), makeRecorder())
+    await conn2.start({ cwd: 'C:\\w', args: [] })
+    const started = Date.now()
+    await conn2.waitForExit(30)
+    expect(Date.now() - started).toBeGreaterThanOrEqual(25)
+  })
 })

@@ -316,4 +316,12 @@ describe('PiHost', () => {
     expect(piHost.createFork(host.id, { userText: null, occurrence: 0 })).toBeNull()
     host.dispose()
   })
+
+  it('closeAndWait removes the host from the registry (false for unknown id)', async () => {
+    const { piHost } = makePiHost([])
+    const host = piHost.create(PROJECT)
+    expect(await piHost.closeAndWait(host.id)).toBe(true)
+    expect(piHost.get(host.id)).toBeNull()
+    expect(await piHost.closeAndWait('no-such-host')).toBe(false)
+  })
 })

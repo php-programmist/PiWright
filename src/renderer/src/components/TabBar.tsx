@@ -8,6 +8,7 @@ import { parentTabKey, tabId, useTabsStore, type ProjectTab, type TabKind } from
 import { useFilesStore } from '../stores/files'
 import { useGitStore } from '../stores/git'
 import { useT } from '../lib/i18n'
+import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { baseName } from '../views/git/GitPanel'
 
 const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle' }
@@ -74,10 +75,8 @@ export function TabBar(): React.JSX.Element | null {
 
   if (activeProjectKey === null) return null
 
-  const closeSession = async (hostId: string): Promise<void> => {
-    await window.piwright.closeSession(hostId)
-    useChatStore.getState().removeHost(hostId)
-    useSessionsStore.getState().forgetHost(hostId)
+  const closeSession = async (hostId: string, askCleanup = true): Promise<void> => {
+    await closeSessionAndSweepWorktree(hostId, askCleanup)
   }
 
   const startRename = (hostId: string, title: string): void => {
@@ -117,20 +116,20 @@ export function TabBar(): React.JSX.Element | null {
   const menuAction = (action: 'close' | 'others' | 'type' | 'left' | 'right'): void => {
     if (menu === null) return
     setMenu(null)
-    const closeOne = (id: string): void => {
+    const closeOne = (id: string, askCleanup: boolean): void => {
       if (sessionRows.some((r) => r.hostId === id)) {
-        void closeSession(id)
+        void closeSession(id, askCleanup)
         return
       }
       const tab = entry?.tabs.find((x) => tabId(x) === id)
       if (tab !== undefined) closeTabById(tab)
     }
     if (action === 'close') {
-      closeOne(menu.id)
+      closeOne(menu.id, true)
       return
     }
     if (action === 'others') {
-      for (const id of orderedIds) if (id !== menu.id) closeOne(id)
+      for (const id of orderedIds) if (id !== menu.id) closeOne(id, false)
       if (sessionRows.some((r) => r.hostId === menu.id)) useSessionsStore.getState().setActive(menu.id)
       else if (activeTab !== null || entry !== undefined) {
         const tab = entry?.tabs.find((x) => tabId(x) === menu.id)
@@ -141,7 +140,7 @@ export function TabBar(): React.JSX.Element | null {
     if (action === 'type') {
       for (const id of orderedIds) {
         if (menu.kind === 'session') {
-          if (sessionRows.some((r) => r.hostId === id)) void closeSession(id)
+          if (sessionRows.some((r) => r.hostId === id)) void closeSession(id, false)
         } else {
           const tab = entry?.tabs.find((x) => tabId(x) === id)
           if (tab !== undefined && tab.kind === menu.kind) closeTabById(tab)
@@ -150,7 +149,7 @@ export function TabBar(): React.JSX.Element | null {
       return
     }
     const range = action === 'left' ? orderedIds.slice(0, menuIndex) : orderedIds.slice(menuIndex + 1)
-    for (const id of range) closeOne(id)
+    for (const id of range) closeOne(id, false)
   }
 
   return (

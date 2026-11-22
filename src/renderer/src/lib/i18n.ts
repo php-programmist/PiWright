@@ -388,6 +388,8 @@ const RU: Record<string, string> = {
   'worktree name': 'имя worktree',
   'Remove worktree': 'Удалить worktree',
   "Remove worktree '{name}'?": "Удалить worktree «{name}»?",
+  '\n\nRunning sessions ({count}) will be closed.': '\n\nБудут закрыты активные сессии ({count}).',
+  "Remove worktree '{name}'? The branch stays.": "Удалить worktree «{name}»? Ветка останется.",
   'There are uncommitted changes. Force remove?': 'Есть незакоммиченные изменения. Удалить принудительно?',
   'Invalid worktree name': 'Неверное имя worktree'
 }

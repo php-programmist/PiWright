@@ -3,6 +3,7 @@ import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
+import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { confirmDialog } from './ConfirmDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
@@ -214,9 +215,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }
 
   const closeSession = async (hostId: string): Promise<void> => {
-    await window.piwright.closeSession(hostId)
-    useChatStore.getState().removeHost(hostId)
-    useSessionsStore.getState().forgetHost(hostId)
+    await closeSessionAndSweepWorktree(hostId)
     void refreshHistory(row.project)
   }
 

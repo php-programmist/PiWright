@@ -108,6 +108,15 @@ export class PiHost {
     return { hostId }
   }
 
+  /** То же, что close(), но ждёт выхода процесса — перед удалением worktree-каталога. */
+  async closeAndWait(hostId: string): Promise<boolean> {
+    const host = this.hosts.get(hostId)
+    if (host === undefined) return false
+    await host.disposeAndWait()
+    this.hosts.delete(hostId)
+    return true
+  }
+
   disposeAll(): void {
     for (const host of this.hosts.values()) host.dispose()
     this.hosts.clear()

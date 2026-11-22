@@ -305,9 +305,17 @@ export function registerIpc(
     return git.worktreeCreate(project, name)
   })
 
-  ipcMain.handle(WORKTREE_REMOVE_CHANNEL, async (_event, project: unknown, name: unknown, force: unknown) => {
+  ipcMain.handle(WORKTREE_REMOVE_CHANNEL, async (_event, project: unknown, name: unknown, force: unknown, closeHostIds: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof force !== 'boolean') {
       return { ok: false, error: 'Invalid request', uncommitted: false }
+    }
+    // Запущенная сессия держит cwd внутри worktree — процесс блокирует каталог, git снимает его.
+    if (Array.isArray(closeHostIds)) {
+      for (const id of closeHostIds) {
+        if (typeof id !== 'string') continue
+        loops.forget(id)
+        await piHost.closeAndWait(id)
+      }
     }
     return git.worktreeRemove(project, name, force)
   })

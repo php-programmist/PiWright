@@ -538,8 +538,8 @@ export interface PiWrightApi {
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   /** `git worktree add` (существующий worktree/ветка переиспользуются); dir — для новой сессии. */
   worktreeCreate(project: ProjectEntry, name: string): Promise<WorktreeCreateResult>
-  /** `git worktree remove [--force]`; ветку не трогает. */
-  worktreeRemove(project: ProjectEntry, name: string, force: boolean): Promise<WorktreeRemoveResult>
+  /** `git worktree remove [--force]`; ветку не трогает. closeHostIds — перед удалением закрыть эти сессии и дождаться выхода процессов. */
+  worktreeRemove(project: ProjectEntry, name: string, force: boolean, closeHostIds?: string[]): Promise<WorktreeRemoveResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesReadImage(project: ProjectEntry, path: string): Promise<FileReadImageResult>

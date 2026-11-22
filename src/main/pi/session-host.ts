@@ -913,4 +913,12 @@ export class SessionHost {
     this.conn?.close()
     this.conn = null
   }
+
+  /** dispose() и ожидание выхода процесса (с таймаутом) — чтобы каталог перестал быть занятым
+   *  перед `git worktree remove`. */
+  async disposeAndWait(): Promise<void> {
+    const conn = this.conn
+    this.dispose()
+    await conn?.waitForExit()
+  }
 }
