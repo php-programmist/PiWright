@@ -358,15 +358,16 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     const images = pendingImages.map((img) => img.name)
     setPendingImages([])
     const effective = streaming ? (behavior ?? 'followUp') : undefined
+    // Петля поднимается до отправки: prompt резолвится уже после agent_start первого хода,
+    // и контроллер не увидел бы его начала — рабочий ход остался бы без отслеживания.
+    if (startingLoop) await window.piwright.loopStart(activeHostId, text, loopMax, loopExit.trim())
     const result = await window.piwright.prompt(activeHostId, text, images, effective)
     if (!result.ok && result.error !== null) {
       applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
     }
+    if (!result.ok && startingLoop) void window.piwright.loopStop(activeHostId)
     // Галка «Петля» + обычная отправка (не steer/followUp) — старт петли с этим промптом.
-    if (result.ok && effective === undefined && startingLoop) {
-      void window.piwright.loopStart(activeHostId, text, loopMax, loopExit.trim())
-      setLoopEnabled(activeHostId, false)
-    }
+    if (result.ok && startingLoop) setLoopEnabled(activeHostId, false)
   }
 
   const restoreCleared = (cleared?: QueueTexts): void => {
