@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
@@ -30,6 +30,10 @@ const STATUS_LABEL: Record<string, string> = {
   disconnected: 'disconnected',
   error: 'error'
 }
+
+/** Окно восстановленной ленты: сначала показываем последние N записей, старые докладываем чанками. */
+const RESTORE_WINDOW = 40
+const RESTORE_CHUNK = 40
 
 export interface UserEntry {
   kind: 'user'
@@ -184,6 +188,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const t = useT()
   const status = chat?.status ?? null
   const entries = useMemo(() => chat?.entries ?? [], [chat])
+  const restored = chat?.restored ?? false
   const streaming = chat?.streaming ?? false
   const queue = chat?.queue ?? { steering: [], followUp: [] }
   const contextUsage = chat?.contextUsage ?? null
@@ -323,12 +328,42 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     autoScrollRef.current = true
   }, [activeHostId])
 
+  // ——— Окно восстановленной ленты: реплей приходит пачкой, показываем хвост, старое докладываем вверх ———
+  // Длину реплейной ленты замораживаем приложением state в render — до первого commit виден только хвост.
+  const [frozenLen, setFrozenLen] = useState<number | null>(null)
+  if (restored && frozenLen === null) setFrozenLen(entries.length)
+  const [prepended, setPrepended] = useState(0)
+  const anchorRef = useRef<{ height: number; top: number } | null>(null)
+  const baseStart = frozenLen === null ? 0 : Math.max(0, frozenLen - RESTORE_WINDOW)
+  const windowStart = Math.max(0, baseStart - prepended)
+  // Контент над вьюпортом поменялся — сохраняем визуальную позицию.
+  useLayoutEffect(() => {
+    const el = transcriptRef.current
+    const anchor = anchorRef.current
+    if (el === null || anchor === null) return
+    anchorRef.current = null
+    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height)
+  }, [windowStart])
+  // «Экран + ещё экран вверх»: если хвост не заполнил два экрана, раскрываем окно дальше.
+  useEffect(() => {
+    if (windowStart === 0) return
+    const raf = requestAnimationFrame(() => {
+      const el = transcriptRef.current
+      if (el === null || el.scrollHeight >= el.clientHeight * 2) return
+      anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
+      setPrepended((p) => p + RESTORE_CHUNK)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [windowStart, entries.length])
+
+  // Только что применённый реплей: прыжок на дно без smooth-анимации.
+  const restoreFresh = restored && frozenLen !== null && frozenLen === entries.length
   useEffect(() => {
     if (!autoScrollRef.current || activeHostId === null) return
     atBottomMap.set(activeHostId, true)
     useChatStore.getState().markRead(activeHostId)
-    bottomRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
-  }, [entries, streaming, activeHostId])
+    bottomRef.current?.scrollIntoView({ behavior: streaming || restoreFresh ? 'auto' : 'smooth' })
+  }, [entries, streaming, activeHostId, restoreFresh])
 
   const handleScroll = (): void => {
     const el = transcriptRef.current
@@ -337,6 +372,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     autoScrollRef.current = atBottom
     atBottomMap.set(activeHostId, atBottom)
     if (atBottom) useChatStore.getState().markRead(activeHostId)
+    if (windowStart > 0 && el.scrollTop < 60) {
+      anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
+      setPrepended((p) => p + RESTORE_CHUNK)
+    }
   }
 
   if (activeHostId === null || status === null) {
@@ -540,9 +579,10 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
   const toolsHidden = chat?.toolsHidden ?? false
   const muted = chat?.muted ?? false
+  const windowed = windowStart > 0 && windowStart < entries.length ? entries.slice(windowStart) : entries
   const visibleEntries = toolsHidden
-    ? entries.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking')
-    : entries
+    ? windowed.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking')
+    : windowed
   const ctxPercent =
     contextUsage !== null && contextUsage.size > 0 ? Math.min(100, Math.max(0, Math.round((contextUsage.used / contextUsage.size) * 100))) : null
   const fmtTokens = (n: number): string => n.toLocaleString('en-US')

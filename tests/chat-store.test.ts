@@ -225,4 +225,27 @@ describe('chat store transcript', () => {
     expect(results[0].usage.contextTokens).toBe(1895)
     expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
   })
+
+  it('replay_batch folds history in one applyEvent and marks the host restored', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({
+      hostId: HOST,
+      event: {
+        type: 'replay_batch',
+        events: [
+          { type: 'injected_user_message', text: 'q1' },
+          { type: 'assistant_delta', text: 'a' },
+          { type: 'assistant_delta', text: '1' },
+          { type: 'tool_start', call: { id: 'c1', name: 'read', args: {}, parentToolCallId: null } },
+          { type: 'tool_end', call: { id: 'c1', name: 'read', args: {}, parentToolCallId: null }, result: { text: 'ok', isError: false, patch: null } }
+        ]
+      }
+    })
+    const list = entries()
+    expect(list.map((e) => e.kind)).toEqual(['user', 'text', 'tool'])
+    expect((list[1] as Extract<Entry, { kind: 'text' }>).text).toBe('a1')
+    expect(useChatStore.getState().hosts[HOST]?.restored).toBe(true)
+    useChatStore.getState().resetTranscript(HOST)
+    expect(useChatStore.getState().hosts[HOST]?.restored).toBe(false)
+  })
 })

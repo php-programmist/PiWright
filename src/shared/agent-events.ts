@@ -154,6 +154,8 @@ export type UiEvent =
   | { type: 'subagents_activity'; kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed'; id: string | null }
   | { type: 'loop_state'; info: LoopInfo; previousHostId: string | null }
   | { type: 'assistant_message_start' }
+  /** Пачка событий реплея: длинная история отдаётся за один IPC вместо сотен. */
+  | { type: 'replay_batch'; events: UiEvent[] }
   | { type: 'dialog_open'; id: string; dialog: ExtensionDialog }
   | { type: 'dialog_expired'; id: string }
   | { type: 'dialog_answered'; id: string; by: 'pc' | 'phone' }

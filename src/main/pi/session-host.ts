@@ -108,6 +108,8 @@ export class SessionHost {
   private sessionFile: string | null
   private startPromise: Promise<void> | null = null
   private translator: PiEventTranslator | null = null
+  /** Не null во время реплея: emit копит события в массив, а не шлёт по одному. */
+  private replayBuffer: UiEvent[] | null = null
   private handshake: PiHandshakeResult | null = null
   private lastState: PiStatus['state'] = 'idle'
   private lastStatusData: PiStatus | null = null
@@ -246,6 +248,10 @@ export class SessionHost {
   }
 
   private emit(event: UiEvent): void {
+    if (this.replayBuffer !== null) {
+      this.replayBuffer.push(event)
+      return
+    }
     this.listener.onEvent(event)
   }
 
@@ -366,7 +372,17 @@ export class SessionHost {
             ? (response.data as PiJsonObject)
             : {}
         const messages = data['messages']
-        if (Array.isArray(messages)) translator.replay(messages)
+        if (Array.isArray(messages)) {
+          // Реплей длинной истории — сотни мелких IPC; копим в буфер и отдаём одним пакетом.
+          const batch: UiEvent[] = []
+          this.replayBuffer = batch
+          try {
+            translator.replay(messages)
+          } finally {
+            this.replayBuffer = null
+          }
+          if (batch.length > 0) this.emit({ type: 'replay_batch', events: batch })
+        }
       }
       if (this.desiredModel !== null && this.desiredModel !== modelKey(handshake.model)) {
         // Модели нет в каталоге этого бэкенда (выбор из другого) — оставляем дефолт pi.

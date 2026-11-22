@@ -149,7 +149,14 @@ describe('SessionHost', () => {
     expect(spawnArgs[1]).toEqual(['--mode', 'rpc', '--no-session', '--no-extensions', '--no-tools', '--no-mcp'])
     expect(spawnArgs[2]).toEqual(['--mode', 'rpc', '--session', 'C:\\proj\\.pi\\sessions\\a.jsonl'])
     await vi.waitFor(() => {
-      expect(events.some((e) => e.type === 'injected_user_message' && e.text === 'earlier question')).toBe(true)
+      // Реплей отдаётся одним пакетом `replay_batch`, а не черёдой мелких событий.
+      expect(
+        events.some(
+          (e) =>
+            e.type === 'replay_batch' &&
+            e.events.some((ev) => ev.type === 'injected_user_message' && ev.text === 'earlier question')
+        )
+      ).toBe(true)
     })
     host.dispose()
   })

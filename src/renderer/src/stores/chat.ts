@@ -52,6 +52,8 @@ export interface HostChat {
   loopEnabled: boolean
   /** Максимум итераций петли для следующего старта (по умолчанию 20). */
   loopMax: number
+  /** Лента собрана реплеем из истории (`replay_batch`) — ChatView включает окно lazy-подгрузки. */
+  restored: boolean
 }
 
 interface ChatState {
@@ -67,7 +69,7 @@ interface ChatState {
   toggleMuted: (hostId: string) => void
   setLoopEnabled: (hostId: string, enabled: boolean) => void
   setLoopMax: (hostId: string, max: number) => void
-  /** Новая сессия петли: перенять флаги прошлой (Mute, Hidden tools, максимум итераций). */
+  /** Петля перешла на новую сессию: перенять флаги прошлой (Mute, Hidden tools, максимум итераций). */
   carryOverLoopFlags: (previousHostId: string, hostId: string) => void
   markUnread: (hostId: string) => void
   markRead: (hostId: string) => void
@@ -136,7 +138,8 @@ function emptyHostChat(): HostChat {
     unread: false,
     loop: null,
     loopEnabled: false,
-    loopMax: 20
+    loopMax: 20,
+    restored: false
   }
 }
 
@@ -436,6 +439,12 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
       return host
     case 'loop_state':
       return { ...host, loop: event.info }
+    case 'replay_batch': {
+      // Реплей из истории: складываем в ленту одним прогодом, дельты флушим в конце.
+      let next = host
+      for (const ev of event.events) next = reduceEvent(hostId, next, ev)
+      return { ...withFlushed(hostId, next), restored: true }
+    }
   }
 }
 
@@ -568,6 +577,7 @@ export const useChatStore = create<ChatState>((set) => ({
           [hostId]: {
             ...host,
             entries: [],
+            restored: false,
             streaming: false,
             queue: { steering: [], followUp: [] },
             contextUsage: null,
