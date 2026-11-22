@@ -135,6 +135,8 @@ export class SessionHost {
   /** turn_end этого хода уже разрешён или отложен — дубль agent_end/agent_settled гасим. */
   private turnEndHandled = false
   private turnEndTimer: NodeJS.Timeout | null = null
+  /** Таймер ожидания nudge от pi-subagents после завершения последнего субагента. */
+  private resolveTimer: NodeJS.Timeout | null = null
   /** В ходе был вызов Agent/SubagentWorkflow — спавн уходит асинхронно, нужен грейс-окно. */
   private subagentToolSeen = false
   /** Check-ход петли: его turn_end помечается check — без звука и Telegram-уведомления. */
@@ -321,6 +323,7 @@ export class SessionHost {
         this.handshake = null
         this.clearPendingDialogs()
         this.cancelTurnEndTimer()
+        this.cancelResolveTimer()
         this.turnEndHandled = false
         this.waitingSubagents = false
         this.checkTurnPending = false
@@ -382,6 +385,7 @@ export class SessionHost {
       const external = !this.ownPromptPending
       this.ownPromptPending = false
       this.cancelTurnEndTimer()
+      this.cancelResolveTimer()
       this.turnEndHandled = false
       this.waitingSubagents = false
       this.subagentToolSeen = false
@@ -415,7 +419,31 @@ export class SessionHost {
       this.workflows.delete(id)
     }
     if (this.waitingSubagents && this.subagents.size === 0 && this.workflows.size === 0) {
-      this.resolveDeferredTurnEnd()
+      this.scheduleDeferredResolve()
+    }
+  }
+
+  /** Последний субагент завершился: pi-subagents сразу шлёт nudge (внешний ход-резюме
+   *  «Субагент готов: …») — даём ему прийти в грейс-окне, чтобы единственный turn_end
+   *  со звуком и телеграмом прислал именно этот ход, а не момент завершения субагента. */
+  private scheduleDeferredResolve(): void {
+    this.cancelResolveTimer()
+    this.resolveTimer = setTimeout(() => {
+      this.resolveTimer = null
+      if (!this.turnEndHandled) return
+      if (this.subagents.size > 0 || this.workflows.size > 0) {
+        this.waitingSubagents = true
+        return
+      }
+      this.finishTurnEnd()
+    }, this.subagentGraceMs)
+    this.resolveTimer.unref()
+  }
+
+  private cancelResolveTimer(): void {
+    if (this.resolveTimer !== null) {
+      clearTimeout(this.resolveTimer)
+      this.resolveTimer = null
     }
   }
 
@@ -436,6 +464,7 @@ export class SessionHost {
       this.turnEndTimer = setTimeout(() => {
         this.turnEndTimer = null
         if (this.subagents.size === 0 && this.workflows.size === 0) this.resolveDeferredTurnEnd()
+        else this.waitingSubagents = true
       }, this.subagentGraceMs)
       this.turnEndTimer.unref()
       return
@@ -879,6 +908,7 @@ export class SessionHost {
   dispose(): void {
     this.clearPendingDialogs()
     this.cancelTurnEndTimer()
+    this.cancelResolveTimer()
     this.conn?.close()
     this.conn = null
   }

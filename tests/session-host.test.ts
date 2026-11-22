@@ -477,7 +477,7 @@ describe('SessionHost', () => {
       return null
     })
     currentChild = child
-    const { host, events, statuses } = makeHost([child])
+    const { host, events, statuses } = makeHost([child], SETTINGS, { subagentGraceMs: 20 })
     await host.prompt('go')
     await vi.waitFor(() => {
       expect(statuses[statuses.length - 1]?.state).toBe('waiting')
@@ -587,6 +587,46 @@ describe('SessionHost', () => {
     await vi.waitFor(() => {
       expect(events.some((e) => e.type === 'turn_end')).toBe(true)
     })
+    expect(statuses[statuses.length - 1]?.state).toBe('ready')
+    host.dispose()
+  })
+
+  it('subagent completion waits for the nudge turn — single turn_end with notification', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"agent_start"}\n' +
+              '{"type":"tool_execution_start","toolCallId":"t1","toolName":"Agent","args":{},"parentToolCallId":null}\n' +
+              '{"type":"entry_appended","entry":{"customType":"piwright:subagents","data":{"kind":"started","id":"sa-1"}}}\n' +
+              '{"type":"agent_settled","aborted":false}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events, statuses } = makeHost([child], SETTINGS, { subagentGraceMs: 30 })
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses[statuses.length - 1]?.state).toBe('waiting')
+    })
+    // Субагент завершился — pi-subagents сразу шлёт nudge (внешний ход-резюме)
+    child.emitData('{"type":"entry_appended","entry":{"customType":"piwright:subagents","data":{"kind":"completed","id":"sa-1"}}}\n')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    child.emitData('{"type":"agent_start"}\n')
+    child.emitData('{"type":"agent_settled","aborted":false}\n')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_end')).toBe(true)
+    })
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(events.filter((e) => e.type === 'turn_end')).toHaveLength(1)
     expect(statuses[statuses.length - 1]?.state).toBe('ready')
     host.dispose()
   })
