@@ -5,7 +5,8 @@
  *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
  *  SessionHost откладывает turn_end рабочего хода при живых субагентах — первым turn_end после
  *  них приходит ход-нудж субагента, он и разрешает рабочий ход.
- *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие. */
+ *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие,
+ *  watchdog на ход, который не разрешился ни по одному из путей. */
 import type { LoopInfo, LoopStopReason, UiEvent } from '../../shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../../shared/ipc-contracts'
 import type { PiHost } from './pi-host'
@@ -15,6 +16,8 @@ const SHORT_CIRCUIT_CALLS = 3
 const SHORT_CIRCUIT_GAP_MS = 10_000
 /** Событие subagents:started может прийти после turn_end (спавн ушел асинхронно) — столько ждём его перед check-промптом. */
 const SUBAGENT_GRACE_MS = 2000
+/** Потерянное событие разрешения хода: сессия уже в ready, а петля ход всё ещё не закрыла. */
+const TURN_RESOLVE_WATCHDOG_MS = 15_000
 const MIN_ITERATIONS = 1
 const MAX_ITERATIONS = 999
 
@@ -50,6 +53,8 @@ interface LoopState {
   workflows: Set<string>
   /** Отложенный check-промпт: таймер грейс-паузы перед отправкой. */
   checkTimer: ReturnType<typeof setTimeout> | null
+  /** Страховой таймер: ход открыт, а сессия уже вернулась в ready. */
+  resolveWatchdog: ReturnType<typeof setTimeout> | null
   /** Номер текущей итерации (стартовая сессия = 1); растёт с каждым спавном. */
   iteration: number
   /** Имя стартовой сессии без индекса — база для имён «имя (2)», «имя (3)»… */
@@ -65,7 +70,9 @@ export class LoopController {
     /** Мост для копирования флагов прошлой сессии (Remote, Telegram) в новую. */
     private readonly onSpawned?: (previousHostId: string, createdHostId: string) => void,
     /** Грейс-пауза перед check-промптом (переопределяется в тестах). */
-    private readonly graceMs: number = SUBAGENT_GRACE_MS
+    private readonly graceMs: number = SUBAGENT_GRACE_MS,
+    /** Пауза watchdog перед форс-разрешением хода (переопределяется в тестах). */
+    private readonly resolveWatchdogMs: number = TURN_RESOLVE_WATCHDOG_MS
   ) {}
 
   start(hostId: string, prompt: string, maxIterations: number, exitCondition: string): LoopInfo | null {
@@ -88,6 +95,7 @@ export class LoopController {
       workTurnOpen: false,
       waitingSubagents: false,
       checkTimer: null,
+      resolveWatchdog: null,
       subagents: new Set(),
       workflows: new Set(),
       iteration: 1,
@@ -102,6 +110,7 @@ export class LoopController {
     const state = this.states.get(hostId)
     if (state === undefined) return null
     this.clearCheckTimer(state)
+    this.clearResolveWatchdog(state)
     state.active = false
     state.reason = 'user'
     this.emitState(hostId, state, null)
@@ -123,7 +132,10 @@ export class LoopController {
 
   forget(hostId: string): void {
     const state = this.states.get(hostId)
-    if (state !== undefined) this.clearCheckTimer(state)
+    if (state !== undefined) {
+      this.clearCheckTimer(state)
+      this.clearResolveWatchdog(state)
+    }
     this.states.delete(hostId)
   }
 
@@ -131,6 +143,7 @@ export class LoopController {
   stopAll(): void {
     for (const [hostId, state] of this.states) {
       this.clearCheckTimer(state)
+      this.clearResolveWatchdog(state)
       if (!state.active) continue
       state.active = false
       state.reason = 'user'
@@ -141,7 +154,11 @@ export class LoopController {
   onEvent(message: PiEventMessage): void {
     const state = this.states.get(message.hostId)
     if (state === undefined) return
-    const event = message.event
+    this.dispatch(message.hostId, state, message.event)
+    this.updateResolveWatchdog(message.hostId, state)
+  }
+
+  private dispatch(hostId: string, state: LoopState, event: UiEvent): void {
     if (event.type === 'tool_start') {
       if (event.call.parentToolCallId !== null) return
       if (state.externalTurn) return
@@ -168,11 +185,11 @@ export class LoopController {
       return
     }
     if (event.type === 'subagents_activity') {
-      this.onSubagentsActivity(message.hostId, state, event.kind, event.id)
+      this.onSubagentsActivity(hostId, state, event.kind, event.id)
       return
     }
     if (event.type === 'turn_end') {
-      this.onTurnEnd(message.hostId, state)
+      this.onTurnEnd(hostId, state)
     }
   }
 
@@ -294,6 +311,61 @@ export class LoopController {
     }
   }
 
+  /** Событие разрешения хода пропало (потерянный completed/turn_end, ранняя отсечка в
+   *  обработчике) — ход остаётся открытым уже после того, как сессия вернулась в ready.
+   *  Пока рабочий ход открыт, watchdog периодически это проверяет и дожимает разрешение.
+   *  Пауза в грейс-окне — не зависание: там уже стоит checkTimer. */
+  private updateResolveWatchdog(hostId: string, state: LoopState): void {
+    if (this.states.get(hostId) !== state || !state.active) {
+      this.clearResolveWatchdog(state)
+      return
+    }
+    if (!state.workTurnOpen || state.turnEndHandled) {
+      this.clearResolveWatchdog(state)
+      return
+    }
+    this.armResolveWatchdog(hostId, state)
+  }
+
+  private armResolveWatchdog(hostId: string, state: LoopState): void {
+    if (state.resolveWatchdog !== null) return
+    state.resolveWatchdog = setTimeout(() => {
+      state.resolveWatchdog = null
+      if (this.states.get(hostId) !== state || !state.active) return
+      if (!state.workTurnOpen || state.turnEndHandled) return
+      if (this.isTurnResolutionOwed(hostId, state)) {
+        state.subagents.clear()
+        state.workflows.clear()
+        state.waitingSubagents = false
+        this.emit(hostId, {
+          type: 'notify',
+          message: 'loop: turn resolved by watchdog',
+          isError: true
+        })
+        this.proceedTurnEnd(hostId, state)
+        return
+      }
+      // Ход ещё живёт (стримится или ждутся субагенты) — следующая проверка через тот же интервал.
+      this.armResolveWatchdog(hostId, state)
+    }, this.resolveWatchdogMs)
+    state.resolveWatchdog.unref()
+  }
+
+  /** Петля должна ходу финал, а ждать его больше не от чего: разрешение не отправлено,
+   *  грейс-таймера нет, сессия уже вернулась в ready. */
+  private isTurnResolutionOwed(hostId: string, state: LoopState): boolean {
+    if (state.checkTimer !== null) return false
+    const status = this.piHost.get(hostId)?.lastStatus?.()
+    return status?.state === 'ready'
+  }
+
+  private clearResolveWatchdog(state: LoopState): void {
+    if (state.resolveWatchdog !== null) {
+      clearTimeout(state.resolveWatchdog)
+      state.resolveWatchdog = null
+    }
+  }
+
   private stopLoop(hostId: string, state: LoopState, reason: LoopStopReason): void {
     this.clearCheckTimer(state)
     state.active = false
@@ -339,6 +411,7 @@ export class LoopController {
   }
 
   private spawnNext(previousHostId: string, state: LoopState): void {
+    this.clearResolveWatchdog(state)
     state.remaining -= 1
     state.iteration += 1
     state.spawnTimes.push(Date.now())

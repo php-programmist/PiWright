@@ -14,7 +14,13 @@ interface CreatedSession {
 }
 
 /** Р¤РµР№РєРѕРІС‹Р№ PiHost: create() РІС‹РґР°С‘С‚ СЃРµСЃСЃРёРё host-2, host-3вЂ¦; host-1 СѓРјРµРµС‚ РїСЂРёРЅРёРјР°С‚СЊ check-РїСЂРѕРјРїС‚С‹. */
-function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: CreatedSession[]; checks: string[] } {
+function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
+  piHost: PiHost
+  created: CreatedSession[]
+  checks: string[]
+  setStatus: (state: string) => void
+} {
+  let status = statusState
   const created: CreatedSession[] = []
   const checks: string[] = []
   let n = 0
@@ -26,6 +32,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
           project,
           displayTitle: 'base',
           getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
+          lastStatus: () => ({ state: status }),
           markCheckTurn: () => {},
           prompt: (text: string) => {
             checks.push(text)
@@ -70,7 +77,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
       } as unknown as SessionHost
     }
   } as unknown as PiHost
-  return { piHost, created, checks }
+  return { piHost, created, checks, setStatus: (next) => { status = next } }
 }
 
 function collector(): { events: Map<string, UiEvent[]>; emit: (hostId: string, event: UiEvent) => void } {
@@ -349,6 +356,25 @@ describe('LoopController (auto-continue with check turn)', () => {
     await flush()
     expect(checks).toHaveLength(1)
     expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
+  })
+
+  it('watchdog force-resolves a work turn whose completion events were lost', async () => {
+    const { piHost, checks, setStatus } = fakePiHost([], 'streaming')
+    const { events, emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, 5)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'started', id: 'sa-1' }))
+    // Ход ещё стримится — watchdog только перевзводит таймер, петлю трогать нечего.
+    await flush()
+    expect(checks).toHaveLength(0)
+    // Субагент умер без completed-события, SessionHost перевёл сессию в ready — событий больше нет.
+    setStatus('ready')
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect((events.get('host-1') ?? []).filter((e) => e.type === 'notify')).toHaveLength(1)
     expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
   })
 
