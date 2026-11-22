@@ -106,7 +106,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   reloadDir: async (project, dir) => {
     if (projectKey(project) !== get().projectKey) return
     await get().loadDir(project, dir)
-    const prefix = `${dir}/`
+    const prefix = dir === '' ? '' : `${dir}/`
     for (const [key, value] of Object.entries(get().expanded)) {
       if (value && key.startsWith(prefix)) await get().loadDir(project, key)
     }

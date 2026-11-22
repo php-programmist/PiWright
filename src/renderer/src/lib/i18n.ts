@@ -164,6 +164,7 @@ const RU: Record<string, string> = {
   'Pick a session to see its git status': 'Выберите сессию, чтобы увидеть её git-статус',
 
   // Файлы
+  'Refresh tree': 'Обновить дерево',
   'New folder': 'Новая папка',
   'New file': 'Новый файл',
   'Create': 'Создать',

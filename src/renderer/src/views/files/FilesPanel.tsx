@@ -197,6 +197,8 @@ export function FilesPanel(): React.JSX.Element {
       <div className="files-resizer" onMouseDown={startResize} />
       <div className="files-head">
         <span className="files-title">{t('Files')}</span>
+        <span className="spacer" />
+        <button className="icon" title={t('Refresh tree')} onClick={() => void reloadDir(project, '')}>⟲</button>
       </div>
       <FilesError />
       <div
