@@ -1631,10 +1631,10 @@ body {
 }
 
 .turn-timer {
-  align-self: center;
   color: var(--faint);
   font-size: 0.85em;
   white-space: nowrap;
+  min-width: 12ch;
 }
 
 .model-select {
@@ -2196,6 +2196,10 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 14px 0;
+}
+
+.loop-bar .spacer {
+  flex: 1;
 }
 
 .loop-toggle {

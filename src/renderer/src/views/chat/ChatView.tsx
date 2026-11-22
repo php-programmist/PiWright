@@ -73,7 +73,7 @@ export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; o
       const u = entry.usage
       const speed = u.speed
       const ttfb =
-        speed !== null && speed.ttfbMs < 1000 ? `${Math.round(speed.ttfbMs)}ms` : speed !== null ? `${(speed.ttfbMs / 1000).toFixed(1)}s` : null
+        speed?.ttfbMs != null ? (speed.ttfbMs < 1000 ? `${Math.round(speed.ttfbMs)}ms` : `${(speed.ttfbMs / 1000).toFixed(1)}s`) : null
       const parts = [
         entry.durationMs !== null ? `⏱ ${formatCompactDuration(entry.durationMs)}` : null,
         `in ${u.inputTokens.toLocaleString('en-US')}`,
@@ -182,7 +182,7 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
   )
 }
 
-/** Живой счётчик времени хода: тикает раз в секунду, пока идёт ход. */
+/** Живой счётчик времени хода: тикает раз в секунду, пока идёт ход; фикс. ширина — цифры не двигают соседей. */
 function TurnTimer({ startedAt }: { startedAt: number }): React.JSX.Element {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -559,6 +559,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   }
 
   const queuedCount = queue.steering.length + queue.followUp.length
+  const turnTicker = streaming && turnStartedAt !== null ? <TurnTimer startedAt={turnStartedAt} /> : null
   const loopReasonText = (reason: string): string =>
     reason === 'agent'
       ? t('the turn had no tool calls')
@@ -825,9 +826,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <div ref={bottomRef} />
       </main>
       {placement === 'bottom' ? (
-        <div className="selector-bar">{controls}{loopsEnabled && loopControls}</div>
-      ) : loopsEnabled ? (
-        <div className="loop-bar">{loopControls}</div>
+        <div className="selector-bar">{controls}{loopsEnabled && loopControls}<span className="spacer" />{turnTicker}</div>
+      ) : loopsEnabled || turnTicker !== null ? (
+        <div className="loop-bar">{loopsEnabled && loopControls}<span className="spacer" />{turnTicker}</div>
       ) : null}
       <footer
         className="composer"
@@ -950,7 +951,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           />
         )}
         </div>
-        {streaming && turnStartedAt !== null && <TurnTimer startedAt={turnStartedAt} />}
         <button className="attach" title={t('Attach file')} onClick={() => void attachFile()} disabled={project === null}>
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path

@@ -261,6 +261,36 @@ describe('chat store transcript', () => {
     expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
   })
 
+  it('replay_batch result keeps durationMs from the event (restored turn timing)', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({
+      hostId: HOST,
+      event: {
+        type: 'replay_batch',
+        events: [
+          { type: 'injected_user_message', text: 'q1' },
+          { type: 'assistant_delta', text: 'a' },
+          {
+            type: 'turn_result',
+            usage: {
+              inputTokens: 10,
+              outputTokens: 2,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              reasoningTokens: null,
+              contextTokens: 20,
+              speed: { ttfbMs: null, tokensPerSecond: 4 },
+              durationMs: 4200
+            }
+          }
+        ]
+      }
+    })
+    const results = entries().filter((e): e is Extract<Entry, { kind: 'result' }> => e.kind === 'result')
+    expect(results).toHaveLength(1)
+    expect(results[0].durationMs).toBe(4200)
+  })
+
   it('replay_batch folds history in one applyEvent and marks the host restored', () => {
     const store = useChatStore.getState()
     store.applyEvent({

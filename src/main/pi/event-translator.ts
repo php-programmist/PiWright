@@ -239,12 +239,12 @@ export class PiEventTranslator {
 
   private turnSpeed(): TurnSpeed | null {
     const turn = this.turn
-    if (turn.ttfbCount === 0) return null
-    const ttfbMs = turn.ttfbTotalNanos / turn.ttfbCount / 1e6
     const tps =
       turn.generationNanos > 0 && turn.generationOutput > 0
         ? (turn.generationOutput * 1e9) / turn.generationNanos
         : null
+    if (turn.ttfbCount === 0 && tps === null) return null
+    const ttfbMs = turn.ttfbCount > 0 ? turn.ttfbTotalNanos / turn.ttfbCount / 1e6 : null
     return { ttfbMs, tokensPerSecond: tps }
   }
 
@@ -319,19 +319,87 @@ export class PiEventTranslator {
     this.turn = freshTurn()
   }
 
-  /** Реплей истории из `get_messages`: теми же вызовами listener, что и живой поток. */
+  /** Реплей истории из `get_messages`: теми же вызовами listener, что и живой поток.
+   *  Попутно восстанавливает метаданные хода (длительность, токены, tok/s) из таймстампов
+   *  и `usage`/`durationMs` сообщений — pi пишет их в JSONL каждой сессии. */
   replay(messages: unknown[]): void {
     const calls = new Map<string, ToolCall>()
+    // Аккумулятор текущего хода реплея; граница — user-промпт после завершившего ход ответа
+    // (stopReason toolUse = steering, продолжает текущий ход).
+    let turnStartTs: number | null = null
+    let turnEndTs: number | null = null
+    let turnActive = false
+    let input = 0
+    let output = 0
+    let cacheRead = 0
+    let cacheWrite = 0
+    let reasoning: number | null = null
+    let lastContextTokens: number | null = null
+    let generationMs = 0
+    let lastStopReason: string | null = null
+    const flushTurn = (): void => {
+      if (!turnActive) return
+      const durationMs = turnStartTs !== null && turnEndTs !== null && turnEndTs > turnStartTs ? turnEndTs - turnStartTs : null
+      if (input > 0 || output > 0 || durationMs !== null) {
+        const tps = generationMs > 0 && output > 0 ? (output * 1000) / generationMs : null
+        this.listener.onResult({
+          inputTokens: input,
+          outputTokens: output,
+          cacheReadTokens: cacheRead,
+          cacheWriteTokens: cacheWrite,
+          reasoningTokens: reasoning,
+          contextTokens: lastContextTokens,
+          speed: tps !== null ? { ttfbMs: null, tokensPerSecond: tps } : null,
+          durationMs
+        })
+      }
+      turnActive = false
+      turnStartTs = null
+      turnEndTs = null
+      input = 0
+      output = 0
+      cacheRead = 0
+      cacheWrite = 0
+      reasoning = null
+      lastContextTokens = null
+      generationMs = 0
+      lastStopReason = null
+    }
+    const tsOf = (message: PiJsonObject): number | null =>
+      typeof message['timestamp'] === 'number' && Number.isFinite(message['timestamp']) ? message['timestamp'] : null
     for (const element of messages) {
       if (element === null || typeof element !== 'object' || Array.isArray(element)) continue
       const message = element as PiJsonObject
       const role = str(message, 'role')
       if (role === 'user') {
         const text = contentText(message)
-        if (text.trim().length > 0) this.listener.onInjectedUserMessage(text)
+        if (text.trim().length > 0) {
+          if (lastStopReason === null || lastStopReason === 'stop' || lastStopReason === 'length' || lastStopReason === 'error' || lastStopReason === 'aborted') {
+            flushTurn()
+          }
+          turnActive = true
+          const ts = tsOf(message)
+          if (turnStartTs === null) turnStartTs = ts
+          this.listener.onInjectedUserMessage(text)
+        }
         continue
       }
       if (role === 'assistant') {
+        const ts = tsOf(message)
+        const duration = typeof message['durationMs'] === 'number' && Number.isFinite(message['durationMs']) ? message['durationMs'] : 0
+        if (turnActive) {
+          const usage = obj(message, 'usage')
+          input += usage !== null ? long(usage, 'input') : 0
+          output += usage !== null ? long(usage, 'output') : 0
+          cacheRead += usage !== null ? long(usage, 'cacheRead') : 0
+          cacheWrite += usage !== null ? long(usage, 'cacheWrite') : 0
+          if (usage !== null && usage['reasoning'] != null) reasoning = (reasoning ?? 0) + long(usage, 'reasoning')
+          const total = usage !== null ? long(usage, 'totalTokens') : 0
+          if (total > 0) lastContextTokens = total
+          generationMs += duration
+          if (ts !== null) turnEndTs = ts + duration
+        }
+        lastStopReason = str(message, 'stopReason')
         for (const block of array(message, 'content')) {
           if (block === null || typeof block !== 'object' || Array.isArray(block)) continue
           const b = block as PiJsonObject
@@ -353,6 +421,11 @@ export class PiEventTranslator {
         continue
       }
       if (role === 'toolResult') {
+        if (turnActive) {
+          const ts = tsOf(message)
+          const duration = typeof message['durationMs'] === 'number' && Number.isFinite(message['durationMs']) ? message['durationMs'] : 0
+          if (ts !== null) turnEndTs = ts + duration
+        }
         const id = str(message, 'toolCallId')
         if (id === null) continue
         const call = calls.get(id) ?? { id, name: str(message, 'toolName') ?? 'tool', args: {}, parentToolCallId: null }
@@ -372,5 +445,6 @@ export class PiEventTranslator {
         })
       }
     }
+    flushTurn()
   }
 }

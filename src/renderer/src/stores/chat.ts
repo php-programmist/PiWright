@@ -288,7 +288,7 @@ export function transcriptEntries(events: UiEvent[]): Entry[] {
         })
         break
       case 'turn_result':
-        entries.push({ kind: 'result', id: newId(), usage: event.usage, durationMs: null })
+        entries.push({ kind: 'result', id: newId(), usage: event.usage, durationMs: event.usage.durationMs ?? null })
         break
       case 'turn_error':
         entries.push({ kind: 'error', id: newId(), text: event.message })
@@ -408,7 +408,7 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'turn_result': {
       const flushed = withFlushed(hostId, host)
-      const durationMs = flushed.turnStartedAt !== null ? Date.now() - flushed.turnStartedAt : null
+      const durationMs = event.usage.durationMs ?? (flushed.turnStartedAt !== null ? Date.now() - flushed.turnStartedAt : null)
       return { ...flushed, entries: [...flushed.entries, { kind: 'result', id: newId(), usage: event.usage, durationMs }] }
     }
     case 'turn_error': {

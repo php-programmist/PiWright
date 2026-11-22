@@ -17,13 +17,14 @@ export interface ToolResult {
   patch: string | null
 }
 
-/** Скорость модели за ход: ttfb — среднее по assistant-сообщениям до первой дельты, мс. */
+/** Скорость модели за ход: ttfb — среднее по assistant-сообщениям до первой дельты (null в реплее — из истории невосстановим). */
 export interface TurnSpeed {
-  ttfbMs: number
+  ttfbMs: number | null
   tokensPerSecond: number | null
 }
 
-/** Токены одного хода. reasoningTokens — null, когда провайдер его не сообщает. */
+/** Токены одного хода. reasoningTokens — null, когда провайдер его не сообщает.
+ *  durationMs — длительность хода; живой ход считает renderer, реплей — из таймстампов истории. */
 export interface TurnUsage {
   inputTokens: number
   outputTokens: number
@@ -32,6 +33,7 @@ export interface TurnUsage {
   reasoningTokens: number | null
   contextTokens: number | null
   speed: TurnSpeed | null
+  durationMs?: number | null
 }
 
 /** Заполнение контекстного окна: токены последнего ответа модели / размер окна. */

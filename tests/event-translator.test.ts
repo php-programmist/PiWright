@@ -17,6 +17,7 @@ class Recorder implements StreamListener {
   thoughts = ''
   results: ToolResult[] = []
   speeds: (TurnUsage['speed'] | null)[] = []
+  durations: (number | null)[] = []
   started: { name: string; parent: string | null }[] = []
   ended: { name: string; parent: string | null }[] = []
 
@@ -64,6 +65,7 @@ class Recorder implements StreamListener {
   }
   onResult(usage: TurnUsage): void {
     this.speeds.push(usage.speed)
+    this.durations.push(usage.durationMs ?? null)
     this.calls.push(
       `result:${usage.inputTokens}/${usage.outputTokens}/${usage.contextTokens ?? 'null'}` +
         `/${usage.cacheReadTokens}+${usage.cacheWriteTokens}/${usage.reasoningTokens ?? 'null'}`
@@ -315,6 +317,73 @@ describe('PiEventTranslator', () => {
     expect(recorder.text).toBe('ok')
     expect(recorder.results).toHaveLength(1)
     expect(recorder.results[0].text).toBe('x')
+  })
+
+  it('replay restores turn duration, tokens and tok/s from message timestamps', () => {
+    const recorder = new Recorder()
+    const messages: unknown[] = [
+      { role: 'user', content: 'fix it', timestamp: 1000 },
+      {
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: 't1', name: 'read', arguments: { path: 'a' } }],
+        timestamp: 2000,
+        durationMs: 500,
+        stopReason: 'toolUse',
+        usage: { input: 100, output: 10, totalTokens: 200 }
+      },
+      { role: 'toolResult', toolCallId: 't1', toolName: 'read', content: [{ type: 'text', text: 'x' }], isError: false, timestamp: 2600, durationMs: 100 },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        timestamp: 3000,
+        durationMs: 1000,
+        stopReason: 'toolUse',
+        usage: { input: 150, output: 40, totalTokens: 300 }
+      },
+      // steering посреди хода (предыдущий ответ кончился toolUse) — не начинает новый ход
+      { role: 'user', content: 'also add tests', timestamp: 3500 },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'done' }],
+        timestamp: 4000,
+        durationMs: 2000,
+        stopReason: 'stop',
+        usage: { input: 50, output: 50, totalTokens: 400 }
+      },
+      // новый ход
+      { role: 'user', content: 'one more', timestamp: 10000 },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'sure' }],
+        timestamp: 11000,
+        durationMs: 500,
+        stopReason: 'stop',
+        usage: { input: 10, output: 5, totalTokens: 20 }
+      }
+    ]
+    new PiEventTranslator(recorder).replay(messages)
+    const results = recorder.calls.filter((c) => c.startsWith('result:'))
+    expect(results).toHaveLength(2)
+    // Ход 1: 1000 → 4000+2000; usage суммарный; tok/s = 100 out за 3500 мс генерации
+    expect(results[0]).toBe('result:300/100/400/0+0/null')
+    // Ход 2: 10000 → 11000+500
+    expect(results[1]).toBe('result:10/5/20/0+0/null')
+    expect(recorder.speeds).toEqual([
+      { ttfbMs: null, tokensPerSecond: 100 / 3.5 },
+      { ttfbMs: null, tokensPerSecond: 10 }
+    ])
+    expect(recorder.durations).toEqual([5000, 1500])
+  })
+
+  it('replay without timestamps or usage emits no result rows', () => {
+    const recorder = new Recorder()
+    const messages: unknown[] = [
+      { role: 'user', content: 'fix it' },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] }
+    ]
+    new PiEventTranslator(recorder).replay(messages)
+    expect(recorder.calls).toEqual(['user:fix it'])
+    expect(recorder.speeds).toEqual([])
   })
 
   it('fixture codec still parses every line (guard for the translator fixture)', () => {
