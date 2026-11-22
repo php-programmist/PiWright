@@ -621,7 +621,7 @@ function createToolCard(nameText, argsText, commandText) {
   pre.hidden = true;
   body.append(pre);
   card.append(head, body);
-  const entry = { card, body, pre, status, caret, expanded: false };
+  const entry = { card, body, pre, status, caret, args, argsText, command: commandText, expanded: false };
   const toggle = () => {
     entry.expanded = !entry.expanded;
     applyExpanded(entry);
@@ -640,6 +640,8 @@ function createToolCard(nameText, argsText, commandText) {
 function applyExpanded(entry) {
   entry.body.hidden = !entry.expanded;
   entry.caret.textContent = entry.expanded ? "▾" : "▸";
+  entry.card.classList.toggle("expanded", entry.expanded);
+  if (entry.command) entry.args.textContent = entry.expanded ? entry.command.replace(/\s+/g, " ").trim() : entry.argsText;
 }
 
 /** Вывод кладётся в тело всегда, но карточка остаётся свёрнутой — раскрывает пользователь. */

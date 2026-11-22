@@ -149,6 +149,7 @@ main {
 .tool .caret { color: var(--muted); flex: none; width: 10px; }
 .tool .name { color: #a9b7c6; font-weight: 600; }
 .tool .args { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool.expanded .args { white-space: normal; text-overflow: clip; }
 .tool .status { flex: none; }
 .tool .status.ok { color: var(--green); }
 .tool .status.err { color: var(--red); }
@@ -156,6 +157,8 @@ main {
 .tool .body .label { padding: 6px 10px 0; color: var(--muted); font-size: 11px; }
 .tool .body pre { border-top: 0; }
 .tool .body pre.command { max-height: none; }
+.tool.expanded .body .label { display: none; }
+.tool.expanded .body pre.command { display: none; }
 .tool .body pre.command + pre.output { border-top: 1px solid var(--line); }
 .tool pre {
   margin: 0;
