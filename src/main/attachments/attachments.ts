@@ -14,13 +14,25 @@ function attachmentsDir(project: ProjectEntry): string {
   return win32.join(project.dir, '.pi', 'attachments')
 }
 
-function result(name: string): AttachmentResult {
+async function result(dir: string, name: string): Promise<AttachmentResult> {
+  const isImage = imageMimeTypeForExtension(win32.extname(name).slice(1)) !== null
+  let dataUrl = ''
+  if (isImage) {
+    try {
+      const data = await fs.readFile(win32.join(dir, name))
+      const mime = imageMimeTypeForExtension(win32.extname(name).slice(1))
+      dataUrl = `data:${mime};base64,${data.toString('base64')}`
+    } catch {
+      // Превью не критично — чип покажет имя без миниатюры.
+    }
+  }
   return {
     ok: true,
     error: null,
     name,
-    isImage: imageMimeTypeForExtension(win32.extname(name).slice(1)) !== null,
-    ref: attachmentRef(name)
+    isImage,
+    ref: attachmentRef(name),
+    dataUrl
   }
 }
 
@@ -62,9 +74,9 @@ export async function putAttachment(project: ProjectEntry, suggestedName: string
     const name = await nextName(dir, suggestedName)
     await fs.writeFile(win32.join(dir, name), Buffer.from(base64, 'base64'))
     await ensureGitignore(project)
-    return result(name)
+    return await result(dir, name)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '' }
+    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '', dataUrl: '' }
   }
 }
 
@@ -75,7 +87,7 @@ export async function chooseAttachment(project: ProjectEntry): Promise<Attachmen
     defaultPath: project.dir
   })
   if (picked.canceled || picked.filePaths.length === 0) {
-    return { ok: false, error: 'cancelled', name: '', isImage: false, ref: '' }
+    return { ok: false, error: 'cancelled', name: '', isImage: false, ref: '', dataUrl: '' }
   }
   const src = picked.filePaths[0]
   try {
@@ -84,9 +96,9 @@ export async function chooseAttachment(project: ProjectEntry): Promise<Attachmen
     const name = await nextName(dir, win32.basename(src))
     await fs.copyFile(src, win32.join(dir, name))
     await ensureGitignore(project)
-    return result(name)
+    return await result(dir, name)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '' }
+    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '', dataUrl: '' }
   }
 }
 

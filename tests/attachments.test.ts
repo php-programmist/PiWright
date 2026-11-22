@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, sanitizeAttachmentName } from '../src/shared/attachments'
+import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, removeAttachmentRef, sanitizeAttachmentName } from '../src/shared/attachments'
 import { putAttachment, readAttachmentImages } from '../src/main/attachments/attachments'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
@@ -43,6 +43,15 @@ describe('shared attachments helpers', () => {
     expect(isImageFilePath('x.txt')).toBe(false)
     expect(isImageFilePath('noext')).toBe(false)
   })
+
+  it('removeAttachmentRef drops the last occurrence with one adjacent space', () => {
+    const ref = attachmentRef('a.png')
+    expect(removeAttachmentRef(`look ${ref} at this`, ref)).toBe('look at this')
+    expect(removeAttachmentRef(`${ref} only`, ref)).toBe('only')
+    expect(removeAttachmentRef(`only ${ref}`, ref)).toBe('only')
+    expect(removeAttachmentRef(`a ${ref}\nb ${ref} c`, ref)).toBe(`a ${ref}\nb c`)
+    expect(removeAttachmentRef('no refs here', ref)).toBe('no refs here')
+  })
 })
 
 describe('putAttachment', () => {
@@ -53,6 +62,7 @@ describe('putAttachment', () => {
     expect(res.name).toBe('Screenshot1.png')
     expect(res.isImage).toBe(true)
     expect(res.ref).toBe('@.pi/attachments/Screenshot1.png')
+    expect(res.dataUrl).toBe(`data:image/png;base64,${png.toString('base64')}`)
     const saved = await fs.readFile(join(projectDir, '.pi', 'attachments', 'Screenshot1.png'))
     expect(saved).toEqual(png)
     const gitignore = await fs.readFile(join(projectDir, '.gitignore'), 'utf8')
@@ -69,6 +79,7 @@ describe('putAttachment', () => {
   it('non-image files are not flagged as images', async () => {
     const res = await putAttachment(project(), 'notes.txt', 'aGk=')
     expect(res.isImage).toBe(false)
+    expect(res.dataUrl).toBe('')
   })
 })
 

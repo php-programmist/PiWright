@@ -4,17 +4,17 @@ import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
-import { useChatStore, atBottomMap, draftMap, loopExitMap } from '../../stores/chat'
-import type { Entry, HostChat } from '../../stores/chat'
+import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
+import type { Entry, HostChat, PendingImage } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
-import { base64FromBytes } from '../../../../shared/attachments'
+import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
 import { onPromptInject } from '../../lib/prompt-inject'
 import { splitWorktreeHostDir } from '../../../../shared/worktree'
 import type { DialogAnswer } from '../../../../shared/agent-events'
-import type { PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
+import type { AttachmentResult, PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
@@ -109,10 +109,15 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => {
     if (activeHostId !== null) loopExitMap.set(activeHostId, loopExit)
   }, [loopExit, activeHostId])
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>(() =>
+    activeHostId !== null ? pendingImagesMap.get(activeHostId) ?? [] : []
+  )
+  useEffect(() => {
+    if (activeHostId !== null) pendingImagesMap.set(activeHostId, pendingImages)
+  }, [pendingImages, activeHostId])
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
-  const pendingImagesRef = useRef<string[]>([])
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const worktree = project !== null ? splitWorktreeHostDir(project.dir) : null
 
@@ -152,7 +157,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   useEffect(() => {
     autoScrollRef.current = true
-    pendingImagesRef.current = []
   }, [activeHostId])
 
   useEffect(() => {
@@ -187,8 +191,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     if (startingLoop && loopExit.trim().length === 0) return
     setInput('')
     addUserMessage(activeHostId, text)
-    const images = pendingImagesRef.current
-    pendingImagesRef.current = []
+    const images = pendingImages.map((img) => img.name)
+    setPendingImages([])
     const effective = streaming ? (behavior ?? 'followUp') : undefined
     const result = await window.piwright.prompt(activeHostId, text, images, effective)
     if (!result.ok && result.error !== null) {
@@ -230,21 +234,29 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     setInput((v) => `${v}${v.length > 0 && !v.endsWith(' ') ? ' ' : ''}${ref} `)
   }
 
-  const attachFile = async (): Promise<void> => {
-    if (project === null) return
-    const res = await window.piwright.chooseAttachment(project)
+  const addAttachment = (res: AttachmentResult): void => {
     if (!res.ok) return
-    if (res.isImage) pendingImagesRef.current.push(res.name)
+    if (res.isImage) {
+      setPendingImages((v) => [...v, { name: res.name, ref: res.ref, dataUrl: res.dataUrl }])
+    }
     insertAttachmentRef(res.ref)
   }
 
-  const pasteImage = async (file: File): Promise<void> => {
+  const attachFile = async (): Promise<void> => {
+    if (project === null) return
+    addAttachment(await window.piwright.chooseAttachment(project))
+  }
+
+  const saveAttachmentFile = async (file: File): Promise<void> => {
     if (project === null) return
     const bytes = new Uint8Array(await file.arrayBuffer())
     const res = await window.piwright.putAttachment(project, file.name.length > 0 ? file.name : 'pasted.png', base64FromBytes(bytes))
-    if (!res.ok) return
-    pendingImagesRef.current.push(res.name)
-    insertAttachmentRef(res.ref)
+    addAttachment(res)
+  }
+
+  const removeImage = (img: PendingImage): void => {
+    setPendingImages((v) => v.filter((p) => p.name !== img.name))
+    setInput((v) => removeAttachmentRef(v, img.ref))
   }
 
   const abort = async (): Promise<void> => {
@@ -555,8 +567,34 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       ) : loopsEnabled ? (
         <div className="loop-bar">{loopControls}</div>
       ) : null}
-      <footer className="composer">
+      <footer
+        className="composer"
+        onDragOver={(e) => {
+          if (project !== null) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (project === null) return
+          e.preventDefault()
+          for (const file of Array.from(e.dataTransfer.files)) void saveAttachmentFile(file)
+        }}
+      >
         <div className="composer-fields">
+        {pendingImages.length > 0 && (
+          <div className="pending-images">
+            {pendingImages.map((img) => (
+              <div className="pending-image" key={img.name} title={img.name}>
+                {img.dataUrl.length > 0 ? <img src={img.dataUrl} alt={img.name} draggable={false} /> : <span className="pending-image-name">{img.name}</span>}
+                <button
+                  className="pending-image-remove"
+                  title={t('Remove image')}
+                  onClick={() => removeImage(img)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <textarea
           value={input}
           placeholder={
@@ -567,12 +605,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           rows={loopSplit ? 2 : 3}
           onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => {
-            const file = Array.from(e.clipboardData.items)
-              .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
-              ?.getAsFile()
-            if (file !== null && file !== undefined) {
+            const files = Array.from(e.clipboardData.items)
+              .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+              .map((item) => item.getAsFile())
+              .filter((file): file is File => file !== null)
+            if (files.length > 0) {
               e.preventDefault()
-              void pasteImage(file)
+              for (const file of files) void saveAttachmentFile(file)
             }
           }}
           onKeyDown={(e) => {

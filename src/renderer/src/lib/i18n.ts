@@ -71,6 +71,7 @@ const RU: Record<string, string> = {
   'Ask Pi (Ctrl+Enter to send)': 'Спросить pi (Ctrl+Enter — отправить)',
   'Send': 'Отправить',
   'Attach file': 'Прикрепить файл',
+  'Remove image': 'Убрать изображение',
   'Loop': 'Петля',
   'Loop iterations left': 'Осталось итераций петли',
   'Loop: repeat this prompt in fresh sessions; the loop stops when the agent calls loop_stop over the exit condition': 'Петля: повторять промпт в новых сессиях; остановится, когда агент вызовет loop_stop по условию выхода',

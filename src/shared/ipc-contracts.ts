@@ -354,13 +354,15 @@ export interface TermExitMessage {
   code: number
 }
 
-/** Вложение промпта: сохранено в `.pi/attachments/`. ref — ссылка для текста промпта. */
+/** Вложение промпта: сохранено в `.pi/attachments/`. ref — ссылка для текста промпта.
+ *  dataUrl — превью для чипа вложения (только картинки, иначе пустая строка). */
 export interface AttachmentResult {
   ok: boolean
   error: string | null
   name: string
   isImage: boolean
   ref: string
+  dataUrl: string
 }
 
 /** Звуковой файл для проигрывания в renderer (Audio + data URL). */

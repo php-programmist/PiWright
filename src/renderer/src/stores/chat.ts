@@ -98,6 +98,15 @@ export const draftMap = new Map<string, string>()
 /** Черновик условия выхода петли по hostId (вне reactive-стора, как draftMap). */
 export const loopExitMap = new Map<string, string>()
 
+/** Ожидающие отправки картинки-вложения по hostId (вне reactive-стора, как draftMap). */
+export const pendingImagesMap = new Map<string, PendingImage[]>()
+
+export interface PendingImage {
+  name: string
+  ref: string
+  dataUrl: string
+}
+
 function newId(): number {
   return nextEntryId++
 }

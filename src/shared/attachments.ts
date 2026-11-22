@@ -45,3 +45,15 @@ export function base64FromBytes(bytes: Uint8Array): string {
   }
   return btoa(binary)
 }
+
+/** Убрать последнее вхождение ref вложения из текста промпта (удаление чипа картинки). */
+export function removeAttachmentRef(text: string, ref: string): string {
+  const idx = text.lastIndexOf(ref)
+  if (idx < 0) return text
+  let end = idx + ref.length
+  if (text[end] === ' ') end += 1
+  else if (idx > 0 && text[idx - 1] === ' ' && (end === text.length || text[end] === '\n')) {
+    return text.slice(0, idx - 1) + text.slice(end)
+  }
+  return text.slice(0, idx) + text.slice(end)
+}

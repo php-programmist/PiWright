@@ -587,13 +587,13 @@ export function registerIpc(
 
   ipcMain.handle(ATTACHMENTS_PUT_CHANNEL, async (_event, project: unknown, name: unknown, base64: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof base64 !== 'string') {
-      return { ok: false, error: 'Invalid request', name: '', isImage: false, ref: '' }
+      return { ok: false, error: 'Invalid request', name: '', isImage: false, ref: '', dataUrl: '' }
     }
     return putAttachment(project, name, base64)
   })
 
   ipcMain.handle(ATTACHMENTS_CHOOSE_CHANNEL, async (_event, project: unknown) => {
-    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '' }
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '', dataUrl: '' }
     return chooseAttachment(project)
   })
 
