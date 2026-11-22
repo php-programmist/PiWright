@@ -3,12 +3,13 @@
  *  из electron-builder недостижим). Тихая загрузка, уведомление — средствами electron-updater. */
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import { DEFAULT_SETTINGS } from './settings/settings'
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 export function startAutoUpdater(getUpdateUrl: () => string): void {
   if (!app.isPackaged) return
-  const url = getUpdateUrl().trim()
+  const url = getUpdateUrl().trim() || DEFAULT_SETTINGS.updateUrl
   if (url.length === 0) return
   try {
     autoUpdater.setFeedURL({ provider: 'generic', url })
