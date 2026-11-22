@@ -40,6 +40,57 @@ const NEW_SESSION_ICON = (
   </svg>
 )
 
+const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
+  file: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 1.5h6L13 5v9.5h-9.5Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M9.5 1.5V5H13" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  ),
+  diff: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 2.5h12v11H2Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M8 2.5v11" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M3.8 8h2.4M10.8 6.8v2.4M9.6 8h2.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ),
+  kanban: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.5 2.5v9M8 2.5v5.5M12.5 2.5v11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  ),
+  mcp: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 2h11v4.5h-11ZM2.5 9.5h11V14h-11Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <circle cx="4.7" cy="4.25" r="0.9" fill="currentColor" />
+      <circle cx="4.7" cy="11.75" r="0.9" fill="currentColor" />
+    </svg>
+  ),
+  skills: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 1.8l1.6 4.6L14.2 8l-4.6 1.6L8 14.2 6.4 9.6 1.8 8l4.6-1.6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  transcript: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H8.4L5 13.6V11H3.5A1.5 1.5 0 0 1 2 9.5v-6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M5 5.5h6M5 8h4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ),
+}
+
 function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
@@ -295,6 +346,7 @@ export function TabBar(): React.JSX.Element | null {
             setMenu({ x: e.clientX, y: e.clientY, id: tabId(tab), isSession: false, kind: tab.kind })
           }}
         >
+          <span className="tab-icon">{TAB_ICONS[tab.kind]}</span>
           <span className="tab-name">{tabLabel(tab, t)}</span>
           <button
             className="icon tab-close"

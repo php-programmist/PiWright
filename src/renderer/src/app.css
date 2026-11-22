@@ -3007,6 +3007,16 @@ body {
   color: var(--text);
 }
 
+.tab-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.tab-icon svg {
+  display: block;
+}
+
 .tab-name {
   overflow: hidden;
   text-overflow: ellipsis;
