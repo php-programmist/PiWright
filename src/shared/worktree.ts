@@ -52,7 +52,7 @@ export function splitWorktreeHostDir(dir: string): { root: string; name: string 
 }
 
 /** UNC-префикс WSL (`//wsl.localhost/…`, `//wsl$/…`) → POSIX-путь; иначе как есть (слэши вперёд). */
-function normalizeDir(dir: string): string {
+export function normalizeDir(dir: string): string {
   const slashed = dir.replace(/\\/g, '/').replace(/\/+$/, '')
   const lower = slashed.toLowerCase()
   for (const prefix of ['//wsl.localhost/', '//wsl$/']) {

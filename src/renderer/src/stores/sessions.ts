@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ProjectEntry, SessionSummary, SessionDot, Settings } from '../../../shared/ipc-contracts'
+import { normalizeDir } from '../../../shared/worktree'
 
 /** Активная сессия панели: статус с main + флаг открытой вкладки. */
 export interface SessionRow {
@@ -55,7 +56,7 @@ interface SessionsState {
 export const HISTORY_PREVIEW_LIMIT = 3
 
 export function projectKey(project: ProjectEntry): string {
-  return `${project.kind}\u0000${project.dir}`
+  return `${project.kind}\u0000${normalizeDir(project.dir)}`
 }
 
 function sortProjects(projects: ProjectRow[]): ProjectRow[] {

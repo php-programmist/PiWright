@@ -1,14 +1,17 @@
-/** Таб-бар workspace: вкладки активного проекта. Сессии — всегда первые (производные от
- *  активных сессий), затем файлы/диффы/MCP/навыки/транскрипты. Контекстное меню: закрыть,
- *  закрыть другие, закрыть все: <тип>, слева/справа; для сессий сверху «Переименовать». */
+/** Таб-бар workspace: вкладки активного проекта. Обычные сессии, кнопка «новая сессия»,
+ *  затем worktree-сессии и кнопка «новый worktree», затем файлы/диффы/MCP/навыки/транскрипты.
+ *  Контекстное меню: закрыть, закрыть другие, закрыть все: <тип>, слева/справа; для сессий
+ *  сверху «Переименовать». */
 import { useEffect, useRef, useState } from 'react'
 import { useSessionsStore } from '../stores/sessions'
 import { useChatStore } from '../stores/chat'
-import { parentTabKey, tabId, useTabsStore, type ProjectTab, type TabKind } from '../stores/tabs'
+import { parentTabKey, tabId, useCenterProject, useTabsStore, type ProjectTab, type TabKind } from '../stores/tabs'
 import { useFilesStore } from '../stores/files'
 import { useGitStore } from '../stores/git'
 import { useT } from '../lib/i18n'
 import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
+import { splitWorktreeHostDir } from '../../../shared/worktree'
+import { WORKTREE_ICON } from './SessionsPanel'
 import { baseName } from '../views/git/GitPanel'
 
 const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle' }
@@ -23,6 +26,19 @@ interface MenuState {
 }
 
 type T = (key: string, params?: Record<string, string | number>) => string
+
+const NEW_SESSION_ICON = (
+  <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+    <path
+      d="M2 3.5A1.5 1.5 0 0 1 3.5 2h9A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5H8.4L5 13.6V11H3.5A1.5 1.5 0 0 1 2 9.5v-6Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinejoin="round"
+    />
+    <path d="M8 4.8v3.4M6.3 6.5h3.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+)
 
 function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
@@ -53,9 +69,14 @@ export function TabBar(): React.JSX.Element | null {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [renamingHostId, setRenamingHostId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
+  const [wtCreating, setWtCreating] = useState(false)
+  const [wtName, setWtName] = useState('')
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const centerProject = useCenterProject()
 
   const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
+  const regularRows = sessionRows.filter((r) => splitWorktreeHostDir(r.project.dir) === null)
+  const wtRows = sessionRows.filter((r) => splitWorktreeHostDir(r.project.dir) !== null)
   const sessionActive = sessionRows.some((r) => r.hostId === activeHostId) && (entry?.activeId ?? null) === null
   const activeTab = !sessionActive && entry !== undefined ? (entry.tabs.find((tab) => tabId(tab) === entry.activeId) ?? null) : null
 
@@ -79,6 +100,38 @@ export function TabBar(): React.JSX.Element | null {
 
   const closeSession = async (hostId: string, askCleanup = true): Promise<void> => {
     await closeSessionAndSweepWorktree(hostId, askCleanup)
+  }
+
+  const baseProject = centerProject === null
+    ? null
+    : (() => {
+        const wt = splitWorktreeHostDir(centerProject.dir)
+        return wt !== null ? { kind: centerProject.kind, dir: wt.root } : centerProject
+      })()
+
+  const newSession = async (): Promise<void> => {
+    if (baseProject === null) return
+    const ref = await window.piwright.newSession(baseProject)
+    useTabsStore.getState().setActiveProject(parentTabKey(baseProject))
+    useTabsStore.getState().activateSession(baseProject)
+    useSessionsStore.getState().setActive(ref.hostId)
+  }
+
+  const createWorktree = async (): Promise<void> => {
+    const name = wtName.trim()
+    setWtCreating(false)
+    setWtName('')
+    if (name.length === 0 || baseProject === null) return
+    const result = await window.piwright.worktreeCreate(baseProject, name)
+    if (!result.ok || result.dir === null) {
+      if (result.error !== null) window.alert(result.error)
+      return
+    }
+    const project = { kind: baseProject.kind, dir: result.dir }
+    const ref = await window.piwright.newSession(project)
+    useTabsStore.getState().setActiveProject(parentTabKey(project))
+    useTabsStore.getState().activateSession(project)
+    useSessionsStore.getState().setActive(ref.hostId)
   }
 
   const startRename = (hostId: string, title: string): void => {
@@ -111,8 +164,8 @@ export function TabBar(): React.JSX.Element | null {
     useTabsStore.getState().closeTab(tab.project, tabId(tab))
   }
 
-  // Порядок для «слева/справа»: сессии, затем остальные вкладки.
-  const orderedIds: string[] = [...sessionRows.map((r) => r.hostId), ...(entry?.tabs ?? []).map(tabId)]
+  // Порядок для «слева/справа»: обычные сессии, worktree-сессии, затем остальные вкладки.
+  const orderedIds: string[] = [...regularRows, ...wtRows].map((r) => r.hostId).concat((entry?.tabs ?? []).map(tabId))
   const menuIndex = menu !== null ? orderedIds.indexOf(menu.id) : -1
 
   const menuAction = (action: 'close' | 'others' | 'type' | 'left' | 'right'): void => {
@@ -154,9 +207,7 @@ export function TabBar(): React.JSX.Element | null {
     for (const id of range) closeOne(id, false)
   }
 
-  return (
-    <div className="tab-bar">
-      {sessionRows.map((r) => {
+  const renderSessionTab = (r: (typeof sessionRows)[number]): React.JSX.Element => {
         const unread = chatHosts[r.hostId]?.unread ?? false
         const cls = DOT_CLASS[r.dot] ?? 'idle'
         const off = r.dot === 'idle' && !unread
@@ -204,7 +255,35 @@ export function TabBar(): React.JSX.Element | null {
             </button>
           </div>
         )
-      })}
+  }
+
+  return (
+    <div className="tab-bar">
+      {regularRows.map(renderSessionTab)}
+      <button className="icon tab-add" title={t('New session')} onClick={() => void newSession()}>
+        {NEW_SESSION_ICON}
+      </button>
+      {wtRows.map(renderSessionTab)}
+      {wtCreating ? (
+        <input
+          autoFocus
+          className="tab-add-input"
+          value={wtName}
+          placeholder={t('worktree name')}
+          onChange={(e) => setWtName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void createWorktree()
+            if (e.key === 'Escape') {
+              setWtCreating(false)
+              setWtName('')
+            }
+          }}
+        />
+      ) : (
+        <button className="icon tab-add" title={t('New worktree')} onClick={() => setWtCreating(true)}>
+          {WORKTREE_ICON}
+        </button>
+      )}
       {(entry?.tabs ?? []).map((tab) => (
         <div
           key={tabId(tab)}

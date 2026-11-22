@@ -136,7 +136,7 @@ function SessionDot({ hostId, dot }: { hostId: string; dot: import('../../../sha
   return <span className={`dot ${cls}${off ? ' dot-off' : ''}`} />
 }
 
-const WORKTREE_ICON = (
+export const WORKTREE_ICON = (
   <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="4.5" cy="3.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
     <circle cx="11.5" cy="4.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
