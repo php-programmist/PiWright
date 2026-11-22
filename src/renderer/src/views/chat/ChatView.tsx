@@ -4,6 +4,7 @@ import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
+import { ThinkingLevelControl } from '../../components/ThinkingLevelControl'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
@@ -513,22 +514,11 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       )}
       {modelKey === null && status.model !== null && <span className="model">{status.model}</span>}
       {thinkingLevels.length > 0 && (
-        <select
-          className="thinking-select"
-          value={status.thinkingLevel ?? ''}
-          onChange={(e) => void window.piwright.setThinkingLevel(activeHostId, e.target.value)}
-        >
-          {status.thinkingLevel === null && (
-            <option value="" disabled hidden>
-              {t('thinking')}
-            </option>
-          )}
-          {thinkingLevels.map((level) => (
-            <option key={level} value={level}>
-              {t('thinking: {level}', { level })}
-            </option>
-          ))}
-        </select>
+        <ThinkingLevelControl
+          levels={thinkingLevels}
+          current={status.thinkingLevel}
+          onChange={(level) => void window.piwright.setThinkingLevel(activeHostId, level)}
+        />
       )}
       <button className="abort" onClick={() => void abort()} disabled={!streaming}>
         {t('Stop')}
