@@ -14,6 +14,7 @@ import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
+import type { PiStatus } from '../shared/ipc-contracts'
 
 let mainWindow: BrowserWindow | null = null
 let piHost: PiHost | null = null
@@ -68,10 +69,17 @@ app.whenReady().then(() => {
     (value) => safeStorage.encryptString(value),
     (buffer) => safeStorage.decryptString(buffer)
   )
+  const sendStatus = (status: PiStatus): void => {
+    mainWindow?.webContents.send(PI_STATUS_CHANNEL, {
+      ...status,
+      telegram: bridge?.telegramEnabledFor(status.hostId) ?? false,
+      shared: bridge?.sharedFor(status.hostId) ?? false
+    })
+  }
   piHost = new PiHost(
     () => settings.get(),
     {
-      onStatus: (status) => mainWindow?.webContents.send(PI_STATUS_CHANNEL, status),
+      onStatus: sendStatus,
       onEvent: (message) => {
         loopController?.onEvent(message)
         mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
@@ -87,6 +95,8 @@ app.whenReady().then(() => {
     if (previous === null) return
     if (previous.telegramEnabled) bridge?.setTelegramEnabledByHost(createdHostId, true)
     if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
+    const createdStatus = piHost?.get(createdHostId)?.lastStatus()
+    if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
   })
   const auth = new RemoteAuth(generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)

@@ -110,8 +110,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         state: status.state,
         sessionId: status.sessionId,
         sessionFile: status.sessionFile,
-        telegram: state.active.find((r) => r.hostId === status.hostId)?.telegram ?? status.telegram ?? false,
-        shared: state.active.find((r) => r.hostId === status.hostId)?.shared ?? status.shared ?? false
+        telegram: status.telegram ?? state.active.find((r) => r.hostId === status.hostId)?.telegram ?? false,
+        shared: status.shared ?? state.active.find((r) => r.hostId === status.hostId)?.shared ?? false
       })
       return { active }
     })

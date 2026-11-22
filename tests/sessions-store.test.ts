@@ -57,4 +57,16 @@ describe('sessions store refreshHistory', () => {
   it('ключ проекта стабильный', () => {
     expect(projectKey(project)).toBe(`native\u0000D:\\tmp\\proj`)
   })
+
+  it('applyStatus: флаг из статуса побеждает локальный (петля копирует флаги в main)', () => {
+    useSessionsStore.setState({ active: [{ hostId: 'h1', project, title: 't', dot: null, state: 'idle', sessionId: null, sessionFile: null, telegram: false, shared: false }] })
+    useSessionsStore.getState().applyStatus({ hostId: 'h1', project, title: 't', dot: null, state: 'idle', sessionId: null, sessionFile: null, telegram: true, shared: true })
+    expect(useSessionsStore.getState().active[0]).toMatchObject({ telegram: true, shared: true })
+  })
+
+  it('applyStatus: без флагов в статусе локальные сохраняются (optimistic toggle)', () => {
+    useSessionsStore.setState({ active: [{ hostId: 'h2', project, title: 't', dot: null, state: 'idle', sessionId: null, sessionFile: null, telegram: true, shared: false }] })
+    useSessionsStore.getState().applyStatus({ hostId: 'h2', project, title: 't', dot: null, state: 'idle', sessionId: null, sessionFile: null })
+    expect(useSessionsStore.getState().active[0]).toMatchObject({ telegram: true, shared: false })
+  })
 })
