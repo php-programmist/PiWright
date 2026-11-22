@@ -7,9 +7,15 @@ import {
   applyCardCreate,
   applyCardMove,
   applyCardUpdate,
+  applyColumnCreate,
+  applyColumnDelete,
+  applyColumnMove,
+  applyColumnRename,
+  applyWorkflowSet,
   casMutate,
   isValidKanbanId,
   KANBAN_COMMENT_MAX,
+  KANBAN_WORKFLOW_MAX,
   newKanbanId,
   pickTask,
   sanitizeKanbanText,
@@ -20,7 +26,7 @@ import {
   type KanbanComment,
   type KanbanCommitRef
 } from './core'
-import { boardsDir, createFsStore, findBoard } from './store'
+import { boardsDir, createFsStore, findBoard, readBoard } from './store'
 import { resolveKanbanRoot } from './root'
 
 export interface KanbanToolEnv {
@@ -410,6 +416,108 @@ export async function kanbanMove(
       text: `Card ${cardId} "${moved?.title}" moved to column "${columnName}" on board "${ctx.board.name}".` +
         (commentText !== null ? '\nComment added.' : ''),
       details: { cardId, columnId: column.id }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+const COLUMN_ACTIONS = ['create', 'rename', 'delete', 'move'] as const
+
+type ColumnAction = (typeof COLUMN_ACTIONS)[number]
+
+export async function kanbanColumn(
+  env: KanbanToolEnv,
+  args: { board?: string; action: string; name: string; newName?: string; afterColumn?: string }
+): Promise<KanbanToolResult> {
+  if (!COLUMN_ACTIONS.includes(args.action as ColumnAction)) {
+    return { text: `Invalid action: "${args.action}" (expected one of: ${COLUMN_ACTIONS.join(', ')})` }
+  }
+  const action = args.action as ColumnAction
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  try {
+    let columnId: string
+    if (action === 'create') {
+      const created = await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => {
+        const next = applyColumnCreate(board, args.name)
+        return { board: next, value: next.columns[next.columns.length - 1] }
+      })
+      if (created === null) return { text: 'Failed to create column.' }
+      columnId = created.id
+    } else {
+      const column = findColumn(ctx.board, args.name)
+      if (column === null) return { text: `Column not found: "${args.name}". Columns: ${columnNames(ctx.board)}` }
+      columnId = column.id
+      if (action === 'rename') {
+        if (args.newName === undefined || args.newName.trim() === '') return { text: 'newName is required for the rename action.' }
+        await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => ({
+          board: applyColumnRename(board, { id: columnId, name: args.newName! }),
+          value: true
+        }))
+      } else if (action === 'delete') {
+        await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => ({
+          board: applyColumnDelete(board, columnId),
+          value: true
+        }))
+      } else {
+        let index: number
+        if (args.afterColumn !== undefined && args.afterColumn.trim() !== '') {
+          const after = findColumn(ctx.board, args.afterColumn)
+          if (after === null) return { text: `Column not found: "${args.afterColumn}". Columns: ${columnNames(ctx.board)}` }
+          index = ctx.board.columns.findIndex((item) => item.id === after.id) + 1
+        } else {
+          index = ctx.board.columns.length - 1
+        }
+        await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => ({
+          board: applyColumnMove(board, { id: columnId, index }),
+          value: true
+        }))
+      }
+    }
+    const updated = await readBoard(ctx.dir, ctx.board.id)
+    const board = updated ?? ctx.board
+    const lines = board.columns.map((column, i) => `${i + 1}. ${column.name} (${column.id})`)
+    const verb = action === 'create' ? 'Created column' : action === 'rename' ? 'Renamed column' : action === 'delete' ? 'Deleted column' : 'Moved column'
+    return {
+      text: `${verb} "${args.name}" on board "${board.name}".\nColumns:\n${lines.join('\n')}`,
+      details: { action, columnId }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+export async function kanbanWorkflow(
+  env: KanbanToolEnv,
+  args: { board?: string; text?: string }
+): Promise<KanbanToolResult> {
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  if (args.text === undefined || args.text.trim() === '') {
+    return {
+      text: `Workflow of board "${ctx.board.name}":\n${ctx.board.workflow}`,
+      details: { workflow: ctx.board.workflow }
+    }
+  }
+  const text = sanitizeKanbanText(args.text, KANBAN_WORKFLOW_MAX)
+  if (text === null) return { text: `Invalid workflow text: must be 1–${KANBAN_WORKFLOW_MAX} characters after trim.` }
+  try {
+    await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => ({
+      board: applyWorkflowSet(board, text),
+      value: true
+    }))
+    return {
+      text: `Workflow of board "${ctx.board.name}" updated.`,
+      details: { updated: true }
     }
   } catch (err) {
     return { text: errorText(err) }

@@ -8,7 +8,7 @@ import kanbanRootTs from '../../../resources/kanban/lib/root.ts?raw'
 import kanbanStoreTs from '../../../resources/kanban/lib/store.ts?raw'
 import kanbanToolsTs from '../../../resources/kanban/lib/tools.ts?raw'
 
-export const KANBAN_EXTENSION_VERSION = 'kanban-2'
+export const KANBAN_EXTENSION_VERSION = 'kanban-3'
 
 const KANBAN_EXTENSION_FILES: Record<string, string> = {
   'index.ts': kanbanIndexTs,

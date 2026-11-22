@@ -77,7 +77,7 @@ const KANBAN_NAME_MAX = 200
 const KANBAN_TITLE_MAX = 300
 const KANBAN_DESCRIPTION_MAX = 10000
 export const KANBAN_COMMENT_MAX = 10000
-const KANBAN_WORKFLOW_MAX = 20000
+export const KANBAN_WORKFLOW_MAX = 20000
 
 /** Строка после trim: непустая и не длиннее max; иначе null. */
 export function sanitizeKanbanText(value: unknown, max: number): string | null {
@@ -368,6 +368,55 @@ export function applyCardComment(board: KanbanBoard, input: CardCommentInput): K
     updatedAt: input.now ?? new Date().toISOString()
   }
   return withCard(board, next)
+}
+
+export function applyColumnCreate(board: KanbanBoard, name: string): KanbanBoard {
+  const columnName = sanitizeKanbanName(name)
+  if (columnName === null) throw new Error('Invalid column name')
+  return { ...board, columns: [...board.columns, { id: newKanbanId('col'), name: columnName }] }
+}
+
+export function applyColumnRename(board: KanbanBoard, input: { id: string; name: string }): KanbanBoard {
+  columnIndex(board, input.id)
+  const columnName = sanitizeKanbanName(input.name)
+  if (columnName === null) throw new Error('Invalid column name')
+  return {
+    ...board,
+    columns: board.columns.map((column) => (column.id === input.id ? { ...column, name: columnName } : column))
+  }
+}
+
+/** Карточки удаляемой колонки переезжают в Backlog (иначе в первую колонку), в конец. */
+export function applyColumnDelete(board: KanbanBoard, columnId: string): KanbanBoard {
+  columnIndex(board, columnId)
+  if (board.columns.length === 1) throw new Error('Cannot delete the last column')
+  const targetId = backlogColumnId(board) === columnId ? board.columns.find((column) => column.id !== columnId)!.id : backlogColumnId(board)
+  const now = new Date().toISOString()
+  const moved = board.cards
+    .filter((card) => card.columnId === columnId)
+    .sort((a, b) => a.order - b.order)
+    .map((card) => ({ ...card, columnId: targetId, updatedAt: now }))
+  const targetCount = board.cards.filter((card) => card.columnId === targetId).length
+  moved.forEach((card, index) => {
+    card.order = targetCount + index
+  })
+  return {
+    ...board,
+    columns: board.columns.filter((column) => column.id !== columnId),
+    cards: [...board.cards.filter((card) => card.columnId !== columnId), ...moved]
+  }
+}
+
+export function applyColumnMove(board: KanbanBoard, input: { id: string; index: number }): KanbanBoard {
+  columnIndex(board, input.id)
+  const index = Math.max(0, Math.min(input.index, board.columns.length - 1))
+  const columns = board.columns.filter((column) => column.id !== input.id)
+  columns.splice(index, 0, board.columns.find((column) => column.id === input.id)!)
+  return { ...board, columns }
+}
+
+export function applyWorkflowSet(board: KanbanBoard, text: string): KanbanBoard {
+  return { ...board, workflow: text.slice(0, KANBAN_WORKFLOW_MAX) }
 }
 
 export interface ClaimResult {

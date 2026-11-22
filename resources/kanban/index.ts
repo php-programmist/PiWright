@@ -1,6 +1,7 @@
 import { Type } from 'typebox'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import {
+  kanbanColumn,
   kanbanComment,
   kanbanCreateCard,
   kanbanGetCard,
@@ -9,6 +10,7 @@ import {
   kanbanPickTask,
   kanbanSearch,
   kanbanUpdateCard,
+  kanbanWorkflow,
   type KanbanToolEnv,
   type KanbanToolResult
 } from './lib/tools'
@@ -185,6 +187,46 @@ export default function (pi: ExtensionAPI): void {
     executionMode: 'sequential',
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return run(kanbanMove(env(ctx), params))
+    }
+  })
+
+  pi.registerTool({
+    name: 'kanban_column',
+    label: 'Kanban: column admin',
+    description:
+      'Manage kanban columns: create, rename, delete (its cards move to Backlog), or move a column to another position. The last column cannot be deleted.',
+    promptSnippet: 'kanban_column: create/rename/delete/move a kanban column',
+    parameters: Type.Object({
+      board: BOARD_PARAM,
+      action: Type.Union([
+        Type.Literal('create'),
+        Type.Literal('rename'),
+        Type.Literal('delete'),
+        Type.Literal('move')
+      ], { description: 'Column operation.' }),
+      name: Type.String({ description: 'Column name or id; for create — the name of the new column.' }),
+      newName: Type.Optional(Type.String({ description: 'New name (rename action only).' })),
+      afterColumn: Type.Optional(Type.String({ description: 'Move action: place the column right after this one (name or id); omitted — move to the end.' }))
+    }),
+    executionMode: 'sequential',
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      return run(kanbanColumn(env(ctx), params))
+    }
+  })
+
+  pi.registerTool({
+    name: 'kanban_workflow',
+    label: 'Kanban: workflow',
+    description:
+      'Read or replace the board workflow (the process text the agent follows when working on kanban tasks). Without text — returns the current workflow; with text — replaces it.',
+    promptSnippet: 'kanban_workflow: read or replace the kanban board workflow',
+    parameters: Type.Object({
+      board: BOARD_PARAM,
+      text: Type.Optional(Type.String({ description: 'New workflow text, 1–20000 characters; read-only when omitted.' }))
+    }),
+    executionMode: 'sequential',
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      return run(kanbanWorkflow(env(ctx), params))
     }
   })
 }

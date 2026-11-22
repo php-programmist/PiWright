@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { KanbanConflictError, type KanbanBoardStore } from '../resources/kanban/lib/core'
 import { createFsStore, findBoard, readBoard, boardsDir } from '../resources/kanban/lib/store'
 import {
+  kanbanColumn,
   kanbanComment,
   kanbanCreateCard,
   kanbanGetCard,
@@ -13,6 +14,7 @@ import {
   kanbanPickTask,
   kanbanSearch,
   kanbanUpdateCard,
+  kanbanWorkflow,
   type KanbanToolEnv
 } from '../resources/kanban/lib/tools'
 
@@ -206,6 +208,69 @@ describe('kanban_move', () => {
     expect(card.comments.map((comment) => comment.text)).toEqual(['ready for review'])
     const missing = await kanbanMove(env(dir), { id, column: 'Nope' })
     expect(missing.text).toContain('Column not found')
+  })
+})
+
+describe('kanban_column', () => {
+  it('creates, renames, moves and deletes a column', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const created = await kanbanColumn(env(dir), { action: 'create', name: 'Blocked' })
+    expect(created.text).toContain('Created column "Blocked"')
+    expect(created.details).toMatchObject({ action: 'create' })
+    expect(created.text).toContain('6. Blocked')
+
+    const renamed = await kanbanColumn(env(dir), { action: 'rename', name: 'Blocked', newName: 'Paused' })
+    expect(renamed.text).toContain('Renamed column "Blocked"')
+    expect(renamed.text).toContain('Paused')
+
+    const moved = await kanbanColumn(env(dir), { action: 'move', name: 'Paused', afterColumn: 'Backlog' })
+    expect(moved.text).toContain('Moved column "Paused"')
+    expect(moved.text).toMatch(/1\. Backlog[\s\S]*2\. Paused/)
+
+    await kanbanCreateCard(env(dir), { title: 'Doomed', column: 'Paused' })
+    const deleted = await kanbanColumn(env(dir), { action: 'delete', name: 'Paused' })
+    expect(deleted.text).toContain('Deleted column "Paused"')
+    const board = await findBoard(dir)
+    expect(board.columns.map((column) => column.name)).not.toContain('Paused')
+    const card = board.cards.find((item) => item.title === 'Doomed')!
+    expect(card.columnId).toBe(board.columns.find((column) => column.name === 'Backlog')!.id)
+  })
+
+  it('validates action, missing newName, unknown columns and last column', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const badAction = await kanbanColumn(env(dir), { action: 'purge', name: 'Todo' })
+    expect(badAction.text).toContain('Invalid action: "purge"')
+    const badRename = await kanbanColumn(env(dir), { action: 'rename', name: 'Todo' })
+    expect(badRename.text).toContain('newName is required')
+    const badColumn = await kanbanColumn(env(dir), { action: 'rename', name: 'Nope', newName: 'X' })
+    expect(badColumn.text).toContain('Column not found: "Nope"')
+    const badAfter = await kanbanColumn(env(dir), { action: 'move', name: 'Todo', afterColumn: 'Nope' })
+    expect(badAfter.text).toContain('Column not found: "Nope"')
+    const last = await kanbanColumn(env(dir), { action: 'delete', name: 'Done' })
+    expect(last.text).not.toBe('')
+    for (const name of ['Backlog', 'Todo', 'In Progress', 'Review', 'Done']) {
+      await kanbanColumn(env(dir), { action: 'delete', name })
+    }
+    const board = await findBoard(dir)
+    expect(board.columns).toHaveLength(1)
+    const lastDeleted = await kanbanColumn(env(dir), { action: 'delete', name: board.columns[0].name })
+    expect(lastDeleted.text).toContain('Cannot delete the last column')
+  })
+})
+
+describe('kanban_workflow', () => {
+  it('returns the workflow without text and replaces it with text', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const before = await kanbanWorkflow(env(dir), {})
+    expect(before.text).toContain('Workflow of board "Default":')
+    expect(before.text.length).toBeGreaterThan('Workflow of board "Default":'.length)
+    const updated = await kanbanWorkflow(env(dir), { text: 'Custom workflow: do things slowly.' })
+    expect(updated.text).toContain('updated')
+    const after = await kanbanWorkflow(env(dir), {})
+    expect(after.text).toContain('Custom workflow: do things slowly.')
+    expect(after.details).toMatchObject({ workflow: 'Custom workflow: do things slowly.' })
+    const blank = await kanbanWorkflow(env(dir), { text: '   ' })
+    expect(blank.text).toContain('Workflow of board "Default":')
   })
 })
 
