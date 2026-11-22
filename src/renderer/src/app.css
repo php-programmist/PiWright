@@ -1062,6 +1062,13 @@ body {
   color: var(--muted);
 }
 
+.header .state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dot {
   flex: none;
   width: 10px;

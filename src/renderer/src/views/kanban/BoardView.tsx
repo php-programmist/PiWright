@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
 import type { KanbanBoard, KanbanCard, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
-import type { KanbanMutationResult, ProjectEntry } from '../../../../shared/ipc-contracts'
+import type { KanbanMutationResult, ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { useSessionsStore } from '../../stores/sessions'
 import { parentTabKey, useTabsStore } from '../../stores/tabs'
@@ -39,7 +39,7 @@ function KanbanThumb({ project, path, onOpen }: { project: ProjectEntry; path: s
   return <img className="board-thumb" src={src} alt={path} onClick={() => onOpen(src)} />
 }
 
-/** Чип сессии в комментарии: живая — активация чата, из истории — вкладка-транскрипт,
+/** Чип сессии в комментарии: живая — активация чата, из истории — восстановление чата,
  *  нигде не найдена — приглушённый чип с тултипом. */
 function SessionChip({ project, session }: { project: ProjectEntry; session: KanbanSessionRef }): React.JSX.Element {
   const t = useT()
@@ -66,16 +66,26 @@ function SessionChip({ project, session }: { project: ProjectEntry; session: Kan
       st.setActive(row.hostId)
       return
     }
+    const resume = async (found: SessionSummary): Promise<void> => {
+      const result = await window.piwright.openSession(project, found.path)
+      if (!result.ok) {
+        if (result.error !== null) window.alert(result.error)
+        return
+      }
+      useTabsStore.getState().setActiveProject(parentTabKey(project))
+      useTabsStore.getState().activateSession(project)
+      st.setActive(result.hostId)
+    }
     const summary = st.projects
       .find((p) => p.history.some((h) => h.id === session.id))
       ?.history.find((h) => h.id === session.id)
     if (summary !== undefined) {
-      useTabsStore.getState().openTranscript(project, summary)
+      void resume(summary)
       return
     }
     void window.piwright.sessionHistory(project).then((history) => {
       const found = history.find((h) => h.id === session.id)
-      if (found !== undefined) useTabsStore.getState().openTranscript(project, found)
+      if (found !== undefined) void resume(found)
     })
   }
 

@@ -48,6 +48,13 @@ describe('parseSessionSummary', () => {
     expect(s?.title).toBe('say hi')
   })
 
+  it('overlong titles are truncated with ellipsis', async () => {
+    const long = 'x'.repeat(200)
+    const s = await parseSessionSummary('p', [HEADER, USER.replace('say hi', long)], 0)
+    expect(s?.title.length).toBe(120)
+    expect(s?.title.endsWith('…')).toBe(true)
+  })
+
   it('empty session and non-session file are skipped', async () => {
     expect(await parseSessionSummary('p', [HEADER], 0)).toBeNull()
     expect(await parseSessionSummary('p', [USER], 0)).toBeNull()

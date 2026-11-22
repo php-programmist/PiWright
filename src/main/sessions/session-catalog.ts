@@ -12,6 +12,8 @@ import type { PiJsonObject } from '../../shared/protocol-types'
 import { contentText, str } from '../pi/event-translator'
 import { listWslDistros, resolveWslHome, wslPathFor } from '../pi/backends/wsl'
 
+const MAX_SUMMARY_TITLE_CHARS = 120
+
 /** Имя каталога сессий pi для cwd — как в `session-manager.js`: `--<cwd без ведущего слеша, / \ : → ->--`. */
 export function sessionDirName(cwd: string): string {
   return '--' + cwd.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-') + '--'
@@ -62,8 +64,9 @@ export async function parseSessionSummary(
     }
   }
   const id = header === null ? null : str(header, 'id')
-  const title = name ?? firstUserText
-  if (id === null || title === null) return null
+  const rawTitle = name ?? firstUserText
+  if (id === null || rawTitle === null) return null
+  const title = rawTitle.length > MAX_SUMMARY_TITLE_CHARS ? rawTitle.slice(0, MAX_SUMMARY_TITLE_CHARS - 1) + '…' : rawTitle
   return {
     id,
     title,
