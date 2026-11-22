@@ -29,6 +29,8 @@ export interface ProjectTab {
   project: ProjectEntry
   /** file/diff/transcript — путь; mcp/skills — вкладка одна на проект. */
   path?: string
+  /** diff — хеш коммита (дифф файла в коммите из истории Git). */
+  hash?: string
   /** transcript — заголовок сессии. */
   title?: string
   /** transcript — полная сводка для TranscriptView. */
@@ -40,8 +42,9 @@ export interface ProjectTabs {
   activeId: string | null
 }
 
-export function tabId(tab: Pick<ProjectTab, 'kind' | 'path'>): string {
-  return tab.path === undefined ? tab.kind : `${tab.kind}\u0000${tab.path}`
+export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash'>): string {
+  if (tab.path === undefined) return tab.kind
+  return tab.hash === undefined ? `${tab.kind}\u0000${tab.path}` : `${tab.kind}\u0000${tab.path}\u0000${tab.hash}`
 }
 
 /** Ключ набора вкладок: у worktree-сессий вкладки живут в наборе родительского проекта. */
@@ -64,7 +67,12 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
       if (settings === null) return
       const saved: SavedProjectTab[] = tabs
         .filter((t) => t.kind !== 'transcript')
-        .map((t): SavedProjectTab => (t.path !== undefined ? { kind: t.kind as ProjectTabKind, path: t.path } : { kind: t.kind as ProjectTabKind }))
+        .map((t): SavedProjectTab => {
+          const savedTab: SavedProjectTab =
+            t.path !== undefined ? { kind: t.kind as ProjectTabKind, path: t.path } : { kind: t.kind as ProjectTabKind }
+          if (t.hash !== undefined) savedTab.hash = t.hash
+          return savedTab
+        })
       const index = saved.findIndex((t) => tabId(t) === activeId)
       const snapshot = index >= 0 ? { tabs: saved, activeIndex: index } : { tabs: saved }
       const next = await window.piwright.setSettings(setProjectTabs(settings, key, saved.length > 0 ? snapshot : null))
@@ -122,7 +130,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       } else {
         const snap = useSessionsStore.getState().settings?.projectTabs[key]
         if (snap !== undefined) {
-          const tabs = snap.tabs.map((t) => ({ kind: t.kind, project: projectForKey(key), path: t.path }))
+          const tabs = snap.tabs.map((t) => ({ kind: t.kind, project: projectForKey(key), path: t.path, ...(t.hash !== undefined ? { hash: t.hash } : {}) }))
           entry = {
             tabs,
             activeId: snap.activeIndex !== undefined && snap.activeIndex < tabs.length ? tabId(tabs[snap.activeIndex]) : null

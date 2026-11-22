@@ -6,6 +6,7 @@ import { DiffOverlay } from './views/git/DiffOverlay'
 import { FilesPanel } from './views/files/FilesPanel'
 import { FileViewer } from './views/files/FileViewer'
 import { TerminalPanel } from './views/terminal/TerminalPanel'
+import { GitLogPanel } from './views/git/GitLogPanel'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -18,6 +19,7 @@ import { useGitStore } from './stores/git'
 import { useSessionsStore, projectKey } from './stores/sessions'
 import { parentTabKey, tabId, useTabsStore } from './stores/tabs'
 import { useTerminalStore } from './stores/terminal'
+import { useGitLogStore } from './stores/gitlog'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { applyAppearance } from './lib/appearance'
 import { useT } from './lib/i18n'
@@ -34,6 +36,7 @@ export function App(): React.JSX.Element {
   const gitOpen = useGitStore((s) => s.open)
   const filesOpen = useFilesStore((s) => s.open)
   const termOpen = useTerminalStore((s) => s.open)
+  const gitLogOpen = useGitLogStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
   const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
   const tabEntry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
@@ -97,6 +100,11 @@ export function App(): React.JSX.Element {
   }
   const toggleTerm = (): void => {
     useTerminalStore.getState().toggleOpen()
+    // История Git и терминал делят нижний док: открытие одного сворачивает другое.
+    if (useTerminalStore.getState().open && useGitLogStore.getState().open) {
+      useGitLogStore.getState().toggleOpen()
+      persistPanel('gitlog', { open: false })
+    }
     persistPanel('terminal', { open: useTerminalStore.getState().open })
     // Первое открытие терминала на проекте: сохранённые вкладки (фича 37) или дефолтная (фича 36).
     if (!useTerminalStore.getState().open) return
@@ -104,6 +112,18 @@ export function App(): React.JSX.Element {
     const project = st.active.find((r) => r.hostId === st.activeHostId)?.project ?? null
     if (project === null) return
     useTerminalStore.getState().ensureTabs(project)
+  }
+  const toggleGitLog = (): void => {
+    useGitLogStore.getState().toggleOpen()
+    if (useGitLogStore.getState().open && useTerminalStore.getState().open) {
+      useTerminalStore.getState().toggleOpen()
+      persistPanel('terminal', { open: false })
+    }
+    persistPanel('gitlog', { open: useGitLogStore.getState().open })
+    if (!useGitLogStore.getState().open) return
+    const st = useSessionsStore.getState()
+    const project = st.active.find((r) => r.hostId === st.activeHostId)?.project ?? null
+    if (project !== null) void useGitLogStore.getState().refresh(project)
   }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
   const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
@@ -180,7 +200,7 @@ export function App(): React.JSX.Element {
                 ) : activeTab.kind === 'file' ? (
                   <FileViewer key={activeTab.path} tab={activeTab} />
                 ) : activeTab.kind === 'diff' ? (
-                  <DiffOverlay key={activeTab.path} tab={activeTab} />
+                  <DiffOverlay key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'mcp' ? (
                   <McpView onClose={closeActiveTab} />
                 ) : activeTab.kind === 'skills' ? (
@@ -195,6 +215,7 @@ export function App(): React.JSX.Element {
               </div>
             </div>
             {termOpen && <TerminalPanel />}
+            {gitLogOpen && <GitLogPanel />}
           </div>
           <div className="right-bar">
             <button className={gitOpen ? 'active' : ''} title={t('Git')} onClick={toggleGit}>
@@ -239,6 +260,18 @@ export function App(): React.JSX.Element {
                   strokeWidth="1.3"
                   strokeLinejoin="round"
                 />
+              </svg>
+            </button>
+            <button
+              className={`gitlog-toggle${gitLogOpen ? ' active' : ''}`}
+              title={t('Git Log')}
+              onClick={toggleGitLog}
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="5" cy="3.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <circle cx="11.5" cy="12.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M5 5.5v3.5a3.5 3.5 0 0 0 3.5 3.5h1" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                <line x1="5" y1="9" x2="5" y2="14.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
               </svg>
             </button>
             <button className={`term-toggle${termOpen ? ' active' : ''}`} title={t('Terminal')} onClick={toggleTerm}>

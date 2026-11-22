@@ -11,6 +11,7 @@ import type { ProjectTab } from '../../stores/tabs'
 export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | null {
   const t = useT()
   const path = tab.path ?? ''
+  const commitHash = tab.hash
   const selectedPath = useGitStore((s) => s.selectedPath)
   const diff = useGitStore((s) => s.diff)
   const diffLoading = useGitStore((s) => s.diffLoading)
@@ -19,17 +20,24 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
 
   useEffect(() => {
     const git = useGitStore.getState()
+    if (commitHash !== undefined) {
+      if (git.selectedPath !== path || git.commitHash !== commitHash || (git.diff === null && !git.diffLoading)) {
+        void git.openCommitFile(tab.project, commitHash, path)
+      }
+      return
+    }
     if (git.selectedPath !== path || (git.diff === null && !git.diffLoading)) void git.openFile(tab.project, path)
-  }, [tab.project, path])
+  }, [tab.project, path, commitHash])
 
-  // Дифф файла исчез из статуса (закоммичен/откачен) — закрываем его вкладку.
+  // Дифф файла исчез из статуса (закоммичен/откачен) — закрываем его вкладку (только рабочая копия).
   useEffect(() => {
+    if (commitHash !== undefined) return
     if (selectedPath === path) loadedRef.current = true
     if (loadedRef.current && selectedPath === null && !diffLoading) {
       loadedRef.current = false
       useTabsStore.getState().closeTab(tab.project, tabId(tab))
     }
-  }, [selectedPath, diffLoading, tab, path])
+  }, [selectedPath, diffLoading, tab, path, commitHash])
 
   const allTabs = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey]?.tabs : undefined))
   const diffTabs = useMemo(() => (allTabs ?? []).filter((x) => x.kind === 'diff'), [allTabs])
@@ -40,7 +48,8 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
     const next = index < 0 ? 0 : (index + delta + diffTabs.length) % diffTabs.length
     const target = diffTabs[next]
     useTabsStore.getState().setActive(target.project, tabId(target))
-    void useGitStore.getState().openFile(target.project, target.path ?? '')
+    if (target.hash !== undefined) void useGitStore.getState().openCommitFile(target.project, target.hash, target.path ?? '')
+    else void useGitStore.getState().openFile(target.project, target.path ?? '')
   }
 
   return (

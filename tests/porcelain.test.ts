@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLogOneline, parseStatusOutput, unquoteGitPath } from '../src/main/git/porcelain'
+import { parseLogOneline, parseLogRich, parseNameStatus, parseStatusOutput, unquoteGitPath } from '../src/main/git/porcelain'
 
 describe('unquoteGitPath', () => {
   it('leaves plain paths as is', () => {
@@ -70,5 +70,43 @@ describe('parseLogOneline', () => {
 
   it('returns empty for empty output', () => {
     expect(parseLogOneline('')).toEqual([])
+  })
+})
+
+describe('parseLogRich', () => {
+  const record = (hash: string, author: string, date: string, subject: string, parents: string, refs: string): string =>
+    [hash, author, date, subject, parents, refs].join('\x1f') + '\x1e'
+
+  it('parses records separated by \x1e with fields by \x1f', () => {
+    const output =
+      record('a1', 'Ann', '100', 'first commit', 'b2', 'HEAD -> main') +
+      '\n' +
+      record('b2', 'Bob', '200', 'second', '', 'origin/main, v1')
+    expect(parseLogRich(output)).toEqual([
+      { hash: 'a1', author: 'Ann', date: 100, subject: 'first commit', parents: ['b2'], refs: ['HEAD -> main'] },
+      { hash: 'b2', author: 'Bob', date: 200, subject: 'second', parents: [], refs: ['origin/main', 'v1'] }
+    ])
+  })
+
+  it('skips empty records and records with missing fields', () => {
+    expect(parseLogRich('\x1e\n')).toEqual([])
+    expect(parseLogRich('onlyonefield\x1e')).toEqual([])
+  })
+})
+
+describe('parseNameStatus', () => {
+  it('parses status and path', () => {
+    expect(parseNameStatus('M\tsrc/a.ts\nA\tnew.ts\n')).toEqual([
+      { status: 'M', path: 'src/a.ts', origPath: null },
+      { status: 'A', path: 'new.ts', origPath: null }
+    ])
+  })
+
+  it('swaps rename columns: old path first, new path second', () => {
+    expect(parseNameStatus('R100\told.ts\tnew.ts\n')).toEqual([{ status: 'R', path: 'new.ts', origPath: 'old.ts' }])
+  })
+
+  it('returns empty for empty output', () => {
+    expect(parseNameStatus('')).toEqual([])
   })
 })

@@ -8,6 +8,8 @@ import type { ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type {
   GitBranchesResult,
+  GitCommitFileDiffResult,
+  GitCommitFilesResult,
   GitFileDiffResult,
   GitLogResult,
   GitMessageResult,
@@ -24,7 +26,7 @@ import { createPiBackend } from '../pi/backends/factory'
 import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 import { buildCommitPrompt, cleanCommitMessage } from './commit-message'
-import { parseLogOneline, parseStatusOutput } from './porcelain'
+import { parseLogRich, parseNameStatus, parseStatusOutput } from './porcelain'
 import {
   hasWorktreeNamed,
   isUncommittedChangesError,
@@ -37,7 +39,7 @@ import {
 const GIT_TIMEOUT_MS = 30_000
 const PUSH_TIMEOUT_MS = 120_000
 const GEN_TIMEOUT_MS = 240_000
-const LOG_LIMIT = 20
+const LOG_RICH_LIMIT = 200
 const BINARY_PLACEHOLDER = '(binary file)'
 
 interface ExecResult {
@@ -255,9 +257,58 @@ export class GitService {
   }
 
   async log(project: ProjectEntry): Promise<GitLogResult> {
-    const result = await this.run(project, ['log', '--oneline', '-n', String(LOG_LIMIT)])
+    const args = [
+      'log',
+      '-n',
+      String(LOG_RICH_LIMIT),
+      '--date-order',
+      '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e'
+    ]
+    const result = await this.run(project, args)
     if (result.code !== 0) return { ok: true, error: null, entries: [] }
-    return { ok: true, error: null, entries: parseLogOneline(result.stdout) }
+    return { ok: true, error: null, entries: parseLogRich(result.stdout) }
+  }
+
+  /** Изменённые файлы коммита: diff против первого родителя (merge — только первая ветка),
+ *  --root покрывает первый коммит. */
+  async commitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult> {
+    if (!/^[0-9a-f]{4,40}$/i.test(hash)) return { ok: false, error: 'Invalid commit hash', files: [] }
+    const args = ['diff-tree', '--no-commit-id', '--name-status', '-r', '--root', '-m', '--first-parent', hash]
+    const result = await this.run(project, args)
+    if (result.code !== 0) return { ok: false, error: errorOf(result, ['diff-tree']), files: [] }
+    return { ok: true, error: null, files: parseNameStatus(result.stdout) }
+  }
+
+  /** Дифф файла в коммите: original — родительская версия, modified — версия коммита.
+ *  У корневого коммита родителя нет — original пуст; удалённый файл — modified пуст. */
+  async commitFileDiff(project: ProjectEntry, hash: string, path: string): Promise<GitCommitFileDiffResult> {
+    if (!/^[0-9a-f]{4,40}$/i.test(hash) || path.length === 0) {
+      return { ok: false, error: 'Invalid request', original: '', modified: '' }
+    }
+    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', hash])
+    if (parents.code !== 0) return { ok: false, error: errorOf(parents, ['rev-list']), original: '', modified: '' }
+    const tokens = parents.stdout.trim().split(/\s+/).filter((t) => t.length > 0)
+    const parent = tokens.length > 1 ? tokens[1]! : null
+    const clean = (text: string): string => (text.includes('\0') ? BINARY_PLACEHOLDER : text)
+    const missingRevision = /exists on disk, but not in|does not exist|can't be found|unknown revision/i
+    let originalText = ''
+    if (parent !== null) {
+      const original = await this.run(project, ['show', `${parent}:${path}`])
+      if (original.code !== 0 && !missingRevision.test(original.stderr + original.stdout)) {
+        return { ok: false, error: errorOf(original, ['show']), original: '', modified: '' }
+      }
+      if (original.code === 0) originalText = original.stdout
+    }
+    const modified = await this.run(project, ['show', `${hash}:${path}`])
+    if (modified.code !== 0 && !missingRevision.test(modified.stderr + modified.stdout)) {
+      return { ok: false, error: errorOf(modified, ['show']), original: '', modified: '' }
+    }
+    return {
+      ok: true,
+      error: null,
+      original: clean(originalText),
+      modified: clean(modified.code === 0 ? modified.stdout : '')
+    }
   }
 
   async branches(project: ProjectEntry): Promise<GitBranchesResult> {

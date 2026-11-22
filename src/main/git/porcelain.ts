@@ -127,3 +127,62 @@ export function parseLogOneline(output: string): { hash: string; subject: string
   }
   return entries
 }
+
+/** `git log --pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e`: записи через \x1e,
+ *  поля через \x1f. %D — имена ref'ов через запятую (`HEAD -> main, origin/main, v1`). */
+export function parseLogRich(output: string): {
+  hash: string
+  subject: string
+  author: string
+  date: number
+  parents: string[]
+  refs: string[]
+}[] {
+  const entries: {
+    hash: string
+    subject: string
+    author: string
+    date: number
+    parents: string[]
+    refs: string[]
+  }[] = []
+  for (const rawRecord of output.split('\x1e')) {
+    const record = rawRecord.replace(/^\r?\n/, '')
+    if (record.trim().length === 0) continue
+    const f = record.split('\x1f')
+    if (f.length < 6 || f[0]!.length === 0) continue
+    entries.push({
+      hash: f[0]!,
+      author: f[1]!,
+      date: Number(f[2]) || 0,
+      subject: f[3]!,
+      parents: f[4]!.length > 0 ? f[4]!.split(' ') : [],
+      refs: f[5]!
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0)
+    })
+  }
+  return entries
+}
+
+/** `git diff-tree --no-commit-id --name-status -r`: строки `<status>\t<path>[\t<origPath>]`. */
+export function parseNameStatus(output: string): { status: string; path: string; origPath: string | null }[] {
+  const entries: { status: string; path: string; origPath: string | null }[] = []
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    if (line.length === 0) continue
+    const parts = line.split('\t')
+    if (parts.length < 2) continue
+    const status = parts[0]!
+    if (status.length === 0) continue
+    // R/C: status100\t<oldPath>\t<newPath>
+    const isRenameCopy = status.length > 1 && (status[0] === 'R' || status[0] === 'C')
+    if (isRenameCopy && parts.length >= 3) {
+      entries.push({ status: status[0]!, path: parts[2]!, origPath: parts[1] ?? null })
+    } else {
+      entries.push({ status, path: parts[1]!, origPath: null })
+    }
+  }
+  return entries
+}

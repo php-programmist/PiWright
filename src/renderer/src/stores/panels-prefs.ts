@@ -9,6 +9,7 @@ import { useSessionsStore } from './sessions'
 import { useGitStore } from './git'
 import { useFilesStore } from './files'
 import { useTerminalStore } from './terminal'
+import { useGitLogStore } from './gitlog'
 
 let persistChain: Promise<void> = Promise.resolve()
 
@@ -24,7 +25,7 @@ export function persistPanel(panel: PanelName, patch: PanelPrefs): void {
 }
 
 export function hydratePanels(settings: Settings): void {
-  const { git, files, terminal } = settings.panels
+  const { git, files, terminal, gitlog } = settings.panels
   if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}) })
   if (files !== undefined) useFilesStore.setState({ ...(files.open !== undefined ? { open: files.open } : {}), ...(files.width !== undefined ? { width: files.width } : {}) })
   if (terminal !== undefined)
@@ -32,9 +33,19 @@ export function hydratePanels(settings: Settings): void {
       ...(terminal.open !== undefined ? { open: terminal.open } : {}),
       ...(terminal.height !== undefined ? { height: terminal.height } : {})
     })
+  if (gitlog !== undefined)
+    useGitLogStore.setState({
+      ...(gitlog.open !== undefined ? { open: gitlog.open } : {}),
+      ...(gitlog.height !== undefined ? { height: gitlog.height } : {})
+    })
   // Эксклюзивность git/files: обе открыты в сохранённых настройках → остаётся git.
   if ((git?.open ?? false) && (files?.open ?? false)) {
     useFilesStore.setState({ open: false })
     persistPanel('files', { open: false })
+  }
+  // Эксклюзивность терминал/gitlog: оба открыты → остаётся терминал.
+  if ((terminal?.open ?? false) && (gitlog?.open ?? false)) {
+    useGitLogStore.setState({ open: false })
+    persistPanel('gitlog', { open: false })
   }
 }

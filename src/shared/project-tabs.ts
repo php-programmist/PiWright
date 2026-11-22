@@ -8,6 +8,8 @@ export interface SavedProjectTab {
   kind: ProjectTabKind
   /** file/diff — относительный путь; mcp/skills — вкладка одна на проект. */
   path?: string
+  /** diff — хеш коммита (дифф из истории). */
+  hash?: string
 }
 
 export interface ProjectTabsSnapshot {
@@ -43,8 +45,10 @@ export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnap
       const kind = (item as Record<string, unknown>)['kind']
       if (typeof kind !== 'string' || !kinds.includes(kind as ProjectTabKind)) continue
       const path = (item as Record<string, unknown>)['path']
+      const hash = (item as Record<string, unknown>)['hash']
       const tab: SavedProjectTab = { kind: kind as ProjectTabKind }
       if (typeof path === 'string' && path.length > 0) tab.path = path
+      if (typeof hash === 'string' && hash.length > 0) tab.hash = hash
       tabs.push(tab)
     }
     if (tabs.length === 0) continue

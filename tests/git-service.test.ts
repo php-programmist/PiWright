@@ -165,6 +165,75 @@ describe('GitService against a real repository', () => {
   })
 })
 
+describe('GitService commit history', () => {
+  let commit: string
+  let rootCommit: string
+
+  beforeAll(() => {
+    writeFileSync(join(dir, 'a.txt'), 'fourth')
+    writeFileSync(join(dir, 'c.txt'), 'added')
+    run('git add .')
+    run('git commit -q -m history-commit')
+    commit = execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf8' }).trim()
+    rootCommit = execSync('git rev-list --max-parents=0 HEAD', { cwd: dir, encoding: 'utf8' }).trim()
+  })
+
+  it('log returns author, date, parents and refs', async () => {
+    const log = await git.log(project)
+    const head = log.entries[0]
+    expect(head?.subject).toBe('history-commit')
+    expect(head?.author).toBe('test')
+    expect(head?.date).toBeGreaterThan(0)
+    expect(head?.parents.length).toBe(1)
+    expect(head?.refs).toContain('HEAD -> main')
+  })
+
+  it('commitFiles lists changed files of a commit', async () => {
+    const result = await git.commitFiles(project, commit)
+    expect(result.ok).toBe(true)
+    expect(result.files).toContainEqual({ status: 'M', path: 'a.txt', origPath: null })
+    expect(result.files).toContainEqual({ status: 'A', path: 'c.txt', origPath: null })
+  })
+
+  it('commitFiles rejects an invalid hash', async () => {
+    expect((await git.commitFiles(project, 'drop table;')).ok).toBe(false)
+  })
+
+  it('commitFileDiff returns parent and commit versions', async () => {
+    const result = await git.commitFileDiff(project, commit, 'a.txt')
+    expect(result.ok).toBe(true)
+    expect(result.original).toBe('third')
+    expect(result.modified).toBe('fourth')
+  })
+
+  it('commitFileDiff of an added file has an empty original, of a deleted file — empty modified', async () => {
+    const added = await git.commitFileDiff(project, commit, 'c.txt')
+    expect(added.ok).toBe(true)
+    expect(added.original).toBe('')
+    expect(added.modified).toBe('added')
+
+    run('git rm -q c.txt')
+    run('git commit -q -m remove-c')
+    const remove = execSync('git rev-parse HEAD', { cwd: dir, encoding: 'utf8' }).trim()
+    const deleted = await git.commitFileDiff(project, remove, 'c.txt')
+    expect(deleted.ok).toBe(true)
+    expect(deleted.original).toBe('added')
+    expect(deleted.modified).toBe('')
+  })
+
+  it('commitFileDiff of the root commit has an empty original', async () => {
+    const result = await git.commitFileDiff(project, rootCommit, 'a.txt')
+    expect(result.ok).toBe(true)
+    expect(result.original).toBe('')
+    expect(result.modified).toBe('hello')
+  })
+
+  it('commitFileDiff rejects invalid input', async () => {
+    expect((await git.commitFileDiff(project, 'zz', 'a.txt')).ok).toBe(false)
+    expect((await git.commitFileDiff(project, commit, '')).ok).toBe(false)
+  })
+})
+
 describe('GitService with a nested repository (bug 8)', () => {
   let outer: string
   let project: ProjectEntry

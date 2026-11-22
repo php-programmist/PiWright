@@ -10,6 +10,7 @@ type GitData = Pick<
   | 'loading'
   | 'error'
   | 'selectedPath'
+  | 'commitHash'
   | 'diff'
   | 'diffLoading'
   | 'message'
@@ -30,6 +31,8 @@ interface GitState {
   loading: boolean
   error: string | null
   selectedPath: string | null
+  /** Хеш коммита открытого диффа (null — дифф рабочей копии). */
+  commitHash: string | null
   diff: { original: string; modified: string } | null
   diffLoading: boolean
   message: string
@@ -43,6 +46,8 @@ interface GitState {
   /** Только статус; silent — не трогать error/status при сбое (поллинг, конец хода). */
   refreshStatus: (project: ProjectEntry, silent?: boolean) => Promise<void>
   openFile: (project: ProjectEntry, path: string) => Promise<void>
+  /** Дифф файла в коммите (из истории Git). */
+  openCommitFile: (project: ProjectEntry, hash: string, path: string) => Promise<void>
   closeFile: () => void
   stage: (project: ProjectEntry, paths: string[]) => Promise<void>
   unstage: (project: ProjectEntry, paths: string[]) => Promise<void>
@@ -66,6 +71,7 @@ function resetState(): GitData {
     loading: false,
     error: null,
     selectedPath: null,
+    commitHash: null,
     diff: null,
     diffLoading: false,
     message: '',
@@ -116,10 +122,20 @@ export const useGitStore = create<GitState>((set, get) => ({
   },
 
   openFile: async (project, path) => {
-    set({ selectedPath: path, diff: null, diffLoading: true, error: null })
+    set({ selectedPath: path, commitHash: null, diff: null, diffLoading: true, error: null })
     const result = await window.piwright.gitFileDiff(project, path)
     set((state) =>
-      state.selectedPath === path
+      state.selectedPath === path && state.commitHash === null
+        ? { diffLoading: false, diff: result.ok ? { original: result.original, modified: result.modified } : null, error: result.ok ? state.error : result.error }
+        : state
+    )
+  },
+
+  openCommitFile: async (project, hash, path) => {
+    set({ selectedPath: path, commitHash: hash, diff: null, diffLoading: true, error: null })
+    const result = await window.piwright.gitCommitFileDiff(project, hash, path)
+    set((state) =>
+      state.selectedPath === path && state.commitHash === hash
         ? { diffLoading: false, diff: result.ok ? { original: result.original, modified: result.modified } : null, error: result.ok ? state.error : result.error }
         : state
     )

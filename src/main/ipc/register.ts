@@ -23,6 +23,8 @@ import {
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
   GIT_LOG_CHANNEL,
+  GIT_COMMIT_FILES_CHANNEL,
+  GIT_COMMIT_FILE_DIFF_CHANNEL,
   GIT_PUSH_CHANNEL,
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
@@ -541,6 +543,20 @@ export function registerIpc(
   ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', entries: [] }
     return git.log(project)
+  })
+
+  ipcMain.handle(GIT_COMMIT_FILES_CHANNEL, async (_event, project: unknown, hash: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string' || hash.length === 0) {
+      return { ok: false, error: 'Invalid request', files: [] }
+    }
+    return git.commitFiles(project, hash)
+  })
+
+  ipcMain.handle(GIT_COMMIT_FILE_DIFF_CHANNEL, async (_event, project: unknown, hash: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string' || typeof path !== 'string' || path.length === 0) {
+      return { ok: false, error: 'Invalid request', original: '', modified: '' }
+    }
+    return git.commitFileDiff(project, hash, path)
   })
 
   ipcMain.handle(GIT_GENERATE_MESSAGE_CHANNEL, async (_event, project: unknown) => {

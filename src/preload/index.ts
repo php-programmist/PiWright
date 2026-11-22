@@ -40,6 +40,8 @@ import {
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
   GIT_LOG_CHANNEL,
+  GIT_COMMIT_FILES_CHANNEL,
+  GIT_COMMIT_FILE_DIFF_CHANNEL,
   GIT_PUSH_CHANNEL,
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
@@ -152,6 +154,8 @@ const api: PiWrightApi = {
   gitCommit: (project, message) => ipcRenderer.invoke(GIT_COMMIT_CHANNEL, project, message),
   gitPush: (project) => ipcRenderer.invoke(GIT_PUSH_CHANNEL, project),
   gitLog: (project) => ipcRenderer.invoke(GIT_LOG_CHANNEL, project),
+  gitCommitFiles: (project, hash) => ipcRenderer.invoke(GIT_COMMIT_FILES_CHANNEL, project, hash),
+  gitCommitFileDiff: (project, hash, path) => ipcRenderer.invoke(GIT_COMMIT_FILE_DIFF_CHANNEL, project, hash, path),
   gitBranches: (project) => ipcRenderer.invoke(GIT_BRANCHES_CHANNEL, project),
   gitCheckout: (project, name, create, startPoint) =>
     ipcRenderer.invoke(GIT_CHECKOUT_CHANNEL, project, name, create, startPoint ?? null),

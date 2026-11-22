@@ -45,7 +45,7 @@ export interface Settings {
   /** Язык интерфейса (дефолт English). */
   language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
-  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }
+  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
   expandedProjects: Record<string, boolean>
   /** Вкладки терминала на проект (ключ projectKey) — переименованные вкладки переоткрываются после перезапуска. */
@@ -86,7 +86,7 @@ export interface PanelPrefs {
   height?: number
 }
 
-export type PanelName = 'git' | 'files' | 'terminal'
+export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog'
 
 /** Сохранённая вкладка терминала: профиль + юзерское имя (пусто/undefined — имя профиля). */
 export interface SavedTerminalTab {
@@ -228,6 +228,23 @@ export interface GitStatus {
 export interface GitLogEntry {
   hash: string
   subject: string
+  author: string
+  /** Unix-время коммита (секунды). */
+  date: number
+  parents: string[]
+  /** Имена ref'ов, указывающих на коммит (ветки/теги, без origin/ префикса удалений — как отдал git). */
+  refs: string[]
+}
+
+/** Строка списка изменений коммита (`git diff-tree --name-status`). */
+export interface GitCommitFileEntry {
+  status: string
+  path: string
+  origPath: string | null
+}
+
+export interface GitCommitFilesResult extends GitOpResult {
+  files: GitCommitFileEntry[]
 }
 
 export interface GitOpResult {
@@ -248,6 +265,11 @@ export interface GitFileDiffResult extends GitOpResult {
 
 export interface GitLogResult extends GitOpResult {
   entries: GitLogEntry[]
+}
+
+export interface GitCommitFileDiffResult extends GitOpResult {
+  original: string
+  modified: string
 }
 
 export interface GitMessageResult extends GitOpResult {
@@ -500,6 +522,10 @@ export interface PiWrightApi {
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry): Promise<GitLogResult>
+  /** Список изменённых файлов коммита (diff против первого родителя). */
+  gitCommitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult>
+  /** Дифф файла в коммите: original = <hash>^:<path>, modified = <hash>:<path>. */
+  gitCommitFileDiff(project: ProjectEntry, hash: string, path: string): Promise<GitCommitFileDiffResult>
   gitBranches(project: ProjectEntry): Promise<GitBranchesResult>
   /** create — `git checkout -b <name> [startPoint]` (создать и переключиться), иначе `git checkout <name>`. */
   gitCheckout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult>
@@ -594,6 +620,8 @@ export const GIT_UNSTAGE_CHANNEL = 'git:unstage'
 export const GIT_COMMIT_CHANNEL = 'git:commit'
 export const GIT_PUSH_CHANNEL = 'git:push'
 export const GIT_LOG_CHANNEL = 'git:log'
+export const GIT_COMMIT_FILES_CHANNEL = 'git:commit-files'
+export const GIT_COMMIT_FILE_DIFF_CHANNEL = 'git:commit-file-diff'
 export const GIT_BRANCHES_CHANNEL = 'git:branches'
 export const GIT_CHECKOUT_CHANNEL = 'git:checkout'
 export const GIT_BRANCH_RENAME_CHANNEL = 'git:branch-rename'

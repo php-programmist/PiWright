@@ -98,12 +98,12 @@ export function TabBar(): React.JSX.Element | null {
   const activateTab = (tab: ProjectTab): void => {
     useTabsStore.getState().setActive(tab.project, tabId(tab))
     if (tab.kind === 'file') void useFilesStore.getState().openFile(tab.project, tab.path ?? '')
-    if (tab.kind === 'diff') void useGitStore.getState().openFile(tab.project, tab.path ?? '')
+    if (tab.kind === 'diff' && tab.hash === undefined) void useGitStore.getState().openFile(tab.project, tab.path ?? '')
   }
 
   const closeTabById = (tab: ProjectTab): void => {
     if (tab.kind === 'file') useFilesStore.getState().closeContent(tab.project, tab.path ?? '')
-    if (tab.kind === 'diff') {
+    if (tab.kind === 'diff' && tab.hash === undefined) {
       const git = useGitStore.getState()
       if (git.selectedPath === tab.path) git.closeFile()
     }
