@@ -225,6 +225,16 @@ const RU: Record<string, string> = {
 
   // Настройки — Расширенные возможности — Канбан
   'Kanban': 'Канбан',
+  'New board': 'Новая доска',
+  'Board name': 'Название доски',
+  'No boards yet': 'Досок пока нет',
+  'Board not found': 'Доска не найдена',
+  'Open board': 'Открыть доску',
+  'Rename board': 'Переименовать доску',
+  'Delete board': 'Удалить доску',
+  'Delete board "{name}"?': 'Удалить доску «{name}»?',
+  'Comments': 'Комментарии',
+  'Images': 'Картинки',
   'Enable kanban boards (agent tools and the boards panel)':
     'Включить канбан-доски (тулы агента и панель досок)',
   'Kanban explanation':

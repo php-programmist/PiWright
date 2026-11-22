@@ -22,7 +22,7 @@ export function useCenterProject(): ProjectEntry | null {
   return tab?.project ?? sessionRow?.project ?? (activeProjectKey !== null ? projectForKey(activeProjectKey) : null)
 }
 
-export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'transcript'
+export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'transcript'
 
 export interface ProjectTab {
   kind: TabKind
@@ -31,7 +31,9 @@ export interface ProjectTab {
   path?: string
   /** diff — хеш коммита (дифф файла в коммите из истории Git). */
   hash?: string
-  /** transcript — заголовок сессии. */
+  /** kanban — id доски. */
+  boardId?: string
+  /** transcript/kanban — заголовок (сессии / доски). */
   title?: string
   /** transcript — полная сводка для TranscriptView. */
   summary?: SessionSummary
@@ -42,8 +44,10 @@ export interface ProjectTabs {
   activeId: string | null
 }
 
-export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash'>): string {
-  if (tab.path === undefined) return tab.kind
+export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId'>): string {
+  if (tab.path === undefined) {
+    return tab.boardId === undefined ? tab.kind : `${tab.kind}\u0000${tab.boardId}`
+  }
   return tab.hash === undefined ? `${tab.kind}\u0000${tab.path}` : `${tab.kind}\u0000${tab.path}\u0000${tab.hash}`
 }
 
@@ -71,6 +75,8 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
           const savedTab: SavedProjectTab =
             t.path !== undefined ? { kind: t.kind as ProjectTabKind, path: t.path } : { kind: t.kind as ProjectTabKind }
           if (t.hash !== undefined) savedTab.hash = t.hash
+          if (t.boardId !== undefined) savedTab.boardId = t.boardId
+          if (t.title !== undefined && t.kind === 'kanban') savedTab.title = t.title
           return savedTab
         })
       const index = saved.findIndex((t) => tabId(t) === activeId)
@@ -130,7 +136,14 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       } else {
         const snap = useSessionsStore.getState().settings?.projectTabs[key]
         if (snap !== undefined) {
-          const tabs = snap.tabs.map((t) => ({ kind: t.kind, project: projectForKey(key), path: t.path, ...(t.hash !== undefined ? { hash: t.hash } : {}) }))
+          const tabs = snap.tabs.map((t) => ({
+            kind: t.kind,
+            project: projectForKey(key),
+            path: t.path,
+            ...(t.hash !== undefined ? { hash: t.hash } : {}),
+            ...(t.boardId !== undefined ? { boardId: t.boardId } : {}),
+            ...(t.title !== undefined ? { title: t.title } : {})
+          }))
           entry = {
             tabs,
             activeId: snap.activeIndex !== undefined && snap.activeIndex < tabs.length ? tabId(tabs[snap.activeIndex]) : null

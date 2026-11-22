@@ -48,7 +48,7 @@ export interface Settings {
   /** Язык интерфейса (дефолт English). */
   language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
-  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs }
+  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs; kanban?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
   expandedProjects: Record<string, boolean>
   /** Вкладки терминала на проект (ключ projectKey) — переименованные вкладки переоткрываются после перезапуска. */
@@ -89,7 +89,7 @@ export interface PanelPrefs {
   height?: number
 }
 
-export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog'
+export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban'
 
 /** Сохранённая вкладка терминала: профиль + юзерское имя (пусто/undefined — имя профиля). */
 export interface SavedTerminalTab {

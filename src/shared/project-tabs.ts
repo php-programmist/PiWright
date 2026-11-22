@@ -2,7 +2,7 @@
  *  не сохраняются: сессии не возобновляются при открытии проекта (решение юзера). */
 import type { Settings } from './ipc-contracts'
 
-export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills'
+export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban'
 
 export interface SavedProjectTab {
   kind: ProjectTabKind
@@ -10,6 +10,10 @@ export interface SavedProjectTab {
   path?: string
   /** diff — хеш коммита (дифф из истории). */
   hash?: string
+  /** kanban — id доски. */
+  boardId?: string
+  /** kanban — имя доски (для подписи вкладки). */
+  title?: string
 }
 
 export interface ProjectTabsSnapshot {
@@ -33,7 +37,7 @@ export function setProjectTabs(settings: Settings, key: string, snapshot: Projec
 export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnapshot> {
   const out: Record<string, ProjectTabsSnapshot> = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills']
+  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban']
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
     const rawTabs = (raw as Record<string, unknown>)['tabs']
@@ -46,9 +50,14 @@ export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnap
       if (typeof kind !== 'string' || !kinds.includes(kind as ProjectTabKind)) continue
       const path = (item as Record<string, unknown>)['path']
       const hash = (item as Record<string, unknown>)['hash']
+      const boardId = (item as Record<string, unknown>)['boardId']
+      const title = (item as Record<string, unknown>)['title']
       const tab: SavedProjectTab = { kind: kind as ProjectTabKind }
       if (typeof path === 'string' && path.length > 0) tab.path = path
       if (typeof hash === 'string' && hash.length > 0) tab.hash = hash
+      if (typeof boardId === 'string' && boardId.length > 0) tab.boardId = boardId
+      if (typeof title === 'string' && title.length > 0) tab.title = title
+      if (kind === 'kanban' && tab.boardId === undefined) continue
       tabs.push(tab)
     }
     if (tabs.length === 0) continue

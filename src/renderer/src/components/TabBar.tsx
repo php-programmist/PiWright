@@ -27,6 +27,7 @@ type T = (key: string, params?: Record<string, string | number>) => string
 function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
+  if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
   return tab.kind === 'mcp' ? t('MCP servers') : t('Skills')
 }
 
@@ -37,6 +38,7 @@ function typeLabel(kind: MenuState['kind'], t: T): string {
     case 'diff': return t('Diffs')
     case 'mcp': return t('MCP servers')
     case 'skills': return t('Skills')
+    case 'kanban': return t('Kanban')
     case 'transcript': return t('Transcripts')
   }
 }

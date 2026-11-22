@@ -220,7 +220,7 @@ export function registerIpc(
       if (raw['panels'] !== null && typeof raw['panels'] === 'object' && !Array.isArray(raw['panels'])) {
         const src = raw['panels'] as Record<string, unknown>
         const panels: Settings['panels'] = {}
-        for (const name of ['git', 'files', 'terminal'] as const) {
+        for (const name of ['git', 'files', 'terminal', 'kanban'] as const) {
           const p = src[name]
           if (p === null || typeof p !== 'object' || Array.isArray(p)) continue
           const entry: PanelPrefs = {}

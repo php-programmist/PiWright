@@ -7,6 +7,8 @@ import { FilesPanel } from './views/files/FilesPanel'
 import { FileViewer } from './views/files/FileViewer'
 import { TerminalPanel } from './views/terminal/TerminalPanel'
 import { GitLogPanel } from './views/git/GitLogPanel'
+import { KanbanPanel } from './views/kanban/KanbanPanel'
+import { BoardView } from './views/kanban/BoardView'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -21,6 +23,7 @@ import { useSessionsStore, projectKey } from './stores/sessions'
 import { parentTabKey, tabId, useTabsStore, useCenterProject } from './stores/tabs'
 import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
+import { useKanbanStore } from './stores/kanban'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { applyAppearance } from './lib/appearance'
 import { useT } from './lib/i18n'
@@ -38,6 +41,7 @@ export function App(): React.JSX.Element {
   const filesOpen = useFilesStore((s) => s.open)
   const termOpen = useTerminalStore((s) => s.open)
   const gitLogOpen = useGitLogStore((s) => s.open)
+  const kanbanOpen = useKanbanStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
   const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
   const tabEntry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
@@ -89,6 +93,10 @@ export function App(): React.JSX.Element {
       useFilesStore.getState().toggleOpen()
       persistPanel('files', { open: false })
     }
+    if (useGitStore.getState().open && useKanbanStore.getState().open) {
+      useKanbanStore.getState().toggleOpen()
+      persistPanel('kanban', { open: false })
+    }
     persistPanel('git', { open: useGitStore.getState().open })
   }
   const toggleFiles = (): void => {
@@ -97,7 +105,26 @@ export function App(): React.JSX.Element {
       useGitStore.getState().toggleOpen()
       persistPanel('git', { open: false })
     }
+    if (useFilesStore.getState().open && useKanbanStore.getState().open) {
+      useKanbanStore.getState().toggleOpen()
+      persistPanel('kanban', { open: false })
+    }
     persistPanel('files', { open: useFilesStore.getState().open })
+  }
+  // Канбан делит правый рельс с git/files: открытие закрывает обе.
+  const toggleKanban = (): void => {
+    useKanbanStore.getState().toggleOpen()
+    if (useKanbanStore.getState().open) {
+      if (useGitStore.getState().open) {
+        useGitStore.getState().toggleOpen()
+        persistPanel('git', { open: false })
+      }
+      if (useFilesStore.getState().open) {
+        useFilesStore.getState().toggleOpen()
+        persistPanel('files', { open: false })
+      }
+    }
+    persistPanel('kanban', { open: useKanbanStore.getState().open })
   }
   const toggleTerm = (): void => {
     useTerminalStore.getState().toggleOpen()
@@ -206,6 +233,8 @@ export function App(): React.JSX.Element {
                   <FileViewer key={activeTab.path} tab={activeTab} />
                 ) : activeTab.kind === 'diff' ? (
                   <DiffOverlay key={tabId(activeTab)} tab={activeTab} />
+                ) : activeTab.kind === 'kanban' ? (
+                  <BoardView key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'mcp' ? (
                   <McpView onClose={closeActiveTab} />
                 ) : activeTab.kind === 'skills' ? (
@@ -217,6 +246,7 @@ export function App(): React.JSX.Element {
               <div className="right-side">
                 {gitOpen && <GitPanel />}
                 {filesOpen && <FilesPanel />}
+                {kanbanOpen && <KanbanPanel />}
               </div>
             </div>
             {termOpen && <TerminalPanel />}
@@ -238,6 +268,13 @@ export function App(): React.JSX.Element {
                   strokeWidth="1.3"
                   strokeLinejoin="round"
                 />
+              </svg>
+            </button>
+            <button className={kanbanOpen ? 'active' : ''} title={t('Kanban')} onClick={toggleKanban}>
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                <rect x="1.5" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <rect x="6.2" y="2.5" width="3.6" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <rect x="10.9" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
               </svg>
             </button>
             <button
