@@ -126,6 +126,7 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const [board, setBoard] = useState<KanbanBoard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [modalCardId, setModalCardId] = useState<string | null>(null)
+  const [workflowOpen, setWorkflowOpen] = useState(false)
   const [dragCardId, setDragCardId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const dragCardRef = useRef<string | null>(null)
@@ -314,6 +315,7 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
         <span className="board-title">{board.name}</span>
         <span className="board-rev">rev {board.rev}</span>
         <button className="board-column-btn board-head-refresh" title={t('Refresh')} onClick={reload}>↻</button>
+        <button className="board-column-btn board-head-workflow" title={t('Edit workflow')} onClick={() => setWorkflowOpen(true)}>⚙</button>
         <button
           className="board-column-btn board-head-add"
           title={t('Add column')}
@@ -438,6 +440,76 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
           onClose={() => setModalCardId(null)}
         />
       )}
+      {workflowOpen && <WorkflowModal tab={tab} board={board} apply={apply} onClose={() => setWorkflowOpen(false)} />}
+    </div>
+  )
+}
+
+function WorkflowModal({
+  tab,
+  board,
+  apply,
+  onClose,
+}: {
+  tab: ProjectTab
+  board: KanbanBoard
+  apply: (result: KanbanMutationResult) => void
+  onClose: () => void
+}): React.JSX.Element {
+  const t = useT()
+  const [text, setText] = useState(board.workflow)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const save = (): void => {
+    if (text === board.workflow) {
+      onClose()
+      return
+    }
+    void window.piwright.kanbanWorkflowSet(tab.project, board.id, text).then((result) => {
+      apply(result)
+      if (result.ok) onClose()
+    })
+  }
+
+  return (
+    <div
+      className="board-modal-overlay"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="board-modal board-workflow-modal">
+        <header className="board-modal-head">
+          <span className="board-modal-heading">{t('Edit workflow')}</span>
+          <button className="settings-close" title={t('Close')} onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <div className="board-modal-body">
+          <textarea
+            className="board-workflow-textarea"
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.ctrlKey && e.key === 'Enter') save()
+            }}
+          />
+        </div>
+        <footer className="board-modal-foot board-workflow-foot">
+          <button className="board-primary" onClick={save}>
+            {t('Save')}
+          </button>
+          <button onClick={onClose}>{t('Cancel')}</button>
+        </footer>
+      </div>
     </div>
   )
 }

@@ -238,6 +238,7 @@ const RU: Record<string, string> = {
   'Add card': 'Добавить карточку',
   'Card title': 'Название карточки',
   'Add column': 'Добавить колонку',
+  'Edit workflow': 'Редактировать workflow',
   'Column name': 'Название колонки',
   'Rename column': 'Переименовать колонку (двойной клик)',
   'Delete column': 'Удалить колонку',
