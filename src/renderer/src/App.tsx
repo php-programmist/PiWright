@@ -139,12 +139,15 @@ export function App(): React.JSX.Element {
       const event = message.event
       if (event.type === 'turn_end' || event.type === 'dialog_open' || event.type === 'turn_error' || (event.type === 'notify' && event.isError)) {
         const kind = event.type === 'turn_end' ? 'completion' : event.type === 'dialog_open' ? 'await' : 'error'
-        playNotificationSound(
-          message.hostId,
-          kind,
-          useSessionsStore.getState().settings?.notifications.sounds,
-          useChatStore.getState().hosts[message.hostId]?.muted ?? false
-        )
+        // Check-ход петли — служебный, без звука.
+        if (!(event.type === 'turn_end' && event.check === true)) {
+          playNotificationSound(
+            message.hostId,
+            kind,
+            useSessionsStore.getState().settings?.notifications.sounds,
+            useChatStore.getState().hosts[message.hostId]?.muted ?? false
+          )
+        }
       }
       // Петля перешла на новую сессию: если юзер смотрел прошлую — следуем за петлёй.
       if (message.event.type === 'loop_state' && message.event.info.active && message.event.previousHostId !== null) {

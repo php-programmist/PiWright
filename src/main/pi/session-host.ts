@@ -137,6 +137,8 @@ export class SessionHost {
   private turnEndTimer: NodeJS.Timeout | null = null
   /** В ходе был вызов Agent/SubagentWorkflow — спавн уходит асинхронно, нужен грейс-окно. */
   private subagentToolSeen = false
+  /** Check-ход петли: его turn_end помечается check — без звука и Telegram-уведомления. */
+  private checkTurnPending = false
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
@@ -321,6 +323,7 @@ export class SessionHost {
         this.cancelTurnEndTimer()
         this.turnEndHandled = false
         this.waitingSubagents = false
+        this.checkTurnPending = false
         const message = cause !== null || exitCode !== null
           ? `pi exited (code ${exitCode ?? '?'}). stderr: ${stderrTail || '—'}`
           : 'pi exited'
@@ -450,9 +453,16 @@ export class SessionHost {
 
   private finishTurnEnd(): void {
     this.waitingSubagents = false
-    this.emit({ type: 'turn_end' })
+    const check = this.checkTurnPending
+    this.checkTurnPending = false
+    this.emit(check ? { type: 'turn_end', check: true } : { type: 'turn_end' })
     this.status('ready')
     this.refreshSessionStats()
+  }
+
+  /** Петля помечает свой check-промпт: ход завершится turn_end без звука и уведомления. */
+  markCheckTurn(): void {
+    this.checkTurnPending = true
   }
 
   private cancelTurnEndTimer(): void {
@@ -731,6 +741,7 @@ export class SessionHost {
     const response = await conn.request(command, fields)
     if (!response.success) {
       if (behavior === undefined) this.ownPromptPending = false
+      this.checkTurnPending = false
       const error = `${response.command} failed: ${response.error ?? 'no details'}`
       this.status('error', error)
       return { ok: false, error }

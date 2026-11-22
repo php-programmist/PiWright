@@ -26,6 +26,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
           project,
           displayTitle: 'base',
           getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
+          markCheckTurn: () => {},
           prompt: (text: string) => {
             checks.push(text)
             return Promise.resolve({ ok: true, error: null })
@@ -39,6 +40,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
           project,
           displayTitle: 'base',
           getPendingDialogs: () => [],
+          markCheckTurn: () => {},
           prompt: (text: string) => {
             made.prompts.push(text)
             return Promise.resolve({ ok: true, error: null })
@@ -56,6 +58,7 @@ function fakePiHost(pendingDialogs: string[] = []): { piHost: PiHost; created: C
         project,
         displayTitle: 'base',
         getPendingDialogs: () => [],
+        markCheckTurn: () => {},
         rename: (name: string) => {
           session.renames.push(name)
           return Promise.resolve({ ok: true, error: null })

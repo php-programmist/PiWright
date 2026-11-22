@@ -19,7 +19,11 @@ export class NotificationHub {
   onEvent(message: PiEventMessage): void {
     const event = message.event
     let kind: RemoteNotifyKind | null = null
-    if (event.type === 'turn_end') kind = 'turnEnd'
+    if (event.type === 'turn_end') {
+      // Check-ход петли — служебный, без уведомления.
+      if (event.check === true) return
+      kind = 'turnEnd'
+    }
     else if (event.type === 'dialog_open') kind = event.dialog.kind === 'confirm' ? 'permission' : 'question'
     else if (event.type === 'notify' && event.isError) kind = 'error'
     if (kind === null) return

@@ -297,6 +297,7 @@ export class LoopController {
       this.spawnNext(hostId, state)
       return
     }
+    host.markCheckTurn()
     void host
       .prompt(checkPrompt(state.exitCondition))
       .then((result) => {

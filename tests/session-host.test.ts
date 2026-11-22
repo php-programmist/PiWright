@@ -526,6 +526,38 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('markCheckTurn tags the next turn_end with check:true', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData('{"type":"agent_start"}\n{"type":"agent_end"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events } = makeHost([child])
+    host.markCheckTurn()
+    await host.prompt('check exit condition')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_end' && (e as { check?: boolean }).check === true)).toBe(true)
+    })
+    // Флаг одноразовый: следующий обычный ход — обычный turn_end.
+    await host.prompt('normal turn')
+    await vi.waitFor(() => {
+      expect(events.filter((e) => e.type === 'turn_end')).toHaveLength(2)
+    })
+    const last = events.filter((e) => e.type === 'turn_end')[1] as { check?: boolean }
+    expect(last.check).toBeUndefined()
+    host.dispose()
+  })
+
   it('turn with the Agent tool but no subagent activity waits the grace window, then resolves', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

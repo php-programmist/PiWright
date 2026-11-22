@@ -135,6 +135,11 @@ describe('NotificationHub', () => {
     expect(sent).toEqual([])
   })
 
+  it('check turn_end (loop check prompt) suppresses sending', () => {
+    hub({ chatId: '42' }).onEvent(event({ type: 'turn_end', check: true }))
+    expect(sent).toEqual([])
+  })
+
   it('confirm dialog sends permission, other dialogs send question', () => {
     const h = hub({ chatId: '42' })
     h.onEvent(event({ type: 'dialog_open', id: '1', dialog: { kind: 'confirm', title: 'run?', message: null, timeoutMs: null } }))
