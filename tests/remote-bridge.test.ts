@@ -64,8 +64,16 @@ function fakeHost(
 
 function fakePiHost(hosts: SessionHost[]): PiHost {
   return {
-    statuses: () => hosts.map((h) => ({ hostId: (h as unknown as { id: string }).id })),
-    get: (hostId: string) => hosts.find((h) => (h as unknown as { id: string }).id === hostId) ?? null
+    statuses: () => hosts.map((h) => ({ hostId: (h as unknown as { id: string }).id, project })),
+    get: (hostId: string) => hosts.find((h) => (h as unknown as { id: string }).id === hostId) ?? null,
+    create: (proj: ProjectEntry) => {
+      const created = fakeHost()
+      const mutable = created as unknown as { id: string; project: ProjectEntry }
+      mutable.id = `host-${hosts.length + 1}`
+      mutable.project = proj
+      hosts.push(created)
+      return created
+    }
   } as unknown as PiHost
 }
 
@@ -325,6 +333,41 @@ describe('RemoteBridge', () => {
     bridge['onText'](socket, JSON.stringify({ type: 'visibility', visible: true, atBottom: true }))
     remote.tap(JSON.stringify({ type: 'agent_settled' }))
     expect(remote.unread).toBe(false)
+  })
+
+  it('create_session: сессия сразу расшарена, телефон получает remote id и attach проходит', async () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const socket = fakeSocket(9)
+    bridge['onOpen'](socket)
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'create_session', name: 'from phone' }))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    const created = socket.lines.map((l) => JSON.parse(l) as { type: string; id?: string }).find((f) => f.type === 'session_created')
+    expect(created?.id).toBeDefined()
+    expect(created?.id).not.toBe('host-2')
+    expect(bridge.sharedFor('host-2')).toBe(true)
+    const list = socket.lines.map((l) => JSON.parse(l) as { type: string; sessions?: { id: string }[] }).filter((f) => f.type === 'sessions').at(-1)
+    expect(list?.sessions?.map((s) => s.id)).toContain(created?.id)
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: created?.id }))
+    expect(socket.lines.map((l) => JSON.parse(l) as { type: string }).some((f) => f.type === 'attached')).toBe(true)
+  })
+
+  it('unshare с телефона снимает флаг Remote — сессия не возвращается в список', async () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(1)
+    bridge['onOpen'](socket)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    bridge['onText'](socket, JSON.stringify({ type: 'unshare', id: remote.id }))
+    expect(bridge.sharedFor('host-1')).toBe(false)
+    expect([...bridge['sessions'].values()]).toHaveLength(0)
+    bridge.syncSessions()
+    expect([...bridge['sessions'].values()]).toHaveLength(0)
+    const list = socket.lines.map((l) => JSON.parse(l) as { type: string; sessions?: unknown[] }).filter((f) => f.type === 'sessions').at(-1)
+    expect(list?.sessions).toHaveLength(0)
   })
 
   it('unknown frame type answers with error', () => {

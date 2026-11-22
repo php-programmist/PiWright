@@ -104,25 +104,30 @@ export class RemoteBridge {
   // ------------------------------------------------------------- lifecycle
 
   /** Синхронизация реестра с живыми сессиями: расшаренные — регистрируются, мёртвые и
-   *  расшаренные — снимаются. */
+   *  расшаренные — снимаются. Живость хоста берём из piHost.get — у новой сессии до первого
+   *  статуса lastStatus() ещё null, и по statuses() она была бы потеряна. */
   syncSessions(): void {
-    const statuses = this.piHost.statuses()
-    const live = new Set(statuses.map((s) => s.hostId))
     for (const [hostId, remote] of this.sessionsByHost) {
-      if (!live.has(hostId) || !this.sharedHostIds.has(hostId)) {
+      const alive = this.piHost.get(hostId) !== null
+      if (!alive || !this.sharedHostIds.has(hostId)) {
         this.unregister(remote)
-        if (!live.has(hostId)) this.sharedHostIds.delete(hostId)
+        if (!alive) this.sharedHostIds.delete(hostId)
       }
     }
-    for (const status of statuses) {
-      if (!this.sharedHostIds.has(status.hostId) || this.sessionsByHost.has(status.hostId)) continue
-      const host = this.piHost.get(status.hostId)
+    for (const hostId of this.sharedHostIds) {
+      if (this.sessionsByHost.has(hostId)) continue
+      const host = this.piHost.get(hostId)
       if (host === null) continue
-      const remote = new RemoteSession(host, (line) => this.handleLine(remote, line))
-      this.sessions.set(remote.id, remote)
-      this.sessionsByHost.set(host.id, remote)
-      host.addRemoteTap(remote.tap)
+      this.registerHost(host)
     }
+  }
+
+  private registerHost(host: SessionHost): RemoteSession {
+    const remote = new RemoteSession(host, (line) => this.handleLine(remote, line))
+    this.sessions.set(remote.id, remote)
+    this.sessionsByHost.set(host.id, remote)
+    host.addRemoteTap(remote.tap)
+    return remote
   }
 
   unregister(remote: RemoteSession): void {
@@ -328,10 +333,7 @@ export class RemoteBridge {
       }
       case 'unshare': {
         const remote = this.targetSession(socket, frame)
-        if (remote !== undefined) {
-          this.unregister(remote)
-          this.broadcastSessions()
-        }
+        if (remote !== undefined) this.setSharedByHost(remote.host.id, false)
         return
       }
       case 'create_session':
@@ -538,9 +540,11 @@ export class RemoteBridge {
         })
         .catch(() => {})
     }
+    this.sharedHostIds.add(host.id)
     this.syncSessions()
     this.broadcastSessions()
-    socket.send(JSON.stringify(sessionCreatedFrame(host.id)))
+    const remote = this.sessionsByHost.get(host.id)
+    socket.send(JSON.stringify(sessionCreatedFrame(remote?.id ?? host.id)))
   }
 
   private async sendCatalog(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
