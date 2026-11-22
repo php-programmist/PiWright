@@ -53,6 +53,14 @@ export function ensureEntry(id: string): Entry {
   } catch {
     // WebGL недоступен — остаётся канвас/DOM-рендерер
   }
+  // Ctrl+V: xterm оценивает Ctrl-комбинации по символу раскладки (key/keyCode), на русской
+  // раскладке вместо \x16 в pty уходит литеральная «м». Отпускаем нативную вставку — её
+  // поймает paste-слушатель xterm и отправит текст в pty. Проверка по event.code — физическая
+  // клавиша, не зависит от раскладки.
+  term.attachCustomKeyEventHandler((event) => {
+    if (event.type === 'keydown' && event.ctrlKey && !event.altKey && !event.metaKey && event.code === 'KeyV') return false
+    return true
+  })
   const host = document.createElement('div')
   host.className = 'term-host'
   term.open(host)
