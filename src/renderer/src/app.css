@@ -3196,15 +3196,27 @@ body {
   background: var(--hover-strong);
 }
 
-.term-profile-select {
-  background: var(--input-bg);
-  color: var(--muted);
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  padding: 2px 6px;
-  font: inherit;
-  font-size: 12px;
-  max-width: 140px;
+.term-profile-arrow {
+  font-size: 10px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+}
+
+.term-profile-arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.term-collapse {
+  font-size: 10px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+}
+
+.tab-menu-item.current {
+  color: var(--accent);
 }
 
 .term-body {

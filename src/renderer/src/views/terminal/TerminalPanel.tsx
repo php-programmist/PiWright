@@ -55,6 +55,24 @@ export function TerminalPanel(): React.JSX.Element {
   const t = useT()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameText, setRenameText] = useState('')
+  const [profileMenu, setProfileMenu] = useState<{ x: number; y: number } | null>(null)
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (profileMenu === null) return
+    const onDown = (e: MouseEvent): void => {
+      if (profileMenuRef.current !== null && !profileMenuRef.current.contains(e.target as Node)) setProfileMenu(null)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setProfileMenu(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [profileMenu])
 
   const startRename = (id: string, current: string): void => {
     setRenamingId(id)
@@ -161,21 +179,49 @@ export function TerminalPanel(): React.JSX.Element {
         <button className="term-new" title={t('New terminal (default profile)')} onClick={() => void spawn(project)}>
           +
         </button>
-        <span className="spacer" />
-        <select
-          className="term-profile-select"
+        <button
+          className="term-new term-profile-arrow"
           title={t('Profile for new terminal')}
-          value={defaultProfileId ?? ''}
           disabled={profiles.length === 0}
-          onChange={(e) => void spawn(project, e.target.value as TerminalProfileId)}
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            setProfileMenu((prev) => (prev !== null ? null : { x: rect.left, y: rect.bottom + 4 }))
+          }}
         >
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <span className="spacer" />
+        <button
+          className="term-new term-collapse"
+          title={t('Collapse terminal')}
+          onClick={() => {
+            useTerminalStore.getState().toggleOpen()
+            persistPanel('terminal', { open: false })
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <line x1="1.5" y1="5" x2="8.5" y2="5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
+      {profileMenu !== null && (
+        <div className="tab-menu" style={{ left: profileMenu.x, top: profileMenu.y }} ref={profileMenuRef}>
+          {profiles.map((p) => (
+            <button
+              key={p.id}
+              className={`tab-menu-item${p.id === defaultProfileId ? ' current' : ''}`}
+              onClick={() => {
+                setProfileMenu(null)
+                void spawn(project, p.id as TerminalProfileId)
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <TerminalError />
       <div className="term-body">
         {activeId !== null && projectKey !== null && <TermMount key={activeId} id={activeId} />}

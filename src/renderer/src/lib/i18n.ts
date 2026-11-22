@@ -187,6 +187,7 @@ const RU: Record<string, string> = {
   'No terminals — press + or pick a profile': 'Нет терминалов — нажмите + или выберите профиль',
   'New terminal (default profile)': 'Новый терминал (профиль по умолчанию)',
   'Profile for new terminal': 'Профиль нового терминала',
+  'Collapse terminal': 'Свернуть терминал',
   'Close terminal': 'Закрыть терминал',
   'Rename terminal': 'Переименовать терминал (двойной клик)',
 
