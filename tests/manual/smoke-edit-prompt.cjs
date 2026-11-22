@@ -14,19 +14,18 @@ async function main() {
   console.log('user messages:', before)
   // Карандаш появляется по ховеру
   const first = page.locator('.user-message').last()
-  await first.hover()
-  const pencil = first.locator('.user-edit')
-  console.log('pencil visible on hover:', await pencil.isVisible())
+  const original = await first.textContent()
+  const pencil = first.locator('..').locator('.msg-action')
+  console.log('pencil visible without hover:', await pencil.isVisible())
   await pencil.click()
   await page.waitForSelector('.user-message.editing .user-edit-area', { timeout: 5000 })
   const value = await page.locator('.user-edit-area').inputValue()
-  console.log('editor opened, draft equals original:', value === (await first.textContent()))
+  console.log('editor opened, draft equals original:', value === original)
   // Escape закрывает редактор
   await page.locator('.user-edit-area').press('Escape')
   const editingCount = await page.locator('.user-message.editing').count()
   console.log('editor closed after Escape:', editingCount === 0)
   // Кнопки Cancel/Send существуют
-  await first.hover()
   await pencil.click()
   const buttons = await page.locator('.user-edit-actions button').allTextContents()
   console.log('edit actions:', JSON.stringify(buttons))

@@ -36,15 +36,11 @@ async function main() {
   console.log('assistant answered')
 
   const count = await page.$$eval('.transcript .assistant-message', (els) => els.length)
-  const opacity = await page.$eval('.transcript .assistant-fork', (el) => getComputedStyle(el).opacity)
-  console.log('assistant messages:', count, 'fork opacity before hover:', opacity)
+  const forkVisible = await page.$$eval('.transcript .msg-action', (els) => els.filter((e) => e.offsetParent !== null).length)
+  console.log('assistant messages:', count, 'always-visible fork buttons:', forkVisible)
 
   const msg = await page.$('.transcript .assistant-message')
-  await msg.hover()
-  await page.waitForTimeout(300)
-  const opacityHover = await page.$eval('.transcript .assistant-fork', (el) => getComputedStyle(el).opacity)
-  console.log('fork opacity on hover:', opacityHover)
-  await page.click('.transcript .assistant-message .assistant-fork')
+  await page.click('.transcript .assistant-message .msg-action')
 
   // wait for the forked session to appear and become active
   await page.waitForFunction(

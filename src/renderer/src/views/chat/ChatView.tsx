@@ -85,7 +85,7 @@ export function ChatThinkingSummary(): React.JSX.Element {
   return <summary>{t('thinking')}</summary>
 }
 
-/** Ответ агента; ветка по ховеру форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
+/** Ответ агента; кнопка под сообщением форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
 function AssistantMessage({ entry, onFork }: { entry: TextEntry; onFork?: (entry: TextEntry) => void }): React.JSX.Element {
   const t = useT()
   return (
@@ -93,7 +93,7 @@ function AssistantMessage({ entry, onFork }: { entry: TextEntry; onFork?: (entry
       <Markdown text={entry.text} />
       {onFork !== undefined && (
         <button
-          className="assistant-fork"
+          className="msg-action"
           title={t('Fork into a new session from this point')}
           onClick={() => onFork(entry)}
         >
@@ -120,7 +120,8 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
       if (onEdit !== undefined && draft.trim().length > 0 && draft !== entry.text) onEdit(entry, draft)
     }
     return (
-      <div className="user-message editing">
+      <div className="user-entry">
+        <div className="user-message editing">
         <textarea
           className="user-edit-area"
           value={draft}
@@ -143,15 +144,16 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
             {t('Send')}
           </button>
         </div>
+        </div>
       </div>
     )
   }
   return (
-    <div className="user-message">
-      {entry.text}
+    <div className="user-entry">
+      <div className="user-message">{entry.text}</div>
       {onEdit !== undefined && (
         <button
-          className="user-edit"
+          className="msg-action"
           title={t('Edit prompt and resend')}
           onClick={() => {
             setDraft(entry.text)
