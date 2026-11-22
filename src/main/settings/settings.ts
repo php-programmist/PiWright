@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   singleLineTools: false,
   sendOnEnter: false,
   loopsEnabled: false,
+  loopCloseSession: false,
   kanbanEnabled: false,
   language: 'en',
   panels: {},

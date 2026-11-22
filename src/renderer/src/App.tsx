@@ -25,6 +25,7 @@ import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
 import { useKanbanStore } from './stores/kanban'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
+import { closeSessionAndSweepWorktree } from './lib/worktree-cleanup'
 import { applyAppearance } from './lib/appearance'
 import { useT } from './lib/i18n'
 import { playNotificationSound } from './lib/sounds'
@@ -187,6 +188,8 @@ export function App(): React.JSX.Element {
         useChatStore.getState().carryOverLoopFlags(message.event.previousHostId, message.hostId)
         const st = useSessionsStore.getState()
         if (st.activeHostId === message.event.previousHostId) st.setActive(message.hostId)
+        // Чекбокс «Закрывать сессию после завершения цикла»: родительская вкладка закрывается.
+        if (st.settings?.loopCloseSession === true) void closeSessionAndSweepWorktree(message.event.previousHostId, false)
       }
       if (message.event.type !== 'turn_end') return
       const watching = useSessionsStore.getState().activeHostId === message.hostId && atBottomMap.get(message.hostId) === true

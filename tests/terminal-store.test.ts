@@ -21,6 +21,7 @@ const baseSettings: Settings = {
   singleLineTools: false,
   sendOnEnter: false,
   loopsEnabled: false,
+  loopCloseSession: false,
   kanbanEnabled: false,
   language: 'en',
   panels: {},

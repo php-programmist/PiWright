@@ -252,6 +252,16 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 />
                 {t('Enable loops (the Loop checkbox near the prompt field and in Remote)')}
               </label>
+              {draft.loopsEnabled && (
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    checked={draft.loopCloseSession}
+                    onChange={(e) => update({ loopCloseSession: e.target.checked })}
+                  />
+                  {t('Close the session after the loop cycle ends')}
+                </label>
+              )}
               <div className="panel-hint">{t('Loops explanation')}</div>
             </section>
           )}

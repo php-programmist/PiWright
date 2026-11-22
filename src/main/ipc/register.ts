@@ -214,6 +214,9 @@ export function registerIpc(
       if (typeof raw['loopsEnabled'] === 'boolean') {
         safe.loopsEnabled = raw['loopsEnabled']
       }
+      if (typeof raw['loopCloseSession'] === 'boolean') {
+        safe.loopCloseSession = raw['loopCloseSession']
+      }
       if (typeof raw['kanbanEnabled'] === 'boolean') {
         safe.kanbanEnabled = raw['kanbanEnabled']
       }

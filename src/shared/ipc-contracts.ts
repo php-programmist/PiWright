@@ -43,6 +43,8 @@ export interface Settings {
   sendOnEnter: boolean
   /** Петли (авто-продолжение промпта в новых сессиях): чекбокс у поля промпта, Remote-петля, loop-stop расширение. */
   loopsEnabled: boolean
+  /** Закрывать родительскую сессию после того, как петля открыла новую вкладку. */
+  loopCloseSession: boolean
   /** Канбан-доски проекта: бандл-расширение resources/kanban (туы агента) + UI-панель. */
   kanbanEnabled: boolean
   /** Язык интерфейса (дефолт English). */
