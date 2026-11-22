@@ -571,7 +571,7 @@ export interface PiWrightApi {
   editPrompt(hostId: string, text: string, occurrence: number, newText: string): Promise<PromptResult>
   /** Форк сессии после ответа агента в новую сессию (родитель не меняется): userText — следующий за ответом промпт (null — клон всей сессии), occurrence — номер вхождения текста среди промптов с конца. */
   forkSession(hostId: string, userText: string | null, occurrence: number): Promise<ForkSessionResult>
-  /** Стартовать петлю на сессии: промпт повторяется в новых сессиях, пока ход содержит вызовы инструментов; exitCondition дописывается в каждую итерацию. */
+  /** Стартовать петлю на сессии: промпт повторяется в новых сессиях, пока ход содержит вызовы инструментов; exitCondition дописывается в каждую итерацию, пустая строка — петля без условия выхода (только лимит итераций). */
   loopStart(hostId: string, prompt: string, maxIterations: number, exitCondition: string): Promise<PromptResult>
   /** Остановить петлю: следующая итерация не начнётся, текущий ход не прерывается. */
   loopStop(hostId: string): Promise<PromptResult>

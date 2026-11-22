@@ -1386,10 +1386,6 @@ function sendPrompt(behavior) {
   const text = input.value.trim();
   if (!text || !attached) return;
   const startingLoop = loopsEnabled && loopEnabled && !(loopInfo && loopInfo.active);
-  if (startingLoop && loopExitInput.value.trim().length === 0) {
-    addInfo("Укажите условие выхода из петли", true);
-    return;
-  }
   input.value = "";
   draftBySession.set(attached.id, "");
   autoGrow();

@@ -392,6 +392,19 @@ describe('RemoteBridge', () => {
     expect(socket.lines).toHaveLength(0)
   })
 
+  it('prompt with loop field without exit starts the loop with an empty exit condition', () => {
+    const host = fakeHost()
+    const loops = fakeLoops()
+    const { bridge } = sharedBridge([host], loops, { loopsEnabled: true })
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(3)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5 } }))
+    expect(loops.start).toHaveBeenCalledWith('host-1', 'do it', 5, '')
+    expect(socket.lines).toHaveLength(0)
+  })
+
   it('prompt with loop field is rejected when loops are disabled', () => {
     const host = fakeHost()
     const loops = fakeLoops()

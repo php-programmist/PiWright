@@ -403,8 +403,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     const text = input.trim()
     if (text.length === 0) return
     const startingLoop = !streaming && loopsEnabled && loopEnabled && !loopActive
-    // Чекбокс «Петля» обязывает прописать условие выхода — без него ход не отправляется.
-    if (startingLoop && loopExit.trim().length === 0) return
     setInput('')
     addUserMessage(activeHostId, text)
     const images = pendingImages.map((img) => img.name)
@@ -935,7 +933,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           <textarea
             className="loop-exit"
             value={loopExit}
-            placeholder={t('Loop exit condition (required): the loop stops when the agent calls loop_stop')}
+            placeholder={t('Loop exit condition (optional): the loop stops when the agent calls loop_stop; empty — the loop runs until the iteration limit')}
             rows={1}
             onChange={(e) => setLoopExit(e.target.value)}
             onKeyDown={(e) => {
@@ -975,7 +973,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {t('Steer')}
           </button>
         )}
-        <button onClick={() => void send()} disabled={input.trim().length === 0 || (loopSplit && loopExit.trim().length === 0)}>
+        <button onClick={() => void send()} disabled={input.trim().length === 0}>
           {t('Send')}
         </button>
       </footer>

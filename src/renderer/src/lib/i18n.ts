@@ -83,7 +83,7 @@ const RU: Record<string, string> = {
   'Loop': 'Петля',
   'Loop iterations left': 'Осталось итераций петли',
   'Loop: repeat this prompt in fresh sessions; the loop stops when the agent calls loop_stop over the exit condition': 'Петля: повторять промпт в новых сессиях; остановится, когда агент вызовет loop_stop по условию выхода',
-  'Loop exit condition (required): the loop stops when the agent calls loop_stop': 'Условие выхода из петли (обязательно): агент проверяет его каждую итерацию и вызывает loop_stop, когда оно выполнено',
+  'Loop exit condition (optional): the loop stops when the agent calls loop_stop; empty — the loop runs until the iteration limit': 'Условие выхода из петли (необязательно): агент проверяет его каждую итерацию и вызывает loop_stop, когда оно выполнено; пустое — петля идёт до лимита итераций',
   'Loop stopped': 'Петля остановлена',
   'the turn had no tool calls': 'ход без вызовов инструментов',
   'exit condition met': 'условие выхода выполнено',

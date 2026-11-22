@@ -133,6 +133,34 @@ describe('LoopController (auto-continue with check turn)', () => {
     expect(loopState(controller, 'host-1')).toMatchObject({ active: true })
   })
 
+  it('empty exit condition skips the check and spawns the next iteration right away', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'do the task', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(0)
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts).toEqual(['do the task'])
+    expect(loopState(controller, 'host-2')).toMatchObject({ active: true, remaining: 4 })
+  })
+
+  it('empty exit condition still honors loop_stop in a work turn', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, '')
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'read', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't2', name: 'loop_stop', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(0)
+    expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'exit' })
+  })
+
   it('duplicate turn_end (agent_end + agent_settled) is processed once', async () => {
     const { piHost, created, checks } = fakePiHost()
     const { emit } = collector()

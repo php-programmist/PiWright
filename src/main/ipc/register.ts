@@ -454,8 +454,8 @@ export function registerIpc(
     if (typeof hostId !== 'string' || typeof prompt !== 'string' || prompt.trim().length === 0 || typeof maxIterations !== 'number') {
       return { ok: false, error: 'Invalid loop request' }
     }
-    if (typeof exitCondition !== 'string' || exitCondition.trim().length === 0) {
-      return { ok: false, error: 'Loop exit condition is required' }
+    if (typeof exitCondition !== 'string') {
+      return { ok: false, error: 'Invalid loop request' }
     }
     const info = loops.start(hostId, prompt, maxIterations, exitCondition.trim())
     return info === null ? { ok: false, error: 'Session not found' } : { ok: true, error: null }

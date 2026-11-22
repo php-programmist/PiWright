@@ -456,7 +456,7 @@ export class RemoteBridge {
     this.startLoopFromPrompt(socket, remote, frame, text)
   }
 
-  /** Петля с телефона: поле loop промпта {max, exit}; работает только при включённой настройке. */
+  /** Петля с телефона: поле loop промпта {max, exit?}; exit пустой — петля без условия выхода. */
   private startLoopFromPrompt(socket: RemoteSocket, remote: RemoteSession, frame: PiJsonObject, text: string): void {
     const raw = frame['loop']
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return
@@ -467,7 +467,7 @@ export class RemoteBridge {
     const loop = raw as PiJsonObject
     const max = loop['max']
     const exit = frameString(loop, 'exit')?.trim() ?? ''
-    if (typeof max !== 'number' || !Number.isFinite(max) || exit.length === 0) {
+    if (typeof max !== 'number' || !Number.isFinite(max)) {
       socket.send(JSON.stringify(errorFrame('Invalid loop request')))
       return
     }
