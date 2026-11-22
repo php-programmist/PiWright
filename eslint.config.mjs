@@ -8,5 +8,12 @@ export default tseslint.config(
     files: ['src/renderer/src/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules
+  },
+  {
+    files: ['tests/manual/**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-unused-vars': 'off'
+    }
   }
 )

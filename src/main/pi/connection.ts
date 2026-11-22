@@ -177,14 +177,13 @@ export class PiConnection {
   waitForExit(timeoutMs = 3000): Promise<void> {
     if (this.exited || this.child === null) return Promise.resolve()
     return new Promise<void>((resolve) => {
-      let timer: NodeJS.Timeout
       const finish = (): void => {
         clearTimeout(timer)
         this.exitWaiters.delete(waiter)
         resolve()
       }
       const waiter = (): void => finish()
-      timer = setTimeout(finish, timeoutMs)
+      const timer = setTimeout(finish, timeoutMs)
       timer.unref()
       this.exitWaiters.add(waiter)
     })

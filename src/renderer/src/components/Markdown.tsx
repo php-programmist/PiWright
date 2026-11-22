@@ -60,6 +60,31 @@ interface HastNodeProp {
   }
 }
 
+/** Чекбокс GFM-задачи: отдельный компонент, чтобы useContext звать в теле компонента, а не в render-prop. */
+function TaskCheckbox({
+  checked,
+  onToggleCheckbox,
+  ...rest
+}: React.JSX.IntrinsicElements['input'] & HastNodeProp & { onToggleCheckbox?: (line: number) => void }): React.JSX.Element {
+  const line = useContext(CheckboxLineContext)
+  const canToggle = onToggleCheckbox !== undefined && typeof line === 'number'
+  return (
+    <input
+      {...rest}
+      type="checkbox"
+      checked={checked ?? false}
+      readOnly
+      disabled={!canToggle}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (canToggle && typeof line === 'number') onToggleCheckbox(line)
+      }}
+    />
+  )
+}
+
 /** Markdown ассистента: GFM, fenced-блоки — через Shiki. */
 export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.Element {
   return (
@@ -85,25 +110,9 @@ export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.E
               </li>
             )
           },
-          input: ({ checked, ...rest }: React.JSX.IntrinsicElements['input'] & HastNodeProp) => {
-            const line = useContext(CheckboxLineContext)
-            const canToggle = onToggleCheckbox !== undefined && typeof line === 'number'
-            return (
-              <input
-                {...rest}
-                type="checkbox"
-                checked={checked ?? false}
-                readOnly
-                disabled={!canToggle}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  if (canToggle && typeof line === 'number') onToggleCheckbox(line)
-                }}
-              />
-            )
-          }
+          input: (props: React.JSX.IntrinsicElements['input'] & HastNodeProp) => (
+            <TaskCheckbox {...props} onToggleCheckbox={onToggleCheckbox} />
+          )
         }}
       >
         {text}
