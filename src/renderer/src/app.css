@@ -3738,3 +3738,245 @@ body {
   color: var(--muted);
   font-size: 11px;
 }
+
+.board-column-name {
+  cursor: default;
+}
+
+.board-column-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.board-column-btn:hover:not(:disabled) {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+.board-column-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.board-head-refresh,
+.board-head-add {
+  margin-left: auto;
+}
+
+.board-head-add {
+  margin-left: 0;
+}
+
+.board-card.dragging {
+  opacity: 0.4;
+}
+
+.board-drop-line {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+.board-card-add {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.board-card-add:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.board-add-column {
+  justify-content: center;
+  padding: 8px;
+  border-style: dashed;
+}
+
+.board-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.board-modal {
+  display: flex;
+  flex-direction: column;
+  width: 640px;
+  max-width: 100%;
+  height: min(560px, 100%);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.board-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-modal-title {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px 6px;
+}
+
+.board-modal-title:hover {
+  border-color: var(--border);
+}
+
+.board-modal-title:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.board-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.board-modal-description {
+  min-height: 80px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.board-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.board-comment {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.board-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.board-comment-author {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.board-comment-author.user {
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.board-comment-author.agent {
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+}
+
+.board-comment-date {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.board-comment-text {
+  color: var(--text);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.board-modal-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.board-comment-input {
+  min-height: 48px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.board-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.board-danger {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: #d66;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.board-danger:hover {
+  border-color: #d66;
+}
+
+.board-primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.board-primary:hover {
+  filter: brightness(1.1);
+}
