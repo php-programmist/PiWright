@@ -44,7 +44,15 @@ function createWindow(bg: string): void {
       sandbox: true
     }
   })
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  const startMinimized = process.argv.includes('--minimized') || process.env['PIWRIGHT_MINIMIZED'] === '1'
+  mainWindow.once('ready-to-show', () => {
+    if (startMinimized) {
+      mainWindow?.showInactive()
+      mainWindow?.minimize()
+    } else {
+      mainWindow?.show()
+    }
+  })
   if (state.maximized) mainWindow.maximize()
   mainWindow.on('close', () => {
     saveWindowState(windowStatePath, mainWindow as BrowserWindow)
