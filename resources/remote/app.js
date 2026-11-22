@@ -81,6 +81,8 @@ let toolsHidden = false;
 let readMode = false;
 let tgEnabled = false;
 const hideToolsBySession = new Map();
+// Невоспроизведённый промпт — свой у каждой сессии, иначе черновик перетекает между вкладками.
+const draftBySession = new Map();
 // Петля: включена ли настройкой на ПК, состояние — своё у каждой сессии (как hideTools).
 let loopsEnabled = false;
 let loopEnabled = false;
@@ -422,6 +424,8 @@ function onAttached(frame) {
   loopEnabled = loopEnabledBySession.get(frame.id) === true;
   loopInfo = null;
   applyLoopUi();
+  input.value = draftBySession.get(frame.id) ?? "";
+  autoGrow();
   updateAttachButton();
   setDot();
 }
@@ -1385,6 +1389,7 @@ function sendPrompt(behavior) {
     return;
   }
   input.value = "";
+  draftBySession.set(attached.id, "");
   autoGrow();
   const frame = { type: "prompt", text };
   if (behavior) frame.behavior = behavior;
@@ -1406,7 +1411,10 @@ function autoGrow() {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
-input.addEventListener("input", autoGrow);
+input.addEventListener("input", () => {
+  autoGrow();
+  if (attached) draftBySession.set(attached.id, input.value);
+});
 
 // ---------------------------------------------------------------------- loop
 
