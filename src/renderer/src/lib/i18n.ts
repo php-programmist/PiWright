@@ -196,7 +196,7 @@ const RU: Record<string, string> = {
   'Split': 'Две колонки',
 
   // Терминал
-  'Pick a session to open a terminal': 'Выберите сессию, чтобы открыть терминал',
+  'Pick a project to open a terminal': 'Выберите проект, чтобы открыть терминал',
   'No terminals — press + or pick a profile': 'Нет терминалов — нажмите + или выберите профиль',
   'New terminal (default profile)': 'Новый терминал (профиль по умолчанию)',
   'Profile for new terminal': 'Профиль нового терминала',

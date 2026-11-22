@@ -17,7 +17,7 @@ import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
 import { useSessionsStore, projectKey } from './stores/sessions'
-import { parentTabKey, tabId, useTabsStore } from './stores/tabs'
+import { parentTabKey, tabId, useTabsStore, useCenterProject } from './stores/tabs'
 import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
@@ -108,8 +108,7 @@ export function App(): React.JSX.Element {
     persistPanel('terminal', { open: useTerminalStore.getState().open })
     // Первое открытие терминала на проекте: сохранённые вкладки (фича 37) или дефолтная (фича 36).
     if (!useTerminalStore.getState().open) return
-    const st = useSessionsStore.getState()
-    const project = st.active.find((r) => r.hostId === st.activeHostId)?.project ?? null
+    const project = centerProject
     if (project === null) return
     useTerminalStore.getState().ensureTabs(project)
   }
@@ -126,6 +125,7 @@ export function App(): React.JSX.Element {
     if (project !== null) void useGitLogStore.getState().refresh(project)
   }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
+  const centerProject = useCenterProject()
   const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
   const sessionActive = sessionRows.some((r) => r.hostId === activeHostId) && (tabEntry?.activeId ?? null) === null
   const activeTab = !sessionActive && tabEntry !== undefined ? (tabEntry.tabs.find((tab) => tabId(tab) === tabEntry.activeId) ?? null) : null

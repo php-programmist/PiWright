@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalStore } from '../../stores/terminal'
-import { useSessionsStore } from '../../stores/sessions'
+import { useCenterProject } from '../../stores/tabs'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useT } from '../../lib/i18n'
 import { attach, detach, fit } from './term-registry'
@@ -38,9 +38,7 @@ function TerminalError(): React.JSX.Element | null {
 }
 
 export function TerminalPanel(): React.JSX.Element {
-  const activeHostId = useSessionsStore((s) => s.activeHostId)
-  const active = useSessionsStore((s) => s.active)
-  const project = useMemo(() => active.find((r) => r.hostId === activeHostId)?.project ?? null, [active, activeHostId])
+  const project = useCenterProject()
   const height = useTerminalStore((s) => s.height)
   const setHeight = useTerminalStore((s) => s.setHeight)
   const projectKey = useTerminalStore((s) => s.projectKey)
@@ -121,7 +119,7 @@ export function TerminalPanel(): React.JSX.Element {
     return (
       <aside className="terminal-dock" style={{ height }}>
         <div className="terminal-resizer" onMouseDown={startResize} />
-        <div className="panel-hint">{t('Pick a session to open a terminal')}</div>
+        <div className="panel-hint">{t('Pick a project to open a terminal')}</div>
       </aside>
     )
   }
