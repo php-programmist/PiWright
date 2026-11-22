@@ -42,6 +42,17 @@ header {
 .row { display: flex; align-items: center; gap: 8px; }
 .row.sub { margin-top: 4px; color: var(--muted); font-size: 12px; gap: 12px; flex-wrap: wrap; }
 
+/* Правый столбик шапки: индикатор связи сверху, кнопка новой сессии под ним. */
+.side {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+}
+
 .tabs {
   flex: 1;
   min-width: 0;
