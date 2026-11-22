@@ -1,0 +1,212 @@
+/** KanbanService: резолв корня (git/не-git/worktree), CRUD через сервис, CAS-конфликт, вложения. */
+import { afterAll, describe, expect, it } from 'vitest'
+import { promises as fs, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
+import { join, win32 } from 'node:path'
+import { tmpdir } from 'node:os'
+import { KanbanService } from '../src/main/kanban/kanban-service'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
+import { parseKanbanBoard } from '../src/shared/kanban'
+import type { ProjectEntry } from '../src/shared/ipc-contracts'
+
+const dirs: string[] = []
+
+function tmpDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), `piwright-kanban-${prefix}-`))
+  dirs.push(dir)
+  return dir
+}
+
+function native(dir: string): ProjectEntry {
+  return { kind: 'native', dir }
+}
+
+function git(args: string, cwd: string): void {
+  execSync(args, { cwd, stdio: 'pipe' })
+}
+
+function readBoardFile(file: string): ReturnType<typeof parseKanbanBoard> {
+  return parseKanbanBoard(JSON.parse(readFileSync(file, 'utf8')))
+}
+
+const service = new KanbanService(() => DEFAULT_SETTINGS)
+
+afterAll(async () => {
+  for (const dir of dirs) {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+describe('resolveKanbanRoot', () => {
+  it('не-git проект → корень = каталог проекта', async () => {
+    const dir = tmpDir('nogit')
+    expect(await service.resolveKanbanRoot(native(dir))).toBe(dir)
+  })
+
+  it('обычный репозиторий → корень репозитория', async () => {
+    const dir = tmpDir('repo')
+    git('git init', dir)
+    expect(win32.basename(await service.resolveKanbanRoot(native(dir)))).toBe(win32.basename(dir))
+  })
+
+  it('worktree → корень ГЛАВНОГО репозитория', async () => {
+    const main = tmpDir('wtmain')
+    git('git init', main)
+    git('git config user.email t@t', main)
+    git('git config user.name t', main)
+    writeFileSync(join(main, 'a.txt'), 'x')
+    git('git add .', main)
+    git('git commit -m init', main)
+    const wt = join(tmpDir('wtlink'), 'wt')
+    fs.mkdir(win32.dirname(wt), { recursive: true })
+    git(`git worktree add "${wt}" -b wt-branch`, main)
+    const root = await service.resolveKanbanRoot(native(wt))
+    expect(win32.basename(root)).toBe(win32.basename(main))
+    expect(root).not.toBe(wt)
+  })
+})
+
+describe('CRUD через сервис', () => {
+  it('createBoard → getBoard → listBoards → renameBoard → deleteBoard', async () => {
+    const project = native(tmpDir('crud'))
+    const created = await service.createBoard(project, '  My Board  ')
+    expect(created.ok).toBe(true)
+    expect(created.board?.name).toBe('My Board')
+    expect(created.board?.columns.map((column) => column.name)).toEqual(['Backlog', 'Todo', 'In Progress', 'Review', 'Done'])
+    const boardId = created.board!.id
+
+    const got = await service.getBoard(project, boardId)
+    expect(got.ok).toBe(true)
+    expect(got.board?.rev).toBe(0)
+
+    const listed = await service.listBoards(project)
+    expect(listed.ok).toBe(true)
+    expect(listed.boards).toHaveLength(1)
+    expect(listed.boards[0]).toMatchObject({ id: boardId, name: 'My Board', cards: 0 })
+
+    const renamed = await service.renameBoard(project, boardId, 'Renamed')
+    expect(renamed.ok).toBe(true)
+    expect(renamed.board?.name).toBe('Renamed')
+    expect(renamed.board?.rev).toBe(1)
+
+    expect((await service.getBoard(project, 'b-00000000')).ok).toBe(false)
+    expect((await service.renameBoard(project, boardId, '   ')).ok).toBe(false)
+
+    expect((await service.deleteBoard(project, boardId)).ok).toBe(true)
+    expect((await service.listBoards(project)).boards).toHaveLength(0)
+    expect((await service.deleteBoard(project, boardId)).ok).toBe(true)
+  })
+
+  it('карточки: create/update/move/comment', async () => {
+    const project = native(tmpDir('cards'))
+    const board = (await service.createBoard(project, 'B')).board!
+    const boardId = board.id
+    const todo = board.columns.find((column) => column.name === 'Todo')!
+    const progress = board.columns.find((column) => column.name === 'In Progress')!
+
+    const card = await service.cardCreate(project, boardId, { title: 'Task', description: 'Do it' })
+    expect(card.ok).toBe(true)
+    const cardId = card.board!.cards[0].id
+    expect(card.board!.cards[0].columnId).toBe(board.columns[0].id)
+
+    const updated = await service.cardUpdate(project, boardId, { id: cardId, title: 'Task 2' })
+    expect(updated.board!.cards[0].title).toBe('Task 2')
+
+    const moved = await service.cardMove(project, boardId, { id: cardId, columnId: progress.id })
+    expect(moved.board!.cards[0].columnId).toBe(progress.id)
+
+    const commented = await service.cardComment(project, boardId, {
+      cardId,
+      text: 'note',
+      session: { id: 's1', title: 'session' },
+      commits: [{ hash: 'abc1234', message: 'fix' }]
+    })
+    const comment = commented.board!.cards[0].comments[0]
+    expect(comment.author).toBe('user')
+    expect(comment.text).toBe('note')
+    expect(comment.session).toEqual({ id: 's1', title: 'session' })
+    expect(comment.commits).toEqual([{ hash: 'abc1234', message: 'fix' }])
+
+    expect((await service.cardCreate(project, boardId, { title: '' })).ok).toBe(false)
+    expect((await service.cardComment(project, boardId, { cardId, text: '' })).ok).toBe(false)
+    expect((await service.cardMove(project, boardId, { id: 'c-00000000', columnId: todo.id })).ok).toBe(false)
+  })
+
+  it('колонки и workflow', async () => {
+    const project = native(tmpDir('columns'))
+    const board = (await service.createBoard(project, 'B')).board!
+    const boardId = board.id
+
+    const created = await service.columnCreate(project, boardId, 'Extra')
+    expect(created.board!.columns).toHaveLength(6)
+    const extra = created.board!.columns[5]
+
+    const renamed = await service.columnRename(project, boardId, extra.id, 'Extra 2')
+    expect(renamed.board!.columns[5].name).toBe('Extra 2')
+
+    const moved = await service.columnMove(project, boardId, extra.id, 0)
+    expect(moved.board!.columns[0].name).toBe('Extra 2')
+
+    const deleted = await service.columnDelete(project, boardId, extra.id)
+    expect(deleted.board!.columns).toHaveLength(5)
+
+    const workflow = await service.workflowSet(project, boardId, 'custom workflow')
+    expect(workflow.board!.workflow).toBe('custom workflow')
+    expect(workflow.board!.rev).toBe(5)
+
+    expect((await service.columnDelete(project, boardId, board.columns[0].id)).ok).toBe(true)
+    let current = (await service.getBoard(project, boardId)).board!
+    while (current.columns.length > 1) {
+      expect((await service.columnDelete(project, boardId, current.columns[0].id)).ok).toBe(true)
+      current = (await service.getBoard(project, boardId)).board!
+    }
+    expect((await service.columnDelete(project, boardId, current.columns[0].id)).ok).toBe(false)
+  })
+})
+
+describe('CAS', () => {
+  it('внешняя запись между чтением и мутацией — retry поверх свежих данных', async () => {
+    const project = native(tmpDir('cas'))
+    const dir = win32.join(await service.resolveKanbanRoot(project), '.pi', 'kanban')
+    const board = (await service.createBoard(project, 'B')).board!
+    const boardId = board.id
+    const file = win32.join(dir, `${boardId}.json`)
+
+    const card = await service.cardCreate(project, boardId, { title: 'First' })
+    expect(card.ok).toBe(true)
+    const cardId = card.board!.cards[0].id
+
+    const external = readBoardFile(file)!
+    await fs.writeFile(
+      file,
+      JSON.stringify({ ...external, rev: external.rev + 10 }),
+      'utf8'
+    )
+
+    const renamed = await service.cardUpdate(project, boardId, { id: cardId, title: 'After conflict' })
+    expect(renamed.ok).toBe(true)
+    const onDisk = readBoardFile(file)!
+    expect(onDisk.rev).toBe(external.rev + 11)
+    expect(onDisk.cards[0].title).toBe('After conflict')
+  })
+})
+
+describe('putAttachment', () => {
+  it('base64 → файл + относительный путь + .gitignore', async () => {
+    const project = native(tmpDir('att'))
+    const result = await service.putAttachment(project, 'shot.png', Buffer.from('png-bytes').toString('base64'))
+    expect(result.ok).toBe(true)
+    expect(result.path).toBe(`attachments/${result.name}`)
+
+    const root = await service.resolveKanbanRoot(project)
+    const written = await fs.readFile(win32.join(root, '.pi', 'kanban', 'attachments', result.name))
+    expect(written.toString()).toBe('png-bytes')
+
+    const gitignore = await fs.readFile(win32.join(root, '.gitignore'), 'utf8')
+    expect(gitignore).toContain('.pi/kanban/attachments/')
+
+    const again = await service.putAttachment(project, 'shot.png', Buffer.from('x').toString('base64'))
+    expect(again.name).not.toBe(result.name)
+    expect(again.name.startsWith('shot-')).toBe(true)
+  })
+})

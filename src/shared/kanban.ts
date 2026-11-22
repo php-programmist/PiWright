@@ -75,7 +75,7 @@ export function newKanbanId(prefix: 'b' | 'col' | 'c' | 'm'): string {
 const KANBAN_NAME_MAX = 200
 const KANBAN_TITLE_MAX = 300
 const KANBAN_DESCRIPTION_MAX = 10000
-const KANBAN_COMMENT_MAX = 10000
+export const KANBAN_COMMENT_MAX = 10000
 const KANBAN_WORKFLOW_MAX = 20000
 
 /** Строка после trim: непустая и не длиннее max; иначе null. */

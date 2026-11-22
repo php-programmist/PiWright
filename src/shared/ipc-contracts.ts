@@ -2,6 +2,7 @@
 import type { DialogAnswer, ExtensionDialog, LoopInfo, UiEvent } from './agent-events'
 import type { PiModelInfo, PiSlashCommand } from './protocol-types'
 import type { ProjectTabsSnapshot } from './project-tabs'
+import type { KanbanBoard, KanbanCommitRef, KanbanSessionRef } from './kanban'
 
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
 export type BackendMode = 'native' | 'wsl'
@@ -333,6 +334,60 @@ export interface FileRenameResult {
   error: string | null
 }
 
+/** Канбан: сводка доски для списка. */
+export interface KanbanBoardSummary {
+  id: string
+  name: string
+  rev: number
+  columns: number
+  cards: number
+}
+
+export interface KanbanBoardsResult extends GitOpResult {
+  boards: KanbanBoardSummary[]
+}
+
+export interface KanbanBoardResult extends GitOpResult {
+  board: KanbanBoard | null
+}
+
+/** Мутация доски: возвращает обновлённую доску (renderer обновляет стор без перечитывания). */
+export interface KanbanMutationResult extends GitOpResult {
+  board: KanbanBoard | null
+}
+
+export interface KanbanCardCreateInput {
+  title: string
+  description?: string
+  columnId?: string
+}
+
+export interface KanbanCardUpdateInput {
+  id: string
+  title?: string
+  description?: string
+}
+
+export interface KanbanCardMoveInput {
+  id: string
+  columnId: string
+  index?: number
+}
+
+/** Комментарий от пользователя: id/author/at проставляет сервис. */
+export interface KanbanCommentInput {
+  cardId: string
+  text: string
+  session?: KanbanSessionRef
+  commits?: KanbanCommitRef[]
+}
+
+/** base64 → `.pi/kanban/attachments/`; path — относительный путь внутри `.pi/kanban`. */
+export interface KanbanAttachmentResult extends GitOpResult {
+  name: string
+  path: string
+}
+
 /** Файл из набора открытых изменился на диске (chokidar в main). */
 export interface FileChangedMessage {
   project: ProjectEntry
@@ -550,6 +605,22 @@ export interface PiWrightApi {
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   /** base64 → файл в `.pi/attachments/` (paste); name — желаемое, возвращается фактическое. */
   putAttachment(project: ProjectEntry, name: string, base64: string): Promise<AttachmentResult>
+  kanbanBoards(project: ProjectEntry): Promise<KanbanBoardsResult>
+  kanbanBoardGet(project: ProjectEntry, boardId: string): Promise<KanbanBoardResult>
+  kanbanBoardCreate(project: ProjectEntry, name: string): Promise<KanbanBoardResult>
+  kanbanBoardRename(project: ProjectEntry, boardId: string, name: string): Promise<KanbanMutationResult>
+  kanbanBoardDelete(project: ProjectEntry, boardId: string): Promise<GitOpResult>
+  kanbanCardCreate(project: ProjectEntry, boardId: string, input: KanbanCardCreateInput): Promise<KanbanMutationResult>
+  kanbanCardUpdate(project: ProjectEntry, boardId: string, input: KanbanCardUpdateInput): Promise<KanbanMutationResult>
+  kanbanCardDelete(project: ProjectEntry, boardId: string, cardId: string): Promise<KanbanMutationResult>
+  kanbanCardMove(project: ProjectEntry, boardId: string, input: KanbanCardMoveInput): Promise<KanbanMutationResult>
+  kanbanCardComment(project: ProjectEntry, boardId: string, input: KanbanCommentInput): Promise<KanbanMutationResult>
+  kanbanColumnCreate(project: ProjectEntry, boardId: string, name: string): Promise<KanbanMutationResult>
+  kanbanColumnRename(project: ProjectEntry, boardId: string, columnId: string, name: string): Promise<KanbanMutationResult>
+  kanbanColumnDelete(project: ProjectEntry, boardId: string, columnId: string): Promise<KanbanMutationResult>
+  kanbanColumnMove(project: ProjectEntry, boardId: string, columnId: string, index: number): Promise<KanbanMutationResult>
+  kanbanWorkflowSet(project: ProjectEntry, boardId: string, text: string): Promise<KanbanMutationResult>
+  kanbanAttachmentPut(project: ProjectEntry, name: string, base64: string): Promise<KanbanAttachmentResult>
   /** Диалог выбора файла → копия в `.pi/attachments/`. */
   chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
   soundsRead(path: string): Promise<SoundReadResult>
@@ -642,6 +713,22 @@ export const FILES_WATCH_CHANNEL = 'files:watch'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'
 export const ATTACHMENTS_CHOOSE_CHANNEL = 'attachments:choose'
+export const KANBAN_BOARDS_CHANNEL = 'kanban:boards'
+export const KANBAN_BOARD_GET_CHANNEL = 'kanban:board-get'
+export const KANBAN_BOARD_CREATE_CHANNEL = 'kanban:board-create'
+export const KANBAN_BOARD_RENAME_CHANNEL = 'kanban:board-rename'
+export const KANBAN_BOARD_DELETE_CHANNEL = 'kanban:board-delete'
+export const KANBAN_CARD_CREATE_CHANNEL = 'kanban:card-create'
+export const KANBAN_CARD_UPDATE_CHANNEL = 'kanban:card-update'
+export const KANBAN_CARD_DELETE_CHANNEL = 'kanban:card-delete'
+export const KANBAN_CARD_MOVE_CHANNEL = 'kanban:card-move'
+export const KANBAN_CARD_COMMENT_CHANNEL = 'kanban:card-comment'
+export const KANBAN_COLUMN_CREATE_CHANNEL = 'kanban:column-create'
+export const KANBAN_COLUMN_RENAME_CHANNEL = 'kanban:column-rename'
+export const KANBAN_COLUMN_DELETE_CHANNEL = 'kanban:column-delete'
+export const KANBAN_COLUMN_MOVE_CHANNEL = 'kanban:column-move'
+export const KANBAN_WORKFLOW_SET_CHANNEL = 'kanban:workflow-set'
+export const KANBAN_ATTACHMENT_PUT_CHANNEL = 'kanban:attachment-put'
 export const SOUNDS_READ_CHANNEL = 'sounds:read'
 export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
 export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'

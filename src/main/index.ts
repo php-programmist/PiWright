@@ -4,6 +4,7 @@ import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, TERM_DATA_C
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { FileService } from './files/file-service'
+import { KanbanService } from './kanban/kanban-service'
 import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
@@ -19,6 +20,7 @@ import type { PiStatus } from '../shared/ipc-contracts'
 let mainWindow: BrowserWindow | null = null
 let piHost: PiHost | null = null
 let gitService: GitService | null = null
+let kanbanService: KanbanService | null = null
 let fileService: FileService | null = null
 let terminalService: TerminalService | null = null
 let bridge: RemoteBridge | null = null
@@ -61,6 +63,7 @@ app.whenReady().then(() => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
   gitService = new GitService(() => settings.get())
+  kanbanService = new KanbanService(() => settings.get())
   fileService = new FileService({
     onChanged: (project, path) => mainWindow?.webContents.send(FILES_CHANGED_CHANNEL, { project, path })
   })
@@ -106,7 +109,7 @@ app.whenReady().then(() => {
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
-  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, {
+  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, {
     tokenStore,
     bridge,
     onSettingsChanged: (next) => bridge?.applySettings(next)

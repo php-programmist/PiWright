@@ -29,6 +29,22 @@ import {
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
   GIT_UNSTAGE_CHANNEL,
+  KANBAN_BOARDS_CHANNEL,
+  KANBAN_BOARD_CREATE_CHANNEL,
+  KANBAN_BOARD_DELETE_CHANNEL,
+  KANBAN_BOARD_GET_CHANNEL,
+  KANBAN_BOARD_RENAME_CHANNEL,
+  KANBAN_CARD_COMMENT_CHANNEL,
+  KANBAN_CARD_CREATE_CHANNEL,
+  KANBAN_CARD_DELETE_CHANNEL,
+  KANBAN_CARD_MOVE_CHANNEL,
+  KANBAN_CARD_UPDATE_CHANNEL,
+  KANBAN_COLUMN_CREATE_CHANNEL,
+  KANBAN_COLUMN_DELETE_CHANNEL,
+  KANBAN_COLUMN_MOVE_CHANNEL,
+  KANBAN_COLUMN_RENAME_CHANNEL,
+  KANBAN_ATTACHMENT_PUT_CHANNEL,
+  KANBAN_WORKFLOW_SET_CHANNEL,
   MCP_LIST_CHANNEL,
   MCP_PROBE_CHANNEL,
   MCP_REVEAL_CHANNEL,
@@ -86,9 +102,10 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanCommentInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
+import type { KanbanService } from '../kanban/kanban-service'
 import type { TerminalService } from '../terminal/terminal-service'
 import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
@@ -154,6 +171,7 @@ export function registerIpc(
   files: FileService,
   terminals: TerminalService,
   loops: LoopController,
+  kanban: KanbanService,
   notifications?: NotificationServices
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
@@ -661,6 +679,110 @@ export function registerIpc(
   ipcMain.handle(ATTACHMENTS_CHOOSE_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '', dataUrl: '' }
     return chooseAttachment(project)
+  })
+
+  ipcMain.handle(KANBAN_BOARDS_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', boards: [] }
+    return kanban.listBoards(project)
+  })
+
+  ipcMain.handle(KANBAN_BOARD_GET_CHANNEL, async (_event, project: unknown, boardId: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string') return { ok: false, error: 'Invalid request', board: null }
+    return kanban.getBoard(project, boardId)
+  })
+
+  ipcMain.handle(KANBAN_BOARD_CREATE_CHANNEL, async (_event, project: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string') return { ok: false, error: 'Invalid request', board: null }
+    return kanban.createBoard(project, name)
+  })
+
+  ipcMain.handle(KANBAN_BOARD_RENAME_CHANNEL, async (_event, project: unknown, boardId: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof name !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.renameBoard(project, boardId, name)
+  })
+
+  ipcMain.handle(KANBAN_BOARD_DELETE_CHANNEL, async (_event, project: unknown, boardId: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string') return { ok: false, error: 'Invalid request' }
+    return kanban.deleteBoard(project, boardId)
+  })
+
+  ipcMain.handle(KANBAN_CARD_CREATE_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.cardCreate(project, boardId, input as KanbanCardCreateInput)
+  })
+
+  ipcMain.handle(KANBAN_CARD_UPDATE_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.cardUpdate(project, boardId, input as KanbanCardUpdateInput)
+  })
+
+  ipcMain.handle(KANBAN_CARD_DELETE_CHANNEL, async (_event, project: unknown, boardId: unknown, cardId: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof cardId !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.cardDelete(project, boardId, cardId)
+  })
+
+  ipcMain.handle(KANBAN_CARD_MOVE_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.cardMove(project, boardId, input as KanbanCardMoveInput)
+  })
+
+  ipcMain.handle(KANBAN_CARD_COMMENT_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.cardComment(project, boardId, input as KanbanCommentInput)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_CREATE_CHANNEL, async (_event, project: unknown, boardId: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof name !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnCreate(project, boardId, name)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_RENAME_CHANNEL, async (_event, project: unknown, boardId: unknown, columnId: unknown, name: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof columnId !== 'string' || typeof name !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnRename(project, boardId, columnId, name)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_DELETE_CHANNEL, async (_event, project: unknown, boardId: unknown, columnId: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof columnId !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnDelete(project, boardId, columnId)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_MOVE_CHANNEL, async (_event, project: unknown, boardId: unknown, columnId: unknown, index: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof columnId !== 'string' || typeof index !== 'number') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnMove(project, boardId, columnId, index)
+  })
+
+  ipcMain.handle(KANBAN_WORKFLOW_SET_CHANNEL, async (_event, project: unknown, boardId: unknown, text: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof text !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.workflowSet(project, boardId, text)
+  })
+
+  ipcMain.handle(KANBAN_ATTACHMENT_PUT_CHANNEL, async (_event, project: unknown, name: unknown, base64: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string' || typeof base64 !== 'string') {
+      return { ok: false, error: 'Invalid request', name: '', path: '' }
+    }
+    return kanban.putAttachment(project, name, base64)
   })
 
   ipcMain.handle(SOUNDS_READ_CHANNEL, (_event, path: unknown) => {
