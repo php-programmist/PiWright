@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
 import type { DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
-import type { PiJsonObject } from '../../shared/protocol-types'
+import type { PiJsonObject, PiSlashCommand } from '../../shared/protocol-types'
 import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
 import type { PiBackend } from './backends/types'
@@ -19,7 +19,7 @@ import { ensureSessionToolsExtension } from './session-tools-extension'
 import { ensureLoopStopExtension } from './loop-stop-extension'
 import { ensureSubagentBridgeExtension } from './subagent-bridge-extension'
 import { readAttachmentImages } from '../attachments/attachments'
-import { runHandshake, decodeSessionTokens } from './handshake'
+import { runHandshake, decodeSessionTokens, decodeCommands, dataObject } from './handshake'
 import { generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
@@ -621,6 +621,18 @@ export class SessionHost {
   private async requeue(conn: PiConnection, command: 'steer' | 'follow_up', text: string): Promise<boolean> {
     const response = await conn.request(command, { message: text })
     return response.success
+  }
+
+  /** Живой список slash-команд (`get_commands`, включая навыки) для автодополнения;
+   *  процесс не поднят или RPC упал — команды последнего хендшейка. */
+  async commands(): Promise<PiSlashCommand[]> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return this.handshake?.commands ?? []
+    try {
+      return decodeCommands(dataObject(await conn.request('get_commands')))
+    } catch {
+      return this.handshake?.commands ?? []
+    }
   }
 
   /** Сменить модель на живой сессии; до подъёма процесса — применится сразу после хендшейка. */

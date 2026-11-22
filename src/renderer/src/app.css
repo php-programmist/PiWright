@@ -2043,6 +2043,64 @@ body {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  position: relative;
+}
+
+/* Автодополнение slash-команд над полем ввода (как в thinkrail). */
+.slash-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.slash-item:hover,
+.slash-item.current {
+  background: var(--hover);
+}
+
+.slash-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.slash-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash-source {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .composer .loop-exit {

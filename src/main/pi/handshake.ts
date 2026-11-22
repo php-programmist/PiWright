@@ -46,7 +46,7 @@ export function decodeModel(obj: PiJsonObject): PiModelInfo | null {
   }
 }
 
-function dataObject(response: PiResponse): PiJsonObject {
+export function dataObject(response: PiResponse): PiJsonObject {
   return response.data !== null && typeof response.data === 'object' && !Array.isArray(response.data)
     ? (response.data as PiJsonObject)
     : {}
@@ -62,7 +62,7 @@ export function decodeSessionTokens(response: PiResponse): SessionTokens | null 
   return { input: num('input'), output: num('output'), cacheRead: num('cacheRead'), cacheWrite: num('cacheWrite') }
 }
 
-function decodeCommands(data: PiJsonObject): PiSlashCommand[] {
+export function decodeCommands(data: PiJsonObject): PiSlashCommand[] {
   const raw = data['commands']
   if (!Array.isArray(raw)) return []
   const commands: PiSlashCommand[] = []

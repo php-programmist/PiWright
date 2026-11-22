@@ -15,7 +15,9 @@ import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../sh
 import { useT } from '../../lib/i18n'
 import { onPromptInject } from '../../lib/prompt-inject'
 import { splitWorktreeHostDir } from '../../../../shared/worktree'
+import { slashTokenOf, filterSlashCommands } from '../../../../shared/slash-commands'
 import type { DialogAnswer } from '../../../../shared/agent-events'
+import type { PiSlashCommand } from '../../../../shared/protocol-types'
 import type { AttachmentResult, PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -237,6 +239,63 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => () => {
     atBottomMap.delete(activeHostRef.current)
   }, [])
+
+  const [slashItems, setSlashItems] = useState<PiSlashCommand[] | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const slashCacheRef = useRef<Map<string, PiSlashCommand[]>>(new Map())
+  const slashDismissedRef = useRef<string | null>(null)
+  const slashMenuRef = useRef<HTMLDivElement | null>(null)
+  const prevSlashTokenRef = useRef<string | null>(null)
+  const slashToken = slashTokenOf(input)
+  useEffect(() => {
+    if (activeHostId === null) return
+    const current = slashTokenOf(input)
+    const fresh = prevSlashTokenRef.current === null
+    prevSlashTokenRef.current = current
+    if (current === null || current === slashDismissedRef.current) {
+      setSlashItems(null)
+      return
+    }
+    slashDismissedRef.current = null
+    const cached = fresh ? undefined : slashCacheRef.current.get(activeHostId)
+    if (cached !== undefined) {
+      setSlashItems(cached)
+      return
+    }
+    let cancelled = false
+    void window.piwright.sessionCommands(activeHostId).then((r) => {
+      if (cancelled) return
+      const list = r.ok ? r.commands : []
+      slashCacheRef.current.set(activeHostId, list)
+      setSlashItems(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [input, activeHostId])
+  const [prevSlashToken, setPrevSlashToken] = useState<string | null>(slashToken)
+  if (prevSlashToken !== slashToken) {
+    setPrevSlashToken(slashToken)
+    setSlashIndex(0)
+  }
+  const slashFiltered = useMemo(
+    () => (slashItems === null || slashToken === null ? [] : filterSlashCommands(slashItems, slashToken)),
+    [slashItems, slashToken]
+  )
+  const slashActive = slashFiltered.length > 0
+  const slashCurrent = slashActive ? slashFiltered[Math.min(slashIndex, slashFiltered.length - 1)] : null
+  const applySlash = (name: string): void => {
+    setInput(`/${name} `)
+    setSlashItems(null)
+  }
+  useEffect(() => {
+    if (!slashActive) return
+    const onDown = (e: MouseEvent): void => {
+      if (slashMenuRef.current !== null && !slashMenuRef.current.contains(e.target as Node)) setSlashItems(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [slashActive])
 
   // Чип адреса/PIN у расшаренной сессии: сервер мог подняться только что — поллим статус.
   const [remoteInfo, setRemoteInfo] = useState<Awaited<ReturnType<typeof window.piwright.remoteStatus>> | null>(null)
@@ -720,6 +779,24 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         }}
       >
         <div className="composer-fields">
+        {slashActive && (
+          <div className="slash-menu" ref={slashMenuRef} role="listbox">
+            {slashFiltered.map((c, i) => (
+              <button
+                key={`${c.name}:${i}`}
+                type="button"
+                className={`slash-item${i === Math.min(slashIndex, slashFiltered.length - 1) ? ' current' : ''}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applySlash(c.name)}
+                onMouseEnter={() => setSlashIndex(i)}
+              >
+                <span className="slash-name">/{c.name}</span>
+                {c.description !== null && <span className="slash-desc">{c.description}</span>}
+                {c.source !== null && <span className="slash-source">{c.source}</span>}
+              </button>
+            ))}
+          </div>
+        )}
         {pendingImages.length > 0 && (
           <div className="pending-images">
             {pendingImages.map((img) => (
@@ -756,6 +833,29 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             }
           }}
           onKeyDown={(e) => {
+            if (slashActive) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setSlashIndex((i) => (i + 1) % slashFiltered.length)
+                return
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setSlashIndex((i) => (i - 1 + slashFiltered.length) % slashFiltered.length)
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                if (slashCurrent !== null) applySlash(slashCurrent.name)
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                slashDismissedRef.current = slashToken
+                setSlashItems(null)
+                return
+              }
+            }
             if (sendOnEnter) {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()

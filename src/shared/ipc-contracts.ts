@@ -1,6 +1,6 @@
 /** Типизированный IPC-контракт renderer ↔ main. Единственная точка — preload (`window.piwright`). */
 import type { DialogAnswer, ExtensionDialog, LoopInfo, UiEvent } from './agent-events'
-import type { PiModelInfo } from './protocol-types'
+import type { PiModelInfo, PiSlashCommand } from './protocol-types'
 import type { ProjectTabsSnapshot } from './project-tabs'
 
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
@@ -150,6 +150,12 @@ export interface ForkSessionResult {
   error: string | null
   /** id нового хоста (форкнутой сессии) — при успехе. */
   hostId?: string
+}
+
+export interface SessionCommandsResult {
+  ok: boolean
+  error: string | null
+  commands: PiSlashCommand[]
 }
 
 export interface PromptResult {
@@ -481,6 +487,8 @@ export interface PiWrightApi {
   queueClear(hostId: string): Promise<PromptResult>
   /** Убрать один элемент очереди: clear_queue + повторная постановка остальных (при ходе). */
   queueRemove(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
+  /** Живой список slash-команд агента (`get_commands`, включая навыки) для автодополнения; фолбэк — команды хендшейка. */
+  sessionCommands(hostId: string): Promise<SessionCommandsResult>
   setModel(hostId: string, key: string): Promise<PromptResult>
   setThinkingLevel(hostId: string, level: string): Promise<PromptResult>
   respondDialog(hostId: string, id: string, answer: DialogAnswer): Promise<DialogResult>
@@ -575,6 +583,7 @@ export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
 export const SESSION_SET_MODEL_CHANNEL = 'session:set-model'
+export const SESSION_COMMANDS_CHANNEL = 'session:commands'
 export const SESSION_SET_THINKING_CHANNEL = 'session:set-thinking'
 export const SESSION_RESPOND_DIALOG_CHANNEL = 'session:respond-dialog'
 export const SESSION_PENDING_DIALOGS_CHANNEL = 'session:pending-dialogs'
