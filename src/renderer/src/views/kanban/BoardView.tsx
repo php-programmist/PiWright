@@ -632,6 +632,12 @@ function CardModal({
     apply(result)
   }
 
+  const saveAndClose = async (): Promise<void> => {
+    await saveDetails()
+    await addComment()
+    onClose()
+  }
+
   const removeCard = async (): Promise<void> => {
     const ok = await confirmDialog({
       message: t('Delete card "{title}"?', { title: card.title }),
@@ -646,12 +652,7 @@ function CardModal({
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US'
 
   return (
-    <div
-      className="board-modal-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <div className="board-modal-overlay">
       <div className="board-modal" onPaste={pasteImages}>
         <header className="board-modal-head">
           <input
@@ -750,8 +751,8 @@ function CardModal({
             <button className="board-danger" onClick={() => void removeCard()}>
               {t('Delete card')}
             </button>
-            <button className="board-primary" onClick={() => void addComment()}>
-              {t('Add')}
+            <button className="board-primary" onClick={() => void saveAndClose()}>
+              {t('Ok')}
             </button>
           </div>
           <input

@@ -248,7 +248,7 @@ const RU: Record<string, string> = {
   'Description': 'Описание',
   'Attach image': 'Прикрепить картинку',
   'Add comment': 'Добавить комментарий (Ctrl+Enter)',
-  'Add': 'Добавить',
+  'Ok': 'Ок',
   'Delete card': 'Удалить карточку',
   'Delete card "{title}"?': 'Удалить карточку «{title}»?',
   'Session not found': 'Сессия не найдена',
