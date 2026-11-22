@@ -316,6 +316,42 @@ describe('LoopController (auto-continue with check turn)', () => {
     expect(created[0].prompts[0]).toBe('p')
   })
 
+  it('work turn deferred by SessionHost is resolved by the subagent nudge turn', async () => {
+    const { piHost, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    // SessionHost при живом субагенте turn_end рабочего хода не присылает вовсе.
+    controller.onEvent(ev('host-1', { type: 'turn_start' }))
+    controller.onEvent(ev('host-1', { type: 'tool_start', call: { id: 't1', name: 'agent', args: {}, parentToolCallId: null } }))
+    controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'started', id: 'sa-1' }))
+    controller.onEvent(ev('host-1', { type: 'subagents_activity', kind: 'completed', id: 'sa-1' }))
+    // Единственный turn_end на всю цепочку приносит ход-нудж субагента.
+    controller.onEvent(ev('host-1', { type: 'turn_start', external: true }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
+  })
+
+  it('nudge turn with no unresolved work turn leaves the loop alone', async () => {
+    const { piHost, created, checks } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(checks).toHaveLength(1)
+    // Check-ход уже отправлен, рабочий ход разрешён — опоздавший нудж не должен ни
+    // останавливать петлю (reason 'agent'), ни отправлять второй check.
+    controller.onEvent(ev('host-1', { type: 'turn_start', external: true }))
+    controller.onEvent(ev('host-1', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: true, reason: null })
+  })
+
   it('external turn during grace window defers the check until it ends', async () => {
     const { piHost, checks } = fakePiHost()
     const { emit } = collector()

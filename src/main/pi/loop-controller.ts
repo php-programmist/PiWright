@@ -3,6 +3,8 @@
  *  условие выхода»: ход с loop_stop = петля остановлена, ход без — спавнится новая сессия
  *  того же проекта с тем же промптом. Рабочий ход без инструментов = стоп. Ход с ожидающим
  *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
+ *  SessionHost откладывает turn_end рабочего хода при живых субагентах — первым turn_end после
+ *  них приходит ход-нудж субагента, он и разрешает рабочий ход.
  *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие. */
 import type { LoopInfo, LoopStopReason, UiEvent } from '../../shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../../shared/ipc-contracts'
@@ -38,6 +40,8 @@ interface LoopState {
   turnEndPending: boolean
   /** Идёт внешний ход (nudge субагента/follow_up) — в логике петли не участвует. */
   externalTurn: boolean
+  /** Рабочий ход начат и ещё не разрешён — конец внешнего хода доводит его до check/спавна. */
+  workTurnOpen: boolean
   /** Ход завершился, но в фоне ещё работают субагенты/воркфлоу — ждём их завершения. */
   waitingSubagents: boolean
   /** Активные субагенты (subagents:created/started … completed/failed). */
@@ -81,6 +85,7 @@ export class LoopController {
       turnEndHandled: false,
       turnEndPending: false,
       externalTurn: false,
+      workTurnOpen: false,
       waitingSubagents: false,
       checkTimer: null,
       subagents: new Set(),
@@ -154,6 +159,7 @@ export class LoopController {
       }
       this.clearCheckTimer(state)
       state.externalTurn = false
+      state.workTurnOpen = true
       state.toolSeenThisTurn = false
       state.stopRequested = false
       state.waitingSubagents = false
@@ -200,10 +206,12 @@ export class LoopController {
     const host = this.piHost.get(hostId)
     if (host !== null && host.getPendingDialogs().length > 0) return
     if (state.externalTurn) {
-      // Конец внешнего хода: петля его не видела; turnEndPending остаётся — гасит дубль
-      // turn_end (agent_end + agent_settled) этого же хода.
+      // Петля внешнего хода не видела; снятый флаг гасит дубль его turn_end.
       state.externalTurn = false
-      return
+      if (!state.workTurnOpen) return
+      // Рабочий ход завершился при живых субагентах — SessionHost свой turn_end не прислал,
+      // и единственный turn_end в цепочке принадлежит ходу-нуджу. Разрешаем рабочий ход им.
+      state.turnEndPending = false
     }
     // agent_end и agent_settled дают два turn_end — второй гасим; повторная обработка
     // после сброса toolSeenThisTurn ошибочно стопила бы петлю с reason 'agent'.
@@ -222,6 +230,7 @@ export class LoopController {
     if (state.checkingCondition) {
       if (state.turnEndHandled) return
       state.turnEndHandled = true
+      state.workTurnOpen = false
       state.checkingCondition = false
       state.toolSeenThisTurn = false
       if (state.stopRequested) {
@@ -235,17 +244,20 @@ export class LoopController {
       // Рабочий ход без единого вызова инструмента — агенту нечего продолжать;
       // loop_stop в рабочем ходу — агент сам понял, что условие выхода выполнено.
       state.turnEndHandled = true
+      state.workTurnOpen = false
       if (state.active) this.stopLoop(hostId, state, state.stopRequested ? 'exit' : 'agent')
       return
     }
     if (!state.active) return
     if (state.remaining <= 0) {
       state.turnEndHandled = true
+      state.workTurnOpen = false
       this.stopLoop(hostId, state, 'max')
       return
     }
     if (this.isShortCircuit(state)) {
       state.turnEndHandled = true
+      state.workTurnOpen = false
       this.stopLoop(hostId, state, 'short-circuit')
       return
     }
@@ -269,6 +281,7 @@ export class LoopController {
         return
       }
       state.turnEndHandled = true
+      state.workTurnOpen = false
       state.toolSeenThisTurn = false
       this.sendCheckPrompt(hostId, state)
     }, this.graceMs)
