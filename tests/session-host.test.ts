@@ -493,6 +493,39 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('late agent_settled after deferred turn_end resolution emits no duplicate turn_end', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"agent_start"}\n' +
+              '{"type":"tool_execution_start","toolCallId":"t1","toolName":"Agent","args":{},"parentToolCallId":null}\n' +
+              '{"type":"agent_settled","aborted":false}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events, statuses } = makeHost([child], SETTINGS, { subagentGraceMs: 20 })
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_end')).toBe(true)
+    })
+    // Запоздалый agent_end/agent_settled после разрешения — без нового agent_start.
+    child.emitData('{"type":"agent_end"}\n{"type":"agent_settled","aborted":false}\n')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(events.filter((e) => e.type === 'turn_end')).toHaveLength(1)
+    expect(statuses[statuses.length - 1]?.state).toBe('ready')
+    host.dispose()
+  })
+
   it('turn with the Agent tool but no subagent activity waits the grace window, then resolves', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

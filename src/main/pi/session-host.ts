@@ -440,10 +440,11 @@ export class SessionHost {
     this.finishTurnEnd()
   }
 
-  /** Отложенный turn_end разрешается: субагенты завершились или грейс-окно истекло пустым. */
+  /** Отложенный turn_end разрешается: субагенты завершились или грейс-окно истекло пустым.
+   *  turnEndHandled остаётся true до следующего agent_start — иначе запоздалый agent_settled
+   *  после разрешения даст второй turn_end (дубль звука и Telegram-уведомления). */
   private resolveDeferredTurnEnd(): void {
     if (!this.turnEndHandled) return
-    this.turnEndHandled = false
     this.finishTurnEnd()
   }
 
