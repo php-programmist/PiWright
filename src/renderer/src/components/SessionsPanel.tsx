@@ -153,6 +153,7 @@ export const WORKTREE_ICON = (
 function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): React.JSX.Element {
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
+  const isActiveProject = useTabsStore((s) => s.activeProjectKey === key)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const activeAll = useSessionsStore((s) => s.active)
   const active = useMemo(
@@ -311,7 +312,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }, [menuOpen])
 
   return (
-    <div className="project">
+    <div className={`project${isActiveProject ? ' active' : ''}`}>
       <div className="project-row">
         <button className="expand" onClick={() => toggleExpanded(key)}>{expanded ? '▾' : '▸'}</button>
         {projRenaming ? (
