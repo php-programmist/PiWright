@@ -8,7 +8,9 @@ import type {
 } from '../../../shared/ipc-contracts'
 import { setTerminalTabs } from '../../../shared/terminal-tabs'
 import { disposeEntry } from '../views/terminal/term-registry'
+import { persistPanel } from './panels-prefs'
 import { projectKey, useSessionsStore } from './sessions'
+import { useGitLogStore } from './gitlog'
 
 interface TermTab {
   id: string
@@ -96,6 +98,11 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const key = projectKey(project)
     set((state) => {
       const current = state.projects[key] ?? { ids: [], activeId: null }
+      // Терминал и история Git делят нижний док: спавн терминала закрывает историю.
+      if (useGitLogStore.getState().open) {
+        useGitLogStore.getState().toggleOpen()
+        persistPanel('gitlog', { open: false })
+      }
       return {
         open: true,
         error: null,

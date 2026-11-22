@@ -232,6 +232,22 @@ describe('GitService commit history', () => {
     expect((await git.commitFileDiff(project, 'zz', 'a.txt')).ok).toBe(false)
     expect((await git.commitFileDiff(project, commit, '')).ok).toBe(false)
   })
+
+  it('log paginates: 50 per page, hasMore, skip works', async () => {
+    const total = 55
+    for (let i = 0; i < total; i++) run('git commit -q --allow-empty -m bulk-' + i)
+    const page0 = await git.log(project, 0)
+    expect(page0.entries.length).toBe(50)
+    expect(page0.hasMore).toBe(true)
+    expect(page0.entries[0]?.subject).toBe('bulk-54')
+    const page1 = await git.log(project, 1)
+    expect(page1.entries.length).toBeGreaterThanOrEqual(5)
+    expect(page1.hasMore).toBe(false)
+    expect(page1.entries[0]?.subject).toBe('bulk-4')
+    // Страницы не пересекаются
+    const hashes0 = new Set(page0.entries.map((e) => e.hash))
+    expect(page1.entries.every((e) => !hashes0.has(e.hash))).toBe(true)
+  })
 })
 
 describe('GitService with a nested repository (bug 8)', () => {

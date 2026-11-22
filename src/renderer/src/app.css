@@ -2738,44 +2738,6 @@ body {
   background: var(--push);
 }
 
-.git-log {
-  border-top: 1px solid var(--border);
-  padding: 4px 0 8px;
-}
-
-.git-log-head {
-  background: transparent;
-  border: none;
-  color: var(--faint);
-  font: inherit;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-  padding: 4px 10px;
-  text-align: left;
-  width: 100%;
-}
-
-.git-log-entry {
-  display: flex;
-  gap: 8px;
-  padding: 2px 10px;
-  color: var(--muted);
-  font-size: 11.5px;
-}
-
-.git-hash {
-  color: var(--blue);
-  font-family: Consolas, monospace;
-}
-
-.git-subject {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .git-diff-body {
   flex: 1;
   min-height: 0;

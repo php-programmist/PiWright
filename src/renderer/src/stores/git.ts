@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GitLogEntry, GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
+import type { GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
 
 /** Состояние git-панели для активного проекта; смена проекта сбрасывает всё, кроме open/width. */
@@ -16,8 +16,6 @@ type GitData = Pick<
   | 'message'
   | 'generating'
   | 'busy'
-  | 'log'
-  | 'logOpen'
   | 'branches'
 >
 
@@ -38,8 +36,6 @@ interface GitState {
   message: string
   generating: boolean
   busy: boolean
-  log: GitLogEntry[]
-  logOpen: boolean
   branches: string[]
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
@@ -59,7 +55,6 @@ interface GitState {
   generate: (project: ProjectEntry) => Promise<void>
   setMessage: (message: string) => void
   setError: (error: string | null) => void
-  toggleLog: () => void
   toggleOpen: () => void
   setWidth: (width: number) => void
 }
@@ -77,8 +72,6 @@ function resetState(): GitData {
     message: '',
     generating: false,
     busy: false,
-    log: [],
-    logOpen: false,
     branches: []
   }
 }
@@ -98,16 +91,11 @@ export const useGitStore = create<GitState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const [statusResult, logResult, branchesResult] = await Promise.all([
-      window.piwright.gitStatus(project),
-      window.piwright.gitLog(project),
-      window.piwright.gitBranches(project)
-    ])
+    const [statusResult, branchesResult] = await Promise.all([window.piwright.gitStatus(project), window.piwright.gitBranches(project)])
     set((state) => ({
       loading: false,
       status: statusResult.ok ? statusResult.status : state.status,
       error: statusResult.ok ? state.error : statusResult.error,
-      log: logResult.entries,
       branches: branchesResult.branches
     }))
   },
@@ -167,8 +155,6 @@ export const useGitStore = create<GitState>((set, get) => ({
       const stillThere = status.ok && status.status !== null && status.status.entries.some((e) => e.path === get().selectedPath)
       set({ busy: false, message: '', status: status.ok ? status.status : get().status })
       if (!stillThere) get().closeFile()
-      const log = await window.piwright.gitLog(project)
-      set({ log: log.entries })
     } else {
       set({ busy: false, error: result.error })
     }
@@ -219,7 +205,6 @@ export const useGitStore = create<GitState>((set, get) => ({
 
   setMessage: (message) => set({ message }),
   setError: (error) => set({ error }),
-  toggleLog: () => set((state) => ({ logOpen: !state.logOpen })),
   toggleOpen: () => set((state) => ({ open: !state.open })),
   setWidth: (width) => set({ width: Math.min(Math.max(width, 280), window.innerWidth - 560) })
 }))

@@ -401,8 +401,6 @@ export function GitPanel(): React.JSX.Element {
   const message = useGitStore((s) => s.message)
   const generating = useGitStore((s) => s.generating)
   const busy = useGitStore((s) => s.busy)
-  const log = useGitStore((s) => s.log)
-  const logOpen = useGitStore((s) => s.logOpen)
   const refresh = useGitStore((s) => s.refresh)
   const stage = useGitStore((s) => s.stage)
   const unstage = useGitStore((s) => s.unstage)
@@ -410,7 +408,6 @@ export function GitPanel(): React.JSX.Element {
   const push = useGitStore((s) => s.push)
   const generate = useGitStore((s) => s.generate)
   const setMessage = useGitStore((s) => s.setMessage)
-  const toggleLog = useGitStore((s) => s.toggleLog)
   const entries = useMemo(() => status?.entries ?? [], [status])
   const staged = useMemo(() => entries.filter((e) => e.index !== '.'), [entries])
   const changes = useMemo(() => entries.filter((e) => e.worktree !== '.' || e.untracked), [entries])
@@ -506,15 +503,6 @@ export function GitPanel(): React.JSX.Element {
                 </button>
                 <button className="push" disabled={busy} onClick={() => void push(project)}>Push</button>
               </div>
-            </div>
-            <div className="git-log">
-              <button className="git-log-head" onClick={toggleLog}>{logOpen ? '▾' : '▸'} {t('History')}</button>
-              {logOpen && log.map((e) => (
-                <div key={e.hash} className="git-log-entry" title={e.subject}>
-                  <span className="git-hash">{e.hash.slice(0, 7)}</span>
-                  <span className="git-subject">{e.subject}</span>
-                </div>
-              ))}
             </div>
           </>
         )}

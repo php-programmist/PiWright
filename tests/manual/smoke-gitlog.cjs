@@ -75,6 +75,18 @@ async function main() {
   log('gitlog opens, terminal closed:', termGone)
   await page.screenshot({ path: 'tests/manual/out-gitlog-4-exclusive.png' })
 
+  // Пагинация: скролл до конца списка догружает следующую страницу (по 50)
+  const before = await page.locator('.gitlog-row').count()
+  log('rows before scroll:', before)
+  if (before !== 50) throw new Error('expected first page of 50, got ' + before)
+  await page.locator('.gitlog-list').evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await page.waitForFunction((n) => document.querySelectorAll('.gitlog-row').length > n, before, { timeout: 15000 })
+  const after = await page.locator('.gitlog-row').count()
+  log('rows after scroll:', after)
+  if (after <= before) throw new Error('pagination did not load more')
+
   // Сворачивание дока кнопкой −
   await page.locator('.gitlog-dock .term-collapse').click()
   await page.waitForTimeout(400)

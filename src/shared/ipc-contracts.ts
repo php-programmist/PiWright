@@ -265,6 +265,8 @@ export interface GitFileDiffResult extends GitOpResult {
 
 export interface GitLogResult extends GitOpResult {
   entries: GitLogEntry[]
+  /** false — следующей страницы нет (вернули меньше запрошенного). */
+  hasMore: boolean
 }
 
 export interface GitCommitFileDiffResult extends GitOpResult {
@@ -521,7 +523,7 @@ export interface PiWrightApi {
   gitUnstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
-  gitLog(project: ProjectEntry): Promise<GitLogResult>
+  gitLog(project: ProjectEntry, page?: number): Promise<GitLogResult>
   /** Список изменённых файлов коммита (diff против первого родителя). */
   gitCommitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult>
   /** Дифф файла в коммите: original = <hash>^:<path>, modified = <hash>:<path>. */

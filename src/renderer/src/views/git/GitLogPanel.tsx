@@ -143,6 +143,15 @@ export function GitLogPanel(): React.JSX.Element {
   const rows = useMemo(() => computeLanes(entries), [entries])
   const maxLanes = useMemo(() => rows.reduce((max, r) => Math.max(max, r.nextLanes.length), 3), [rows])
   const selected = useMemo(() => entries.find((e) => e.hash === selectedHash) ?? null, [entries, selectedHash])
+  const hasMore = useGitLogStore((s) => s.hasMore)
+  const loadingMore = useGitLogStore((s) => s.loadingMore)
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>): void => {
+    if (!hasMore || loadingMore || project === null) return
+    const el = e.currentTarget
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - 200) return
+    void useGitLogStore.getState().loadMore(project)
+  }
 
   const openCommitDiff = (path: string): void => {
     if (project === null || selectedHash === null) return
@@ -206,7 +215,7 @@ export function GitLogPanel(): React.JSX.Element {
         </div>
       )}
       <div className="gitlog-body">
-        <div className={`gitlog-list${selectedHash !== null ? ' narrowed' : ''}`}>
+        <div className={`gitlog-list${selectedHash !== null ? ' narrowed' : ''}`} onScroll={onScroll}>
           {loading && entries.length === 0 && <div className="panel-hint">{t('loading…')}</div>}
           {!loading && entries.length === 0 && <div className="panel-hint">{t('no commits')}</div>}
           {rows.map((row, i) => (
@@ -219,6 +228,7 @@ export function GitLogPanel(): React.JSX.Element {
               onSelect={select}
             />
           ))}
+          {loadingMore && <div className="panel-hint gitlog-more">{t('loading…')}</div>}
         </div>
         {selectedHash !== null && (
           <div className="gitlog-details">

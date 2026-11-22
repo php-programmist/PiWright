@@ -39,7 +39,7 @@ import {
 const GIT_TIMEOUT_MS = 30_000
 const PUSH_TIMEOUT_MS = 120_000
 const GEN_TIMEOUT_MS = 240_000
-const LOG_RICH_LIMIT = 200
+export const GIT_LOG_PAGE_SIZE = 50
 const BINARY_PLACEHOLDER = '(binary file)'
 
 interface ExecResult {
@@ -256,17 +256,22 @@ export class GitService {
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  async log(project: ProjectEntry): Promise<GitLogResult> {
+  /** Страница лога для дока истории: page считается с 0, порядок по датам. */
+  async log(project: ProjectEntry, page = 0): Promise<GitLogResult> {
     const args = [
       'log',
+      '--skip',
+      String(Math.max(0, page) * GIT_LOG_PAGE_SIZE),
       '-n',
-      String(LOG_RICH_LIMIT),
+      String(GIT_LOG_PAGE_SIZE + 1),
       '--date-order',
       '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e'
     ]
     const result = await this.run(project, args)
-    if (result.code !== 0) return { ok: true, error: null, entries: [] }
-    return { ok: true, error: null, entries: parseLogRich(result.stdout) }
+    if (result.code !== 0) return { ok: true, error: null, entries: [], hasMore: false }
+    const entries = parseLogRich(result.stdout)
+    const hasMore = entries.length > GIT_LOG_PAGE_SIZE
+    return { ok: true, error: null, entries: entries.slice(0, GIT_LOG_PAGE_SIZE), hasMore }
   }
 
   /** Изменённые файлы коммита: diff против первого родителя (merge — только первая ветка),

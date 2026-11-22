@@ -540,9 +540,9 @@ export function registerIpc(
     return git.push(project)
   })
 
-  ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown) => {
-    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', entries: [] }
-    return git.log(project)
+  ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown, page: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', entries: [], hasMore: false }
+    return git.log(project, typeof page === 'number' && Number.isInteger(page) && page >= 0 ? page : 0)
   })
 
   ipcMain.handle(GIT_COMMIT_FILES_CHANNEL, async (_event, project: unknown, hash: unknown) => {
