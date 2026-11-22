@@ -65,7 +65,7 @@ function ModelForm({ model, onChange }: { model: ModelEdit; onChange: (next: Mod
         {INPUT_KINDS.map((kind) => (
           <label key={kind} className="settings-check inline">
             <input type="checkbox" checked={model.input.includes(kind)} onChange={() => toggleInput(kind)} />
-            {kind}
+            {t(kind)}
           </label>
         ))}
         <label className="settings-check inline">
@@ -300,7 +300,7 @@ export function ModelsTab(): React.JSX.Element {
     void (async () => {
       const res = await window.piwright.modelsList(backend)
       if (cancelled) return
-      setLoadError(res.ok ? null : (res.error ?? 'load failed'))
+      setLoadError(res.ok ? null : (res.error ?? t('load failed')))
       setFile(res.file)
       setExists(res.exists)
       setParsed(parseModelsDoc(res.ok ? res.doc : null))
@@ -314,7 +314,7 @@ export function ModelsTab(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [backend])
+  }, [backend, t])
 
   const persist = async (next: ParsedModelsDoc, target: BackendMode): Promise<string | null> => {
     let doc: unknown
@@ -324,7 +324,7 @@ export function ModelsTab(): React.JSX.Element {
       return err instanceof Error ? err.message : String(err)
     }
     const res = await window.piwright.modelsSave(target, doc)
-    return res.ok ? null : (res.error ?? 'save failed')
+    return res.ok ? null : (res.error ?? t('save failed'))
   }
 
   const startEdit = (provider: ProviderEdit): void => {
@@ -384,7 +384,7 @@ export function ModelsTab(): React.JSX.Element {
     const target = otherBackend(backend)
     const res = await window.piwright.modelsList(target)
     if (!res.ok) {
-      setNotice(res.error ?? 'load failed')
+      setNotice(res.error ?? t('load failed'))
       return
     }
     const targetDoc = parseModelsDoc(res.doc)
@@ -405,7 +405,7 @@ export function ModelsTab(): React.JSX.Element {
     const target = otherBackend(backend)
     const res = await window.piwright.modelsList(target)
     if (!res.ok) {
-      setNotice(res.error ?? 'load failed')
+      setNotice(res.error ?? t('load failed'))
       return
     }
     const targetDoc = parseModelsDoc(res.doc)
@@ -447,7 +447,7 @@ export function ModelsTab(): React.JSX.Element {
 
   const reveal = async (): Promise<void> => {
     const res = await window.piwright.modelsReveal(backend)
-    if (!res.ok) setNotice(res.error ?? 'open failed')
+    if (!res.ok) setNotice(res.error ?? t('open failed'))
   }
 
   return (

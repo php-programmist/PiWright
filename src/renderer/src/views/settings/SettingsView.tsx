@@ -421,7 +421,7 @@ function NotificationsTab({
       <section className="settings-section">
         <h3>Telegram</h3>
         <label>
-          Chat id
+          {t('Chat id')}
           <input
             value={telegram.chatId}
             placeholder="123456789 (from @userinfobot)"
