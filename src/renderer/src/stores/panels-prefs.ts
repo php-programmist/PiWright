@@ -26,7 +26,7 @@ export function persistPanel(panel: PanelName, patch: PanelPrefs): void {
 }
 
 export function hydratePanels(settings: Settings): void {
-  const { git, files, terminal, gitlog, kanban } = settings.panels
+  const { git, files, terminal, gitlog, kanban, sessions } = settings.panels
   if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}) })
   if (files !== undefined) useFilesStore.setState({ ...(files.open !== undefined ? { open: files.open } : {}), ...(files.width !== undefined ? { width: files.width } : {}) })
   if (terminal !== undefined)
@@ -43,6 +43,11 @@ export function hydratePanels(settings: Settings): void {
     useKanbanStore.setState({
       ...(kanban.open !== undefined ? { open: kanban.open } : {}),
       ...(kanban.width !== undefined ? { width: kanban.width } : {})
+    })
+  if (sessions !== undefined)
+    useSessionsStore.setState({
+      ...(sessions.width !== undefined ? { sidebarWidth: sessions.width } : {}),
+      ...(sessions.open !== undefined ? { sidebarCollapsed: !sessions.open } : {})
     })
   // Эксклюзивность git/files: обе открыты в сохранённых настройках → остаётся git.
   if ((git?.open ?? false) && (files?.open ?? false)) {

@@ -15,6 +15,8 @@ const RU: Record<string, string> = {
   // Панель проектов
   'Projects': 'Проекты',
   'Add project': 'Добавить проект',
+  'Collapse panel': 'Свернуть панель',
+  'Expand panel': 'Развернуть панель',
   'Add a project to start': 'Добавьте проект, чтобы начать',
   'Settings': 'Настройки',
   'Version': 'Версия',

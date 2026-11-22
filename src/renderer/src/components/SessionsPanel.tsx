@@ -4,6 +4,7 @@ import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/s
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
+import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
@@ -504,6 +505,16 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
 export function SessionsPanel(): React.JSX.Element {
   const projects = useSessionsStore((s) => s.projects)
   const openSettings = useSessionsStore((s) => s.openSettings)
+  const width = useSessionsStore((s) => s.sidebarWidth)
+  const collapsed = useSessionsStore((s) => s.sidebarCollapsed)
+  const setSidebarWidth = useSessionsStore((s) => s.setSidebarWidth)
+  const setSidebarCollapsed = useSessionsStore((s) => s.setSidebarCollapsed)
+  const activeAll = useSessionsStore((s) => s.active)
+  const unreadCount = useChatStore((s) =>
+    activeAll.reduce((n, r) => (r.dot === 'idle' && (s.hosts[r.hostId]?.unread ?? false) ? n + 1 : n), 0)
+  )
+  const busyCount = useMemo(() => activeAll.filter((r) => r.dot === 'busy').length, [activeAll])
+  const attentionCount = useMemo(() => activeAll.filter((r) => r.dot === 'confirm' || r.dot === 'question').length, [activeAll])
   const t = useT()
   const [adding, setAdding] = useState(false)
   const [version, setVersion] = useState('')
@@ -512,12 +523,53 @@ export function SessionsPanel(): React.JSX.Element {
     void window.piwright.appVersion().then(setVersion)
   }, [])
 
+  const collapse = (): void => {
+    setSidebarCollapsed(true)
+    persistPanel('sessions', { open: false })
+  }
+
+  const expand = (): void => {
+    setSidebarCollapsed(false)
+    persistPanel('sessions', { open: true })
+  }
+
+  const startResize = (down: React.MouseEvent): void => {
+    down.preventDefault()
+    const move = (e: MouseEvent): void => setSidebarWidth(e.clientX)
+    const up = (): void => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', up)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      persistPanel('sessions', { width: useSessionsStore.getState().sidebarWidth })
+    }
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+  }
+
+  if (collapsed) {
+    return (
+      <aside className="sessions-panel collapsed">
+        <button className="icon expand-sidebar" title={t('Expand panel')} onClick={expand}>+</button>
+        <div className="sidebar-badges" onClick={expand}>
+          {unreadCount > 0 && <span className="proj-badge green" title={t('Unread turns')}>{unreadCount}</span>}
+          {busyCount > 0 && <span className="proj-badge busy" title={t('Working')}>{busyCount}</span>}
+          {attentionCount > 0 && <span className="proj-badge attention" title={t('Need your answer')}>{attentionCount}</span>}
+        </div>
+      </aside>
+    )
+  }
+
   return (
-    <aside className="sessions-panel">
+    <aside className="sessions-panel" style={{ width, minWidth: width }}>
+      <div className="sessions-resizer" onMouseDown={startResize} />
       <div className="panel-head">
         <span>{t('Projects')}</span>
         <span className="spacer" />
         {adding ? <AddProjectControl onDone={() => setAdding(false)} /> : <button className="icon" title={t('Add project')} onClick={() => setAdding(true)}>+</button>}
+        <button className="icon" title={t('Collapse panel')} onClick={collapse}>−</button>
       </div>
       <div className="panel-body">
         {projects.length === 0 && <div className="panel-hint">{t('Add a project to start')}</div>}

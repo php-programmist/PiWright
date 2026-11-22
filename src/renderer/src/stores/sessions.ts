@@ -32,6 +32,12 @@ interface SessionsState {
   active: SessionRow[]
   activeHostId: string | null
   expanded: Record<string, boolean>
+  /** Ширина панели проектов/сессий (переживает перезапуск, panels.sessions.width). */
+  sidebarWidth: number
+  /** Панель свернута в узкую полосу с суммарными бейджами (panels.sessions.open === false). */
+  sidebarCollapsed: boolean
+  setSidebarWidth: (width: number) => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   settingsOpen: boolean
   openSettings: () => void
   closeSettings: () => void
@@ -70,9 +76,13 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   active: [],
   activeHostId: null,
   expanded: {},
+  sidebarWidth: 280,
+  sidebarCollapsed: false,
   settingsOpen: false,
   settings: null,
 
+  setSidebarWidth: (width) => set({ sidebarWidth: Math.min(Math.max(Math.round(width), 220), 480) }),
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   load: async () => {
