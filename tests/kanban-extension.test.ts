@@ -26,10 +26,13 @@ describe('installKanbanExtension', () => {
     expect(files).toContain('lib/core.ts')
     expect(files).toContain('lib/root.ts')
     expect(files).toContain('lib/store.ts')
+    expect(files).toContain('lib/tools.ts')
     expect(files).toContain('.version')
     expect(readFileSync(join(dir, '.version'), 'utf8').trim()).toBe(KANBAN_EXTENSION_VERSION)
     expect(readFileSync(join(dir, 'lib/core.ts'), 'utf8')).toContain('parseKanbanBoard')
     expect(readFileSync(join(dir, 'lib/store.ts'), 'utf8')).toContain('ensureDefaultBoard')
+    expect(readFileSync(join(dir, 'lib/tools.ts'), 'utf8')).toContain('kanbanPickTask')
+    expect(readFileSync(join(dir, 'index.ts'), 'utf8')).toContain('kanban_pick_task')
   })
 
   it('skips writing when the marker matches', async () => {

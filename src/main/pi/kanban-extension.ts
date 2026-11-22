@@ -6,14 +6,16 @@ import kanbanIndexTs from '../../../resources/kanban/index.ts?raw'
 import kanbanCoreTs from '../../../resources/kanban/lib/core.ts?raw'
 import kanbanRootTs from '../../../resources/kanban/lib/root.ts?raw'
 import kanbanStoreTs from '../../../resources/kanban/lib/store.ts?raw'
+import kanbanToolsTs from '../../../resources/kanban/lib/tools.ts?raw'
 
-export const KANBAN_EXTENSION_VERSION = 'kanban-1'
+export const KANBAN_EXTENSION_VERSION = 'kanban-2'
 
 const KANBAN_EXTENSION_FILES: Record<string, string> = {
   'index.ts': kanbanIndexTs,
   'lib/core.ts': kanbanCoreTs,
   'lib/root.ts': kanbanRootTs,
-  'lib/store.ts': kanbanStoreTs
+  'lib/store.ts': kanbanStoreTs,
+  'lib/tools.ts': kanbanToolsTs
 }
 
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */

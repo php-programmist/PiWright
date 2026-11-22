@@ -1,0 +1,417 @@
+/** Логика тулов карточек канбана (spec/kanban-plan.md §2, §5). Не зависит от pi —
+ *  регистрация в index.ts, тесты гоняют функции напрямую с tmp-каталогами. */
+import { access, copyFile, mkdir, stat } from 'node:fs/promises'
+import { basename, extname, join, resolve } from 'node:path'
+import {
+  applyCardComment,
+  applyCardCreate,
+  applyCardMove,
+  applyCardUpdate,
+  casMutate,
+  isValidKanbanId,
+  KANBAN_COMMENT_MAX,
+  newKanbanId,
+  pickTask,
+  sanitizeKanbanText,
+  sanitizeKanbanTitle,
+  type KanbanBoard,
+  type KanbanCard,
+  type KanbanColumn,
+  type KanbanComment,
+  type KanbanCommitRef
+} from './core'
+import { boardsDir, createFsStore, findBoard } from './store'
+import { resolveKanbanRoot } from './root'
+
+export interface KanbanToolEnv {
+  cwd: string
+  session?: { id: string; name?: string }
+}
+
+export interface KanbanToolResult {
+  text: string
+  details?: Record<string, unknown>
+}
+
+interface BoardContext {
+  root: string
+  dir: string
+  board: KanbanBoard
+}
+
+async function boardContext(env: KanbanToolEnv, boardParam?: string): Promise<BoardContext> {
+  const root = await resolveKanbanRoot(env.cwd)
+  const board = await findBoard(root, boardParam)
+  return { root, dir: boardsDir(root), board }
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function findColumn(board: KanbanBoard, param: string): KanbanColumn | null {
+  const needle = param.trim().toLowerCase()
+  return board.columns.find((column) => column.id === param || column.name.toLowerCase() === needle) ?? null
+}
+
+function columnNames(board: KanbanBoard): string {
+  return board.columns.map((column) => column.name).join(', ')
+}
+
+function cardLine(board: KanbanBoard, card: KanbanCard): string {
+  const column = board.columns.find((item) => item.id === card.columnId)
+  return `- ${card.id} [${column?.name ?? card.columnId}] ${card.title}`
+}
+
+function requireCardId(id: string): string | null {
+  return isValidKanbanId(id, 'c') ? id : null
+}
+
+const ATTACHMENT_NAME_MAX = 80
+
+function sanitizeAttachmentFileName(path: string): string {
+  const base = basename(path).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, ATTACHMENT_NAME_MAX)
+  return base.length > 0 ? base : 'image.bin'
+}
+
+/** Копия файлов картинок в `.pi/kanban/attachments/`; пути в карточке — `attachments/<name>`. */
+async function copyAttachments(
+  root: string,
+  cwd: string,
+  paths: unknown
+): Promise<{ copied: string[]; failed: string[] }> {
+  const copied: string[] = []
+  const failed: string[] = []
+  if (!Array.isArray(paths)) return { copied, failed }
+  const dir = join(boardsDir(root), 'attachments')
+  for (const item of paths) {
+    if (typeof item !== 'string' || item.trim() === '') continue
+    const source = resolve(cwd, item.trim())
+    try {
+      const info = await stat(source)
+      if (!info.isFile()) throw new Error('not a file')
+      await mkdir(dir, { recursive: true })
+      const base = sanitizeAttachmentFileName(source)
+      const ext = extname(base)
+      const stem = ext.length > 0 ? base.slice(0, -ext.length) : base
+      let name = base
+      for (let i = 1; i < 1000; i += 1) {
+        try {
+          await access(join(dir, name))
+        } catch {
+          break
+        }
+        name = `${stem}-${i}${ext}`
+      }
+      await copyFile(source, join(dir, name))
+      copied.push(`attachments/${name}`)
+    } catch {
+      failed.push(item.trim())
+    }
+  }
+  return { copied, failed }
+}
+
+interface CommentRefs {
+  sessionName?: string
+  commits?: { hash: string; message?: string }[]
+}
+
+function buildComment(env: KanbanToolEnv, text: string, refs: CommentRefs, images: string[]): KanbanComment {
+  const comment: KanbanComment = {
+    id: newKanbanId('m'),
+    author: 'agent',
+    text,
+    images,
+    at: new Date().toISOString()
+  }
+  const title = refs.sessionName?.trim() || env.session?.name?.trim() || ''
+  if (env.session !== undefined && env.session.id.length > 0 && title.length > 0) {
+    comment.session = { id: env.session.id, title }
+  }
+  const commits: KanbanCommitRef[] = (refs.commits ?? [])
+    .filter((item) => item !== null && typeof item.hash === 'string' && item.hash.trim().length > 0)
+    .map((item) => ({ hash: item.hash.trim(), message: (item.message ?? '').trim() }))
+  if (commits.length > 0) comment.commits = commits
+  return comment
+}
+
+function attachmentNote(copied: string[], failed: string[]): string {
+  const parts: string[] = []
+  if (copied.length > 0) parts.push(`Attached: ${copied.join(', ')}`)
+  if (failed.length > 0) parts.push(`Failed to attach (file not found): ${failed.join(', ')}`)
+  return parts.length > 0 ? `\n${parts.join('\n')}` : ''
+}
+
+export async function kanbanPickTask(env: KanbanToolEnv, args: { board?: string }): Promise<KanbanToolResult> {
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  try {
+    const card = await pickTask(createFsStore(ctx.dir), ctx.board.id)
+    if (card === null) {
+      return {
+        text: `No cards to pick on board "${ctx.board.name}" — columns Todo and Backlog are empty.`,
+        details: { picked: false }
+      }
+    }
+    const description = card.description.length > 0 ? `\n\nDescription:\n${card.description}` : ''
+    return {
+      text:
+        `Picked card ${card.id} "${card.title}" → In Progress.${description}\n\n` +
+        `Board workflow:\n${ctx.board.workflow}\n\n` +
+        `Next: rename the session to match the task (rename_session), implement it, then ` +
+        `kanban_move the card to Review with two comments — session link + commit hashes, and a completion report.`,
+      details: { picked: true, cardId: card.id, title: card.title }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+export async function kanbanListCards(
+  env: KanbanToolEnv,
+  args: { board?: string; column?: string; limit?: number }
+): Promise<KanbanToolResult> {
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 20) || 20, 100))
+  if (args.column !== undefined && args.column.trim() !== '') {
+    const column = findColumn(ctx.board, args.column)
+    if (column === null) {
+      return { text: `Column not found: "${args.column}". Columns: ${columnNames(ctx.board)}` }
+    }
+    const cards = ctx.board.cards
+      .filter((card) => card.columnId === column.id)
+      .sort((a, b) => a.order - b.order)
+      .slice(0, limit)
+    const lines = cards.length > 0 ? cards.map((card) => cardLine(ctx.board, card)) : ['(empty)']
+    return {
+      text: `Board "${ctx.board.name}", column "${column.name}" (${cards.length}):\n${lines.join('\n')}`,
+      details: { count: cards.length }
+    }
+  }
+  const sections = ctx.board.columns.map((column) => {
+    const cards = ctx.board.cards
+      .filter((card) => card.columnId === column.id)
+      .sort((a, b) => a.order - b.order)
+    const shown = cards.slice(0, limit).map((card) => cardLine(ctx.board, card))
+    const more = cards.length > shown.length ? `\n  …and ${cards.length - shown.length} more` : ''
+    return `## ${column.name} (${cards.length})\n${shown.length > 0 ? shown.join('\n') + more : '(empty)'}`
+  })
+  return {
+    text: `Board "${ctx.board.name}":\n${sections.join('\n\n')}`,
+    details: { columns: ctx.board.columns.length, cards: ctx.board.cards.length }
+  }
+}
+
+export async function kanbanSearch(env: KanbanToolEnv, args: { board?: string; query: string }): Promise<KanbanToolResult> {
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  const query = args.query.trim().toLowerCase()
+  if (query.length === 0) return { text: 'Empty search query.' }
+  const words = query.split(/\s+/).filter((word) => word.length > 0)
+  const scored = ctx.board.cards
+    .map((card) => {
+      const title = card.title.toLowerCase()
+      const description = card.description.toLowerCase()
+      let score = 0
+      if (title.includes(query)) score += 3
+      if (description.includes(query)) score += 1
+      for (const word of words) {
+        if (title.includes(word) || description.includes(word)) score += 1
+      }
+      return { card, score }
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10)
+  if (scored.length === 0) {
+    return { text: `No cards matching "${args.query}" on board "${ctx.board.name}".`, details: { count: 0 } }
+  }
+  const lines = scored.map((item) => cardLine(ctx.board, item.card))
+  return {
+    text: `Search "${args.query}" on board "${ctx.board.name}" (${scored.length}):\n${lines.join('\n')}`,
+    details: { count: scored.length }
+  }
+}
+
+export async function kanbanGetCard(env: KanbanToolEnv, args: { board?: string; id: string }): Promise<KanbanToolResult> {
+  const cardId = requireCardId(args.id)
+  if (cardId === null) return { text: `Invalid card id: ${args.id} (expected c-xxxxxxxx)` }
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  const card = ctx.board.cards.find((item) => item.id === cardId)
+  if (card === undefined) return { text: `Card not found: ${cardId} on board "${ctx.board.name}".` }
+  const column = ctx.board.columns.find((item) => item.id === card.columnId)
+  const parts: string[] = [
+    `${card.id} "${card.title}"`,
+    `Column: ${column?.name ?? card.columnId}`,
+    `Created: ${card.createdAt} · Updated: ${card.updatedAt}`
+  ]
+  parts.push(`Description:\n${card.description.length > 0 ? card.description : '(empty)'}`)
+  if (card.images.length > 0) parts.push(`Images (${card.images.length}):\n${card.images.map((path) => `- ${path}`).join('\n')}`)
+  if (card.comments.length > 0) {
+    const comments = card.comments.map((comment) => {
+      const refs: string[] = []
+      if (comment.session !== undefined) refs.push(`session: ${comment.session.title} (${comment.session.id})`)
+      if (comment.commits !== undefined) refs.push(`commits: ${comment.commits.map((commit) => commit.hash).join(', ')}`)
+      return `- [${comment.author} ${comment.at}] ${comment.text}${refs.length > 0 ? `\n  ${refs.join(' · ')}` : ''}`
+    })
+    parts.push(`Comments (${card.comments.length}):\n${comments.join('\n')}`)
+  }
+  return { text: parts.join('\n\n'), details: { cardId } }
+}
+
+export async function kanbanCreateCard(
+  env: KanbanToolEnv,
+  args: { board?: string; title: string; description?: string; column?: string }
+): Promise<KanbanToolResult> {
+  const title = sanitizeKanbanTitle(args.title)
+  if (title === null) return { text: 'Invalid card title: must be 1–300 characters after trim.' }
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  let columnId: string | undefined
+  if (args.column !== undefined && args.column.trim() !== '') {
+    const column = findColumn(ctx.board, args.column)
+    if (column === null) return { text: `Column not found: "${args.column}". Columns: ${columnNames(ctx.board)}` }
+    columnId = column.id
+  }
+  try {
+    const card = await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => {
+      const next = applyCardCreate(board, { title, description: args.description, columnId })
+      return { board: next, value: next.cards[next.cards.length - 1] }
+    })
+    if (card === null) return { text: 'Failed to create card.' }
+    const column = ctx.board.columns.find((item) => item.id === card.columnId)
+    return {
+      text: `Created card ${card.id} "${card.title}" in column "${column?.name ?? card.columnId}" on board "${ctx.board.name}".`,
+      details: { cardId: card.id, columnId: card.columnId }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+export async function kanbanUpdateCard(
+  env: KanbanToolEnv,
+  args: { board?: string; id: string; title?: string; description?: string }
+): Promise<KanbanToolResult> {
+  const cardId = requireCardId(args.id)
+  if (cardId === null) return { text: `Invalid card id: ${args.id} (expected c-xxxxxxxx)` }
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  try {
+    const card = await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => {
+      const next = applyCardUpdate(board, { id: cardId, title: args.title, description: args.description })
+      return { board: next, value: next.cards.find((item) => item.id === cardId)! }
+    })
+    return { text: `Updated card ${cardId} "${card?.title}" on board "${ctx.board.name}".`, details: { cardId } }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+export async function kanbanComment(
+  env: KanbanToolEnv,
+  args: {
+    board?: string
+    id: string
+    text: string
+    sessionName?: string
+    commits?: { hash: string; message?: string }[]
+    images?: string[]
+  }
+): Promise<KanbanToolResult> {
+  const cardId = requireCardId(args.id)
+  if (cardId === null) return { text: `Invalid card id: ${args.id} (expected c-xxxxxxxx)` }
+  const text = sanitizeKanbanText(args.text, KANBAN_COMMENT_MAX)
+  if (text === null) return { text: `Invalid comment text: must be 1–${KANBAN_COMMENT_MAX} characters after trim.` }
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  const { copied, failed } = await copyAttachments(ctx.root, env.cwd, args.images)
+  const comment = buildComment(env, text, args, copied)
+  try {
+    await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => ({
+      board: applyCardComment(board, { id: cardId, comment }),
+      value: true
+    }))
+    return {
+      text: `Comment added to card ${cardId} on board "${ctx.board.name}".${attachmentNote(copied, failed)}`,
+      details: { cardId, commentId: comment.id }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}
+
+export async function kanbanMove(
+  env: KanbanToolEnv,
+  args: {
+    board?: string
+    id: string
+    column: string
+    comment?: string
+    sessionName?: string
+    commits?: { hash: string; message?: string }[]
+  }
+): Promise<KanbanToolResult> {
+  const cardId = requireCardId(args.id)
+  if (cardId === null) return { text: `Invalid card id: ${args.id} (expected c-xxxxxxxx)` }
+  let ctx: BoardContext
+  try {
+    ctx = await boardContext(env, args.board)
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+  const column = findColumn(ctx.board, args.column)
+  if (column === null) return { text: `Column not found: "${args.column}". Columns: ${columnNames(ctx.board)}` }
+  const commentText = sanitizeKanbanText(args.comment ?? '', KANBAN_COMMENT_MAX)
+  if (args.comment !== undefined && args.comment.trim() !== '' && commentText === null) {
+    return { text: `Invalid comment text: must be 1–${KANBAN_COMMENT_MAX} characters after trim.` }
+  }
+  try {
+    const moved = await casMutate(createFsStore(ctx.dir), ctx.board.id, (board) => {
+      let next = applyCardMove(board, { id: cardId, columnId: column.id })
+      if (commentText !== null) {
+        next = applyCardComment(next, { id: cardId, comment: buildComment(env, commentText, args, []) })
+      }
+      return { board: next, value: next.cards.find((item) => item.id === cardId)! }
+    })
+    const columnName = ctx.board.columns.find((item) => item.id === moved?.columnId)?.name ?? moved?.columnId
+    return {
+      text: `Card ${cardId} "${moved?.title}" moved to column "${columnName}" on board "${ctx.board.name}".` +
+        (commentText !== null ? '\nComment added.' : ''),
+      details: { cardId, columnId: column.id }
+    }
+  } catch (err) {
+    return { text: errorText(err) }
+  }
+}

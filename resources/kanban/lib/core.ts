@@ -236,6 +236,203 @@ export function createDefaultBoard(name = 'Default', id = newKanbanId('b')): Kan
   }
 }
 
+function columnIndex(board: KanbanBoard, columnId: string): number {
+  const index = board.columns.findIndex((column) => column.id === columnId)
+  if (index < 0) throw new Error(`Column not found: ${columnId}`)
+  return index
+}
+
+function cardIndex(board: KanbanBoard, cardId: string): number {
+  const index = board.cards.findIndex((card) => card.id === cardId)
+  if (index < 0) throw new Error(`Card not found: ${cardId}`)
+  return index
+}
+
+/** order в колонке → 0..n-1 (стабильно по текущему порядку); карточки копируются. */
+function reindexedCards(cards: KanbanCard[], columnId: string): KanbanCard[] {
+  const inColumn = cards.filter((card) => card.columnId === columnId).sort((a, b) => a.order - b.order)
+  const orders = new Map<string, number>()
+  inColumn.forEach((card, index) => {
+    orders.set(card.id, index)
+  })
+  return cards.map((card) => (orders.has(card.id) ? { ...card, order: orders.get(card.id)! } : card))
+}
+
+function withCard(board: KanbanBoard, card: KanbanCard): KanbanBoard {
+  return { ...board, cards: board.cards.map((existing) => (existing.id === card.id ? card : existing)) }
+}
+
+function backlogColumnId(board: KanbanBoard): string {
+  const backlog = board.columns.find((column) => column.name === 'Backlog')
+  return (backlog ?? board.columns[0]).id
+}
+
+export interface CardCreateInput {
+  title: string
+  description?: string
+  columnId?: string
+  now?: string
+}
+
+export function applyCardCreate(board: KanbanBoard, input: CardCreateInput): KanbanBoard {
+  const title = sanitizeKanbanTitle(input.title)
+  if (title === null) throw new Error('Invalid card title')
+  const columnId = input.columnId ?? backlogColumnId(board)
+  columnIndex(board, columnId)
+  const now = input.now ?? new Date().toISOString()
+  const order = board.cards.filter((card) => card.columnId === columnId).length
+  const card: KanbanCard = {
+    id: newKanbanId('c'),
+    title,
+    description: input.description?.slice(0, KANBAN_DESCRIPTION_MAX) ?? '',
+    columnId,
+    order,
+    createdAt: now,
+    updatedAt: now,
+    images: [],
+    comments: []
+  }
+  return { ...board, cards: [...board.cards, card] }
+}
+
+export interface CardUpdateInput {
+  id: string
+  title?: string
+  description?: string
+  now?: string
+}
+
+export function applyCardUpdate(board: KanbanBoard, input: CardUpdateInput): KanbanBoard {
+  const index = cardIndex(board, input.id)
+  const card = board.cards[index]
+  const title = input.title === undefined ? card.title : sanitizeKanbanTitle(input.title)
+  if (title === null) throw new Error('Invalid card title')
+  const next: KanbanCard = {
+    ...card,
+    title,
+    description: input.description === undefined ? card.description : input.description.slice(0, KANBAN_DESCRIPTION_MAX),
+    updatedAt: input.now ?? new Date().toISOString()
+  }
+  return withCard(board, next)
+}
+
+export interface CardMoveInput {
+  id: string
+  columnId: string
+  /** Позиция в целевой колонке; по умолчанию — в конец. */
+  index?: number
+  now?: string
+}
+
+export function applyCardMove(board: KanbanBoard, input: CardMoveInput): KanbanBoard {
+  const sourceIndex = cardIndex(board, input.id)
+  columnIndex(board, input.columnId)
+  const card = board.cards[sourceIndex]
+  const rest = board.cards.filter((existing) => existing.id !== input.id)
+  const targetCount = rest.filter((existing) => existing.columnId === input.columnId).length
+  const index = input.index === undefined ? targetCount : Math.max(0, Math.min(input.index, targetCount))
+  let inserted = 0
+  const cards: KanbanCard[] = []
+  const movedCard = (): KanbanCard => ({
+    ...card,
+    columnId: input.columnId,
+    order: index,
+    updatedAt: input.now ?? new Date().toISOString()
+  })
+  for (const existing of rest) {
+    if (existing.columnId === input.columnId && inserted === index) {
+      cards.push(movedCard())
+      inserted += 1
+    }
+    cards.push(existing)
+    if (existing.columnId === input.columnId) inserted += 1
+  }
+  if (inserted === index) cards.push(movedCard())
+  let next: KanbanBoard = { ...board, cards: reindexedCards(cards, input.columnId) }
+  if (card.columnId !== input.columnId) next = { ...next, cards: reindexedCards(next.cards, card.columnId) }
+  return next
+}
+
+export interface CardCommentInput {
+  id: string
+  comment: KanbanComment
+  now?: string
+}
+
+export function applyCardComment(board: KanbanBoard, input: CardCommentInput): KanbanBoard {
+  const index = cardIndex(board, input.id)
+  const card = board.cards[index]
+  const next: KanbanCard = {
+    ...card,
+    comments: [...card.comments, input.comment],
+    updatedAt: input.now ?? new Date().toISOString()
+  }
+  return withCard(board, next)
+}
+
+export interface ClaimResult {
+  board: KanbanBoard
+  card: KanbanCard
+}
+
+/** Claim: первая карточка Todo (иначе Backlog) → In Progress. Нет кандидата или колонки — null. */
+export function claimNextCard(board: KanbanBoard, now = new Date().toISOString()): ClaimResult | null {
+  const target = board.columns.find((column) => column.name === 'In Progress')
+  if (target === undefined) return null
+  for (const sourceName of ['Todo', 'Backlog']) {
+    const source = board.columns.find((column) => column.name === sourceName)
+    if (source === undefined) continue
+    const candidates = board.cards.filter((card) => card.columnId === source.id).sort((a, b) => a.order - b.order)
+    if (candidates.length === 0) continue
+    const claimed = candidates[0]
+    const next = applyCardMove(board, { id: claimed.id, columnId: target.id, now })
+    return { board: next, card: next.cards.find((card) => card.id === claimed.id)! }
+  }
+  return null
+}
+
+export const KANBAN_CAS_MAX_ATTEMPTS = 5
+
+function casDelay(attempt: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 40 + attempt * 20 + Math.random() * 80))
+}
+
+/** CAS-мутация: read → mutate → write; конфликт rev — перечитать и повторить (до 5 попыток).
+ *  mutate вернул null или тот же объект доски — записи нет, возвращается value/null. */
+export async function casMutate<T>(
+  store: KanbanBoardStore,
+  boardId: string,
+  mutate: (board: KanbanBoard) => { board: KanbanBoard; value: T } | null
+): Promise<T | null> {
+  for (let attempt = 0; attempt < KANBAN_CAS_MAX_ATTEMPTS; attempt += 1) {
+    const current = await store.read(boardId)
+    if (current === null) throw new Error(`Board not found: ${boardId}`)
+    const outcome = mutate(current)
+    if (outcome === null || outcome.board === current) return outcome === null ? null : outcome.value
+    try {
+      await store.write({ ...outcome.board, rev: current.rev + 1 })
+      return outcome.value
+    } catch (error) {
+      if (!(error instanceof KanbanConflictError)) throw error
+      await casDelay(attempt)
+    }
+  }
+  throw new Error(`Kanban CAS failed after ${KANBAN_CAS_MAX_ATTEMPTS} attempts: ${boardId}`)
+}
+
+/** Атомарный pick: claim первой карточки; при конфликте перечитываем — берём следующую. */
+export async function pickTask(
+  store: KanbanBoardStore,
+  boardId: string,
+  now = new Date().toISOString()
+): Promise<KanbanCard | null> {
+  return casMutate(store, boardId, (board) => {
+    const claimed = claimNextCard(board, now)
+    if (claimed === null) return { board, value: null }
+    return { board: claimed.board, value: claimed.card }
+  })
+}
+
 /** Хранилище досок для CAS (реализация fs — в lib/store.ts; write бросает
  *  KanbanConflictError, если rev на диске уже другой). */
 export interface KanbanBoardStore {
