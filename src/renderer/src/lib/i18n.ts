@@ -288,10 +288,6 @@ const RU: Record<string, string> = {
   'Dark': 'Тёмная',
   'Light': 'Светлая',
   'Chat font size': 'Размер шрифта чата',
-  'Tool blocks': 'Тул-блоки',
-  'Single-line tool blocks (command in one line, full command and output when expanded)':
-    'Однострочные тул-блоки (команда в одну строку, в раскрытом — команда и вывод)',
-
   // Настройки — Notifications
   'Chat id': 'ID чата',
   'Sounds': 'Звуки',

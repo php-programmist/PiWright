@@ -11,16 +11,15 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
   const status = result === null ? 'running…' : result.isError ? 'error' : 'done'
   const edits = editTexts(call)
   const body = result !== null ? result.text : partial
-  const singleLine = useSessionsStore((s) => s.settings?.singleLineTools ?? false)
   const t = useT()
-  const command = singleLine ? bashCommand(call) : null
+  const command = bashCommand(call)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const openFile = useFilesStore((s) => s.openFile)
   const rawPath = typeof call.args['path'] === 'string' ? call.args['path'] : null
   const relPath = rawPath !== null && project !== null ? toProjectRelative(project.dir, rawPath) : null
   return (
-    <details className={`tool-block ${singleLine ? 'single' : ''} ${result?.isError ? 'error' : ''}`}>
+    <details className={`tool-block single ${result?.isError ? 'error' : ''}`}>
       <summary>
         <span className="tool-icon">{header.icon}</span>
         <span className="tool-title">{header.title}</span>

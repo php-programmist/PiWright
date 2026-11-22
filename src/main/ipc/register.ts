@@ -205,9 +205,6 @@ export function registerIpc(
           Math.max(CHAT_FONT_SIZE_MIN, Math.round(raw['chatFontSize']))
         )
       }
-      if (typeof raw['singleLineTools'] === 'boolean') {
-        safe.singleLineTools = raw['singleLineTools']
-      }
       if (typeof raw['sendOnEnter'] === 'boolean') {
         safe.sendOnEnter = raw['sendOnEnter']
       }

@@ -37,8 +37,6 @@ export interface Settings {
   theme: Theme
   /** Размер шрифта ленты чата, px. */
   chatFontSize: number
-  /** Однострочные тул-блоки: шапка с «…», в раскрытом — полная команда и вывод. */
-  singleLineTools: boolean
   /** Отправка по Enter (иначе Ctrl+Enter, дефолт как в jb-pi). */
   sendOnEnter: boolean
   /** Петли (авто-продолжение промпта в новых сессиях): чекбокс у поля промпта, Remote-петля, loop-stop расширение. */

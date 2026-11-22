@@ -18,7 +18,6 @@ const baseSettings: Settings = {
   selectorPlacement: 'top',
   theme: 'dark',
   chatFontSize: 14,
-  singleLineTools: false,
   sendOnEnter: false,
   loopsEnabled: false,
   loopCloseSession: false,
