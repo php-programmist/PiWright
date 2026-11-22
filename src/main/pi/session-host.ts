@@ -681,8 +681,17 @@ export class SessionHost {
   }
 
   /** Живой список slash-команд (`get_commands`, включая навыки) для автодополнения;
-   *  процесс не поднят или RPC упал — команды последнего хендшейка. */
+   *  процесс не поднят или RPC упал — команды последнего хендшейка.
+   *  Ленивую сессию (кэш каталога есть, до первого промпта процесс не поднят)
+   *  поднимаем здесь: иначе автодополнение в новой сессии пустое. */
   async commands(): Promise<PiSlashCommand[]> {
+    if ((this.conn === null || !this.conn.running) && this.handshake === null) {
+      try {
+        await this.ensureStarted()
+      } catch {
+        return []
+      }
+    }
     const conn = this.conn
     if (conn === null || !conn.running) return this.handshake?.commands ?? []
     try {
