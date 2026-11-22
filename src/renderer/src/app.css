@@ -3928,6 +3928,42 @@ body {
   word-break: break-word;
 }
 
+.board-comment-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.board-chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.board-chip.session {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.board-chip.commit {
+  font-family: var(--mono, monospace);
+}
+
+.board-chip.missing {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .board-modal-foot {
   display: flex;
   flex-direction: column;

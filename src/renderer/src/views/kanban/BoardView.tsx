@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
-import type { KanbanBoard, KanbanCard } from '../../../../shared/kanban'
+import type { KanbanBoard, KanbanCard, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
 import type { KanbanMutationResult, ProjectEntry } from '../../../../shared/ipc-contracts'
 import { base64FromBytes } from '../../../../shared/attachments'
+import { useSessionsStore } from '../../stores/sessions'
+import { parentTabKey, useTabsStore } from '../../stores/tabs'
+import { useGitLogStore } from '../../stores/gitlog'
+import { useTerminalStore } from '../../stores/terminal'
+import { persistPanel } from '../../stores/panels-prefs'
 import type { ProjectTab } from '../../stores/tabs'
 import { useLang, useT } from '../../lib/i18n'
 import { confirmDialog } from '../../components/ConfirmDialog'
@@ -32,6 +37,86 @@ function KanbanThumb({ project, path, onOpen }: { project: ProjectEntry; path: s
   }, [project, path, src])
   if (src === '') return <div className="board-thumb loading" />
   return <img className="board-thumb" src={src} alt={path} onClick={() => onOpen(src)} />
+}
+
+/** Чип сессии в комментарии: живая — активация чата, из истории — вкладка-транскрипт,
+ *  нигде не найдена — приглушённый чип с тултипом. */
+function SessionChip({ project, session }: { project: ProjectEntry; session: KanbanSessionRef }): React.JSX.Element {
+  const t = useT()
+  const [missing, setMissing] = useState(false)
+  useEffect(() => {
+    const st = useSessionsStore.getState()
+    if (st.active.some((r) => r.sessionId === session.id)) return
+    if (st.projects.some((p) => p.history.some((h) => h.id === session.id))) return
+    let cancelled = false
+    void window.piwright.sessionHistory(project).then((history) => {
+      if (!cancelled && !history.some((h) => h.id === session.id)) setMissing(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [project, session.id])
+
+  const open = (): void => {
+    const st = useSessionsStore.getState()
+    const row = st.active.find((r) => r.sessionId === session.id)
+    if (row !== undefined) {
+      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
+      useTabsStore.getState().activateSession(row.project)
+      st.setActive(row.hostId)
+      return
+    }
+    const summary = st.projects
+      .find((p) => p.history.some((h) => h.id === session.id))
+      ?.history.find((h) => h.id === session.id)
+    if (summary !== undefined) {
+      useTabsStore.getState().openTranscript(project, summary)
+      return
+    }
+    void window.piwright.sessionHistory(project).then((history) => {
+      const found = history.find((h) => h.id === session.id)
+      if (found !== undefined) useTabsStore.getState().openTranscript(project, found)
+    })
+  }
+
+  return (
+    <span
+      className={missing ? 'board-chip missing' : 'board-chip session'}
+      title={missing ? t('Session not found') : session.title}
+      onClick={open}
+    >
+      {session.title}
+    </span>
+  )
+}
+
+/** Чип коммита: первый клик — док «История Git» + выделение коммита, повторный —
+ *  дифф первого файла коммита во вкладке. */
+function CommitChip({ project, commit }: { project: ProjectEntry; commit: KanbanCommitRef }): React.JSX.Element {
+  const open = (): void => {
+    const gl = useGitLogStore.getState()
+    if (!gl.open) {
+      if (useTerminalStore.getState().open) {
+        useTerminalStore.getState().toggleOpen()
+        persistPanel('terminal', { open: false })
+      }
+      gl.toggleOpen()
+      persistPanel('gitlog', { open: true })
+    }
+    gl.setProject(project)
+    void gl.refresh(project)
+    if (gl.selectedHash === commit.hash) {
+      const file = gl.files[0]
+      if (file !== undefined) useTabsStore.getState().openTab(project, { kind: 'diff', path: file.path, hash: commit.hash })
+    } else {
+      void gl.select(project, commit.hash)
+    }
+  }
+  return (
+    <span className="board-chip commit" title={commit.message} onClick={open}>
+      {commit.hash.slice(0, 7)}
+    </span>
+  )
 }
 
 /** Вкладка-доска: колонки в ряд, DnD карточек (между колонками и внутри), CRUD колонок,
@@ -541,6 +626,14 @@ function CardModal({
                   <span className="board-comment-date">{new Date(item.at).toLocaleString(locale)}</span>
                 </div>
                 <div className="board-comment-text">{item.text}</div>
+                {(item.session !== undefined || (item.commits?.length ?? 0) > 0) && (
+                  <div className="board-comment-refs">
+                    {item.session !== undefined && <SessionChip project={tab.project} session={item.session} />}
+                    {item.commits?.map((commit) => (
+                      <CommitChip key={commit.hash} project={tab.project} commit={commit} />
+                    ))}
+                  </div>
+                )}
                 {item.images.length > 0 && (
                   <div className="board-comment-images">
                     {item.images.map((path) => (

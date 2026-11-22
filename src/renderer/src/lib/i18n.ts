@@ -250,6 +250,7 @@ const RU: Record<string, string> = {
   'Add': 'Добавить',
   'Delete card': 'Удалить карточку',
   'Delete card "{title}"?': 'Удалить карточку «{title}»?',
+  'Session not found': 'Сессия не найдена',
   'Agent': 'Агент',
   'You': 'Вы',
   'Enable kanban boards (agent tools and the boards panel)':
