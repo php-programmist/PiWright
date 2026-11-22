@@ -2062,13 +2062,13 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
-.slash-item {
+.composer .slash-item {
   display: flex;
   align-items: baseline;
   gap: 8px;
   width: 100%;
   text-align: left;
-  background: none;
+  background: transparent;
   border: none;
   color: var(--text);
   padding: 5px 8px;
@@ -2077,9 +2077,9 @@ body {
   font-size: 12px;
 }
 
-.slash-item:hover,
-.slash-item.current {
-  background: var(--hover);
+.composer .slash-item:hover,
+.composer .slash-item.current {
+  background: var(--hover-strong);
 }
 
 .slash-name {
