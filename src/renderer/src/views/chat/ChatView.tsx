@@ -14,6 +14,7 @@ import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
+import { formatCompactDuration } from '../../lib/duration'
 import { onPromptInject } from '../../lib/prompt-inject'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../../shared/worktree'
 import { slashTokenOf, filterSlashCommands } from '../../../../shared/slash-commands'
@@ -74,6 +75,7 @@ export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; o
       const ttfb =
         speed !== null && speed.ttfbMs < 1000 ? `${Math.round(speed.ttfbMs)}ms` : speed !== null ? `${(speed.ttfbMs / 1000).toFixed(1)}s` : null
       const parts = [
+        entry.durationMs !== null ? `⏱ ${formatCompactDuration(entry.durationMs)}` : null,
         `in ${u.inputTokens.toLocaleString('en-US')}`,
         `out ${u.outputTokens.toLocaleString('en-US')}`,
         u.contextTokens !== null ? `ctx ${u.contextTokens.toLocaleString('en-US')}` : null,
@@ -180,6 +182,16 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
   )
 }
 
+/** Живой счётчик времени хода: тикает раз в секунду, пока идёт ход. */
+function TurnTimer({ startedAt }: { startedAt: number }): React.JSX.Element {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+  return <span className="turn-timer">⏱ {formatCompactDuration(now - startedAt)}</span>
+}
+
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
@@ -190,6 +202,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const entries = useMemo(() => chat?.entries ?? [], [chat])
   const restored = chat?.restored ?? false
   const streaming = chat?.streaming ?? false
+  const turnStartedAt = chat?.turnStartedAt ?? null
   const queue = chat?.queue ?? { steering: [], followUp: [] }
   const contextUsage = chat?.contextUsage ?? null
   const usageTotals = chat?.usageTotals ?? null
@@ -939,6 +952,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           />
         )}
         </div>
+        {streaming && turnStartedAt !== null && <TurnTimer startedAt={turnStartedAt} />}
         <button className="attach" title={t('Attach file')} onClick={() => void attachFile()} disabled={project === null}>
           <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
             <path

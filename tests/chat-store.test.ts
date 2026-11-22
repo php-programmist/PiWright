@@ -209,6 +209,41 @@ describe('chat store transcript', () => {
     expect(useChatStore.getState().hosts['unknown-host']).toBeUndefined()
   })
 
+  it('turn timer: turnStartedAt set on turn_start, duration attached to result, cleared on turn_end', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    expect(useChatStore.getState().hosts[HOST]?.turnStartedAt).toBe(Date.now())
+    vi.advanceTimersByTime(5000)
+    store.applyEvent({
+      hostId: HOST,
+      event: {
+        type: 'turn_result',
+        usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: null, contextTokens: null, speed: null }
+      }
+    })
+    const results = entries().filter((e): e is Extract<Entry, { kind: 'result' }> => e.kind === 'result')
+    expect(results[0].durationMs).toBe(5000)
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
+    expect(useChatStore.getState().hosts[HOST]?.turnStartedAt).not.toBeNull()
+    expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
+  })
+
+  it('turn_end before turn_result (agent_end precedes agent_settled): duration still computed', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    vi.advanceTimersByTime(7000)
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
+    store.applyEvent({
+      hostId: HOST,
+      event: {
+        type: 'turn_result',
+        usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: null, contextTokens: null, speed: null }
+      }
+    })
+    const results = entries().filter((e): e is Extract<Entry, { kind: 'result' }> => e.kind === 'result')
+    expect(results[0].durationMs).toBe(7000)
+  })
+
   it('translated edit-turn fixture builds the full transcript', () => {
     const store = useChatStore.getState()
     for (const event of translateFixture()) store.applyEvent({ hostId: HOST, event })

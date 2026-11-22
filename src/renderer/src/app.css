@@ -1623,6 +1623,13 @@ body {
   font-size: 0.85em;
 }
 
+.turn-timer {
+  align-self: center;
+  color: var(--faint);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
 .model-select {
   background: var(--input-bg);
   color: var(--muted);

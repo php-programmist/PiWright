@@ -21,7 +21,7 @@ export type Entry =
   | { kind: 'dialog'; id: number; dialogId: string; dialog: ExtensionDialog; receipt: string | null }
   | { kind: 'info'; id: number; text: string }
   | { kind: 'error'; id: number; text: string }
-  | { kind: 'result'; id: number; usage: TurnUsage }
+  | { kind: 'result'; id: number; usage: TurnUsage; durationMs: number | null }
 
 export interface QueueState {
   steering: string[]
@@ -33,6 +33,8 @@ export interface HostChat {
   status: PiStatus | null
   entries: Entry[]
   streaming: boolean
+  /** Date.now() старта текущего хода (turn_start) — живой таймер в composer; null между ходами. */
+  turnStartedAt: number | null
   queue: QueueState
   contextUsage: { used: number; size: number } | null
   /** Суммарные токены сессии (`get_session_stats`) — тултип процента контекста. */
@@ -128,6 +130,7 @@ function emptyHostChat(): HostChat {
     status: null,
     entries: [],
     streaming: false,
+    turnStartedAt: null,
     queue: { steering: [], followUp: [] },
     contextUsage: null,
     usageTotals: null,
@@ -285,7 +288,7 @@ export function transcriptEntries(events: UiEvent[]): Entry[] {
         })
         break
       case 'turn_result':
-        entries.push({ kind: 'result', id: newId(), usage: event.usage })
+        entries.push({ kind: 'result', id: newId(), usage: event.usage, durationMs: null })
         break
       case 'turn_error':
         entries.push({ kind: 'error', id: newId(), text: event.message })
@@ -308,11 +311,13 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
       return host
     case 'turn_start': {
       const flushed = withFlushed(hostId, host)
-      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: true }
+      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: true, turnStartedAt: Date.now() }
     }
     case 'turn_end': {
       const flushed = withFlushed(hostId, host)
       ownEchoes.set(hostId, 0)
+      // turnStartedAt не сбрасываем: agent_end приходит раньше agent_settled, поэтому
+      // turn_end часто опережает turn_result, которому таймстамп ещё нужен.
       return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false }
     }
     case 'subagents_activity':
@@ -403,7 +408,8 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'turn_result': {
       const flushed = withFlushed(hostId, host)
-      return { ...flushed, entries: [...flushed.entries, { kind: 'result', id: newId(), usage: event.usage }] }
+      const durationMs = flushed.turnStartedAt !== null ? Date.now() - flushed.turnStartedAt : null
+      return { ...flushed, entries: [...flushed.entries, { kind: 'result', id: newId(), usage: event.usage, durationMs }] }
     }
     case 'turn_error': {
       const flushed = withFlushed(hostId, host)
@@ -579,6 +585,7 @@ export const useChatStore = create<ChatState>((set) => ({
             entries: [],
             restored: false,
             streaming: false,
+            turnStartedAt: null,
             queue: { steering: [], followUp: [] },
             contextUsage: null,
             usageTotals: null,
