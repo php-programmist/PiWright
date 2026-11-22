@@ -4067,6 +4067,13 @@ body {
   gap: 8px;
 }
 
+.board-modal-description-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 .board-danger {
   background: transparent;
   border: 1px solid var(--border-strong);

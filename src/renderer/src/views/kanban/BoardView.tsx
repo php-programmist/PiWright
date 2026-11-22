@@ -711,6 +711,14 @@ function CardModal({
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => void saveDetails()}
           />
+          <div className="board-modal-description-actions">
+            <button className="board-danger" onClick={() => void removeCard()}>
+              {t('Delete card')}
+            </button>
+            <button className="board-primary" onClick={() => void saveAndClose()}>
+              {t('Ok')}
+            </button>
+          </div>
           <div className="board-card-images">
             {card.images.map((path) => (
               <div key={path} className="board-thumb-wrap">
@@ -814,11 +822,8 @@ function CardModal({
             <button className="board-attach" title={t('Attach image')} onClick={() => commentFileRef.current?.click()}>
               📎
             </button>
-            <button className="board-danger" onClick={() => void removeCard()}>
-              {t('Delete card')}
-            </button>
-            <button className="board-primary" onClick={() => void saveAndClose()}>
-              {t('Ok')}
+            <button className="board-primary" onClick={() => void addComment()}>
+              {t('Send comment')}
             </button>
           </div>
           <input
