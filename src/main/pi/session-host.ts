@@ -348,7 +348,8 @@ export class SessionHost {
       })
       const handshakeSessionName = this.desiredSessionName
       this.desiredSessionName = null
-      if (this.sessionName === null && handshakeSessionName !== null) this.sessionName = handshakeSessionName
+      // Имя из файла сессии (`get_state.sessionName`) — иначе restore даёт title=первый промпт.
+      if (this.sessionName === null) this.sessionName = handshakeSessionName ?? handshake.sessionName
       this.sessionFile = handshake.sessionFile
       this.handshake = handshake
       translator.contextWindow = handshake.model?.contextWindow ?? 0

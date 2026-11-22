@@ -90,6 +90,8 @@ export async function runHandshake(conn: PiConnection, opts: HandshakeOptions = 
   const state = dataObject(await conn.request('get_state'))
   const sessionId = typeof state['sessionId'] === 'string' ? state['sessionId'] : ''
   const sessionFile = typeof state['sessionFile'] === 'string' ? state['sessionFile'] : null
+  const stateName = state['sessionName']
+  const sessionName = typeof stateName === 'string' && stateName.trim().length > 0 ? stateName.trim() : null
   const modelRaw = state['model']
   const model =
     modelRaw !== null && typeof modelRaw === 'object' && !Array.isArray(modelRaw)
@@ -134,6 +136,7 @@ export async function runHandshake(conn: PiConnection, opts: HandshakeOptions = 
     commands,
     thinkingLevels: levels,
     thinkingLevel,
+    sessionName,
     autoCompactionEnabled: state['autoCompactionEnabled'] === true,
     sessionTokens
   }

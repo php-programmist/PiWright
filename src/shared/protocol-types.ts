@@ -43,6 +43,8 @@ export interface PiHandshakeResult {
   commands: PiSlashCommand[]
   thinkingLevels: string[]
   thinkingLevel: string | null
+  /** Имя сессии из `get_state` (`sessionName`) — persisted-имя при возобновлении, null у новой. */
+  sessionName: string | null
   autoCompactionEnabled: boolean
   /** Суммарные токены сессии из `get_session_stats` (input/output/cacheRead/cacheWrite). */
   sessionTokens: { input: number; output: number; cacheRead: number; cacheWrite: number } | null

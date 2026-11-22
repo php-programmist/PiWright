@@ -154,6 +154,25 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('resume from history keeps the persisted session name, not the first prompt', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return { ...handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl'), sessionName: 'Agent-given name' }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 1, cacheWrite: 1 } }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_messages') {
+        return { messages: [{ role: 'user', content: [{ type: 'text', text: 'the entire first prompt of a very long session' }] }] }
+      }
+      return null
+    })
+    const { host, statuses } = makeHost([child], SETTINGS, { sessionFile: 'C:\\proj\\.pi\\sessions\\a.jsonl' })
+    await host.ensureStarted()
+    const last = statuses[statuses.length - 1]
+    expect(last?.title).toBe('Agent-given name')
+    host.dispose()
+  })
+
   it('reports backend resolution failure as an error status', async () => {
     const events: UiEvent[] = []
     const statuses: PiStatus[] = []
