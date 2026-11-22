@@ -2939,6 +2939,20 @@ body {
   color: #fff;
 }
 
+.confirm-box {
+  max-width: 420px;
+}
+
+.confirm-message {
+  white-space: pre-line;
+  font-weight: 500;
+}
+
+.files-rename-actions button.primary.danger {
+  background: var(--red);
+  border-color: var(--red);
+}
+
 .file-overlay {
   position: absolute;
   inset: 0;

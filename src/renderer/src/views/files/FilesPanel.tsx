@@ -6,6 +6,7 @@ import { useFilesStore } from '../../stores/files'
 import { useGitStore } from '../../stores/git'
 import { useTabsStore, useCenterProject } from '../../stores/tabs'
 import { persistPanel } from '../../stores/panels-prefs'
+import { confirmDialog } from '../../components/ConfirmDialog'
 import { useT } from '../../lib/i18n'
 import { injectIntoPrompt } from '../../lib/prompt-inject'
 import { fileStatusClass } from '../../lib/git-file-class'
@@ -134,13 +135,12 @@ export function FilesPanel(): React.JSX.Element {
   const project = useCenterProject()
   const width = useFilesStore((s) => s.width)
   const setWidth = useFilesStore((s) => s.setWidth)
-  const refresh = useFilesStore((s) => s.refresh)
   const rename = useFilesStore((s) => s.rename)
   const remove = useFilesStore((s) => s.remove)
   const createDir = useFilesStore((s) => s.createDir)
   const createFile = useFilesStore((s) => s.createFile)
   const reloadFile = useFilesStore((s) => s.reloadFile)
-  const loadDir = useFilesStore((s) => s.loadDir)
+  const reloadDir = useFilesStore((s) => s.reloadDir)
   const t = useT()
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -197,8 +197,6 @@ export function FilesPanel(): React.JSX.Element {
       <div className="files-resizer" onMouseDown={startResize} />
       <div className="files-head">
         <span className="files-title">{t('Files')}</span>
-        <span className="spacer" />
-        <button className="icon" title={t('Refresh tree')} onClick={() => void refresh(project)}>⟲</button>
       </div>
       <FilesError />
       <div
@@ -241,12 +239,12 @@ export function FilesPanel(): React.JSX.Element {
               className="project-menu-item danger"
               onClick={() => {
                 const name = menu.path.slice(menu.path.lastIndexOf('/') + 1)
-                if (!window.confirm(t('Delete "{name}"?', { name }))) {
-                  setMenu(null)
-                  return
-                }
-                void remove(project, menu.path)
                 setMenu(null)
+                void confirmDialog({ message: t('Delete "{name}"?', { name }), confirmLabel: t('Delete'), danger: true }).then(
+                  (ok) => {
+                    if (ok) void remove(project, menu.path)
+                  }
+                )
               }}
             >
               {t('Delete')}
@@ -290,7 +288,7 @@ export function FilesPanel(): React.JSX.Element {
               className="project-menu-item"
               onClick={() => {
                 if (menu.kind === 'file') void reloadFile(project, menu.path)
-                else void loadDir(project, menu.path)
+                else void reloadDir(project, menu.path)
                 setMenu(null)
               }}
             >
@@ -337,14 +335,14 @@ export function FilesPanel(): React.JSX.Element {
               value={dialog.value}
               onChange={(e) => setDialog({ ...dialog, value: e.target.value })}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void confirmDialog()
+                if (e.key === 'Enter') void submitDialog()
                 if (e.key === 'Escape') setDialog(null)
               }}
               onFocus={(e) => e.target.select()}
             />
             <div className="files-rename-actions">
               <button onClick={() => setDialog(null)}>{t('Cancel')}</button>
-              <button className="primary" onClick={() => void confirmDialog()}>
+              <button className="primary" onClick={() => void submitDialog()}>
                 {dialog.mode === 'rename' ? t('Rename') : t('Create')}
               </button>
             </div>
@@ -354,7 +352,7 @@ export function FilesPanel(): React.JSX.Element {
     </aside>
   )
 
-  async function confirmDialog(): Promise<void> {
+  async function submitDialog(): Promise<void> {
     if (dialog === null || project === null) return
     const value = dialog.value.trim()
     if (value.length === 0 || value === '.' || value === '..' || /[\\/]/.test(value)) return

@@ -13,6 +13,7 @@ import { TranscriptView } from './views/chat/TranscriptView'
 import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
+import { ConfirmDialogHost } from './components/ConfirmDialog'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
@@ -188,6 +189,7 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
+      <ConfirmDialogHost />
       {settingsOpen && <SettingsView />}
       {(
         <div className="layout">

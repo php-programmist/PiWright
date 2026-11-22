@@ -28,7 +28,8 @@ interface FilesState extends FilesData {
   setWidth: (width: number) => void
   loadDir: (project: ProjectEntry, dir: string) => Promise<void>
   toggleDir: (project: ProjectEntry, dir: string) => Promise<void>
-  refresh: (project: ProjectEntry) => Promise<void>
+  /** Перечитка каталога и всех развёрнутых вложенных каталогов (пункт меню «Обновить»). */
+  reloadDir: (project: ProjectEntry, dir: string) => Promise<void>
   /** Загрузка содержимого файла (идемпотентно; картинки — data URL в images) + watch открытых. */
   openFile: (project: ProjectEntry, path: string) => Promise<void>
   rename: (project: ProjectEntry, path: string, newName: string) => Promise<boolean>
@@ -102,12 +103,12 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     if (!wasExpanded && get().tree[dir] === undefined) await get().loadDir(project, dir)
   },
 
-  refresh: async (project) => {
+  reloadDir: async (project, dir) => {
     if (projectKey(project) !== get().projectKey) return
-    set({ tree: {} })
-    await get().loadDir(project, '')
-    for (const dir of Object.keys(get().expanded)) {
-      if (get().expanded[dir]) await get().loadDir(project, dir)
+    await get().loadDir(project, dir)
+    const prefix = `${dir}/`
+    for (const [key, value] of Object.entries(get().expanded)) {
+      if (value && key.startsWith(prefix)) await get().loadDir(project, key)
     }
   },
 

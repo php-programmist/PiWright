@@ -3,6 +3,7 @@ import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
+import { confirmDialog } from './ConfirmDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 
@@ -220,9 +221,11 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }
 
   const deleteHistory = async (summary: SessionSummary): Promise<void> => {
-    const answer = window.confirm(
-      t('Delete session "{title}" from disk?\n\nIts session file will be removed permanently.', { title: summary.title })
-    )
+    const answer = await confirmDialog({
+      message: t('Delete session "{title}" from disk?\n\nIts session file will be removed permanently.', { title: summary.title }),
+      confirmLabel: t('Delete'),
+      danger: true
+    })
     if (!answer) return
     const result = await window.piwright.deleteHistorySession(row.project, summary.path)
     if (!result.ok && result.error !== null) window.alert(result.error)
@@ -280,11 +283,13 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }
 
   const removeProjectWithConfirm = async (): Promise<void> => {
-    const answer = window.confirm(
-      t('Remove project "{name}" from the list?\n\nThe folder and its sessions stay on disk. You can add it back anytime.', {
+    const answer = await confirmDialog({
+      message: t('Remove project "{name}" from the list?\n\nThe folder and its sessions stay on disk. You can add it back anytime.', {
         name: projectName
-      })
-    )
+      }),
+      confirmLabel: t('Remove project'),
+      danger: true
+    })
     if (!answer) return
     useTabsStore.getState().forgetProject(projectKey(row.project))
     await removeProject(row.project)

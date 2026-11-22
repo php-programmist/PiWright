@@ -148,6 +148,7 @@ const RU: Record<string, string> = {
   'New Branch from {name}...': 'Новая ветка от {name}...',
   'Rename...': 'Переименовать...',
   'Delete': 'Удалить',
+  'Overwrite': 'Перезаписать',
   'Rename {name}': 'Переименовать {name}',
   'Stage': 'Индексировать',
   'Unstage': 'Снять индекс',
@@ -163,7 +164,6 @@ const RU: Record<string, string> = {
   'Pick a session to see its git status': 'Выберите сессию, чтобы увидеть её git-статус',
 
   // Файлы
-  'Refresh tree': 'Обновить дерево',
   'New folder': 'Новая папка',
   'New file': 'Новый файл',
   'Create': 'Создать',

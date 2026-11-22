@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { cloneModel, cloneProvider, parseModelsDoc, serializeModelsDoc } from '../../../../shared/models-doc'
 import type { ModelEdit, ParsedModelsDoc, ProviderEdit } from '../../../../shared/models-doc'
 import { useT } from '../../lib/i18n'
+import { confirmDialog } from '../../components/ConfirmDialog'
 import type { BackendMode } from '../../../../shared/ipc-contracts'
 
 const API_HINTS = ['openai-completions', 'openai-responses', 'anthropic-messages']
@@ -372,7 +373,7 @@ export function ModelsTab(): React.JSX.Element {
   }
 
   const deleteProvider = async (provider: ProviderEdit): Promise<void> => {
-    if (!window.confirm(t('Delete provider {name} from {backend} models.json?', { name: provider.name, backend: backendLabel(backend) }))) return
+    if (!(await confirmDialog({ message: t('Delete provider {name} from {backend} models.json?', { name: provider.name, backend: backendLabel(backend) }), confirmLabel: t('Delete'), danger: true }))) return
     const next: ParsedModelsDoc = { providers: parsed.providers.filter((p) => p.name !== provider.name), rest: parsed.rest }
     const err = await persist(next, backend)
     setNotice(err ?? t('Deleted {name}', { name: provider.name }))
@@ -388,7 +389,7 @@ export function ModelsTab(): React.JSX.Element {
     }
     const targetDoc = parseModelsDoc(res.doc)
     const existing = targetDoc.providers.some((p) => p.name === provider.name)
-    if (existing && !window.confirm(t('Provider {name} already exists on {backend}. Overwrite?', { name: provider.name, backend: backendLabel(target) }))) return
+    if (existing && !(await confirmDialog({ message: t('Provider {name} already exists on {backend}. Overwrite?', { name: provider.name, backend: backendLabel(target) }), confirmLabel: t('Overwrite') }))) return
     const clone = cloneProvider(provider, provider.name)
     const next: ParsedModelsDoc = {
       providers: existing

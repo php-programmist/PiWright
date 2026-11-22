@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
+import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
@@ -433,9 +434,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
 
   const removeWorktree = async (): Promise<void> => {
     if (worktree === null || project === null) return
-    if (!window.confirm(t("Remove worktree '{name}'?", { name: worktree.name }))) return
+    if (!(await confirmDialog({ message: t("Remove worktree '{name}'?", { name: worktree.name }), confirmLabel: t('Delete'), danger: true }))) return
     let result = await window.piwright.worktreeRemove(project, worktree.name, false)
-    if (!result.ok && result.uncommitted && window.confirm(t('There are uncommitted changes. Force remove?'))) {
+    if (!result.ok && result.uncommitted && (await confirmDialog({ message: t('There are uncommitted changes. Force remove?') }))) {
       result = await window.piwright.worktreeRemove(project, worktree.name, true)
     }
     if (!result.ok) {
