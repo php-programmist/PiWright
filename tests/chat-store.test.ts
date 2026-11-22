@@ -135,6 +135,20 @@ describe('chat store transcript', () => {
     expect(entries()[1]).toMatchObject({ kind: 'user', text: 'queued follow-up' })
   })
 
+  it('truncateFrom drops the entry and everything after it, then a new prompt appends', () => {
+    const store = useChatStore.getState()
+    store.addUserMessage(HOST, 'first')
+    store.applyEvent({ hostId: HOST, event: { type: 'injected_user_message', text: 'answer' } })
+    store.addUserMessage(HOST, 'second')
+    const all = entries()
+    expect(all).toHaveLength(3)
+    store.truncateFrom(HOST, all[1].id)
+    expect(entries()).toEqual([all[0]])
+    store.addUserMessage(HOST, 'edited')
+    expect(entries()).toHaveLength(2)
+    expect(entries()[1]).toMatchObject({ kind: 'user', text: 'edited' })
+  })
+
   it('dialogs open, expire and take receipts', () => {
     const store = useChatStore.getState()
     store.applyEvent({

@@ -61,6 +61,7 @@ import {
   SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
+  SESSION_EDIT_PROMPT_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
@@ -122,6 +123,8 @@ const api: PiWrightApi = {
   revealProject: (project: ProjectEntry) => ipcRenderer.invoke(PROJECTS_REVEAL_CHANNEL, project),
   prompt: (hostId: string, text: string, images?: string[], behavior?: PromptBehavior) =>
     ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
+  editPrompt: (hostId: string, text: string, occurrence: number, newText: string) =>
+    ipcRenderer.invoke(SESSION_EDIT_PROMPT_CHANNEL, hostId, text, occurrence, newText),
   loopStart: (hostId: string, prompt: string, maxIterations: number, exitCondition: string) =>
     ipcRenderer.invoke(LOOP_START_CHANNEL, hostId, prompt, maxIterations, exitCondition),
   loopStop: (hostId: string) => ipcRenderer.invoke(LOOP_STOP_CHANNEL, hostId),

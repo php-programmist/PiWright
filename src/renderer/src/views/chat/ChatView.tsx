@@ -26,10 +26,16 @@ const STATUS_LABEL: Record<string, string> = {
   error: 'error'
 }
 
-export function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void }): React.JSX.Element | null {
+export interface UserEntry {
+  kind: 'user'
+  id: number
+  text: string
+}
+
+export function EntryView({ entry, onAnswer, onEdit }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
-      return <div className="user-message">{entry.text}</div>
+      return <UserMessage entry={entry} onEdit={onEdit} />
     case 'text':
       return <div className="assistant-message"><Markdown text={entry.text} /></div>
     case 'thinking':
@@ -67,6 +73,70 @@ export function EntryView({ entry, onAnswer }: { entry: Entry; onAnswer: (dialog
 export function ChatThinkingSummary(): React.JSX.Element {
   const t = useT()
   return <summary>{t('thinking')}</summary>
+}
+
+/** Пузырь пользователя; карандаш по ховеру открывает инлайн-редактор (порт MessageActions из jb-pi). */
+function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: UserEntry, newText: string) => void }): React.JSX.Element {
+  const t = useT()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(entry.text)
+  if (editing) {
+    const submit = (): void => {
+      setEditing(false)
+      if (onEdit !== undefined && draft.trim().length > 0 && draft !== entry.text) onEdit(entry, draft)
+    }
+    return (
+      <div className="user-message editing">
+        <textarea
+          className="user-edit-area"
+          value={draft}
+          rows={Math.min(10, draft.split('\n').length + 1)}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              submit()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              setEditing(false)
+            }
+          }}
+        />
+        <div className="user-edit-actions">
+          <button onClick={() => setEditing(false)}>{t('Cancel')}</button>
+          <button onClick={submit} disabled={draft.trim().length === 0 || draft === entry.text}>
+            {t('Send')}
+          </button>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="user-message">
+      {entry.text}
+      {onEdit !== undefined && (
+        <button
+          className="user-edit"
+          title={t('Edit prompt and resend')}
+          onClick={() => {
+            setDraft(entry.text)
+            setEditing(true)
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
@@ -282,6 +352,21 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     await window.piwright.closeSession(activeHostId)
     useChatStore.getState().removeHost(activeHostId)
     useSessionsStore.getState().forgetHost(activeHostId)
+  }
+
+  /** Редактирование промпта: fork сессии на момент сообщения + новый prompt; лента обрезается. */
+  const submitEdit = async (entry: UserEntry, newText: string): Promise<void> => {
+    if (activeHostId === null || streaming) return
+    const index = entries.findIndex((e) => e.id === entry.id)
+    if (index < 0) return
+    const occurrence = entries.slice(index + 1).filter((e) => e.kind === 'user' && e.text === entry.text).length
+    const result = await window.piwright.editPrompt(activeHostId, entry.text, occurrence, newText)
+    if (!result.ok && result.error !== null) {
+      applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      return
+    }
+    useChatStore.getState().truncateFrom(activeHostId, entry.id)
+    addUserMessage(activeHostId, newText)
   }
 
   const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
@@ -557,7 +642,12 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       {todoItems.length > 0 && <TodoPanel items={todoItems} />}
       <main className="transcript" ref={transcriptRef} onScroll={handleScroll}>
         {visibleEntries.map((entry) => (
-          <EntryView key={entry.id} entry={entry} onAnswer={(id, answer) => void answerDialog(id, answer)} />
+          <EntryView
+            key={entry.id}
+            entry={entry}
+            onAnswer={(id, answer) => void answerDialog(id, answer)}
+            onEdit={streaming ? undefined : (e, text) => void submitEdit(e, text)}
+          />
         ))}
         {streaming && <div className="cursor">▍</div>}
         <div ref={bottomRef} />

@@ -70,6 +70,7 @@ const RU: Record<string, string> = {
   'Ask Pi (Enter to send, Shift+Enter for newline)': 'Спросить pi (Enter — отправить, Shift+Enter — новая строка)',
   'Ask Pi (Ctrl+Enter to send)': 'Спросить pi (Ctrl+Enter — отправить)',
   'Send': 'Отправить',
+  'Edit prompt and resend': 'Редактировать промпт и отправить заново',
   'Attach file': 'Прикрепить файл',
   'Remove image': 'Убрать изображение',
   'Loop': 'Петля',

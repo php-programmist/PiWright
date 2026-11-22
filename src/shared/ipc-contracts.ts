@@ -457,6 +457,8 @@ export interface PiWrightApi {
   /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
   revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
+  /** Редактировать отправленный промпт: fork сессии на момент сообщения + новый prompt; вся история после сообщения стирается. occurrence — номер вхождения текста среди промптов с конца (0 = последнее). */
+  editPrompt(hostId: string, text: string, occurrence: number, newText: string): Promise<PromptResult>
   /** Стартовать петлю на сессии: промпт повторяется в новых сессиях, пока ход содержит вызовы инструментов; exitCondition дописывается в каждую итерацию. */
   loopStart(hostId: string, prompt: string, maxIterations: number, exitCondition: string): Promise<PromptResult>
   /** Остановить петлю: следующая итерация не начнётся, текущий ход не прерывается. */
@@ -554,6 +556,7 @@ export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'
 export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
+export const SESSION_EDIT_PROMPT_CHANNEL = 'session:edit-prompt'
 export const LOOP_START_CHANNEL = 'loop:start'
 export const LOOP_STOP_CHANNEL = 'loop:stop'
 export const LOOP_SET_REMAINING_CHANNEL = 'loop:set-remaining'

@@ -783,6 +783,88 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('editPrompt forks the session at the matched prompt and resends the new text', async () => {
+    const entries = {
+      entries: [
+        { id: 'e1', parentId: null, type: 'message', message: { role: 'user', content: 'hello' } },
+        { id: 'e2', parentId: 'e1', type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] } },
+        { id: 'e3', parentId: 'e2', type: 'message', message: { role: 'user', content: 'hello again' } }
+      ],
+      leafId: 'e3'
+    }
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\branch.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_entries') return entries
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child])
+    await host.prompt('warm up')
+    const result = await host.editPrompt('hello', 0, 'edited hello')
+    expect(result.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'e1')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'prompt' && c['message'] === 'edited hello')).toBe(true)
+    expect(statuses[statuses.length - 1]?.sessionFile).toBe('C:\\proj\\.pi\\sessions\\branch.jsonl')
+    host.dispose()
+  })
+
+  it('editPrompt matches repeated prompt texts by occurrence from the tail', async () => {
+    const entries = {
+      entries: [
+        { id: 'e1', parentId: null, type: 'message', message: { role: 'user', content: 'same' } },
+        { id: 'e2', parentId: 'e1', type: 'message', message: { role: 'assistant', content: 'a' } },
+        { id: 'e3', parentId: 'e2', type: 'message', message: { role: 'user', content: 'same' } }
+      ],
+      leafId: 'e3'
+    }
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_entries') return entries
+      return null
+    })
+    currentChild = child
+    const { host } = makeHost([child])
+    await host.prompt('warm up')
+    const last = await host.editPrompt('same', 0, 'x')
+    expect(last.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'e3')).toBe(true)
+    const first = await host.editPrompt('same', 1, 'y')
+    expect(first.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'e1')).toBe(true)
+    host.dispose()
+  })
+
+  it('editPrompt fails without fork when the prompt is not in the active branch', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_entries') return { entries: [], leafId: null }
+      return null
+    })
+    currentChild = child
+    const { host } = makeHost([child])
+    await host.prompt('warm up')
+    const result = await host.editPrompt('missing', 0, 'x')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('Prompt not found in session history')
+    expect(child.sent.some((c) => c['type'] === 'fork')).toBe(false)
+    host.dispose()
+  })
+
   it('queueRemove when idle returns the remaining texts instead of re-queueing', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

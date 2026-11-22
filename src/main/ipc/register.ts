@@ -52,6 +52,7 @@ import {
   SESSIONS_TRANSCRIPT_CHANNEL,
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
+  SESSION_EDIT_PROMPT_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
@@ -371,6 +372,18 @@ export function registerIpc(
     }
     const promptBehavior = behavior === 'steer' || behavior === 'followUp' ? behavior : undefined
     return h.prompt(text, isPathList(images) ? images : [], promptBehavior)
+  })
+
+  ipcMain.handle(SESSION_EDIT_PROMPT_CHANNEL, async (_event, hostId: unknown, text: unknown, occurrence: unknown, newText: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found' }
+    if (typeof text !== 'string' || text.trim().length === 0 || typeof newText !== 'string' || newText.trim().length === 0) {
+      return { ok: false, error: 'Message is empty' }
+    }
+    if (typeof occurrence !== 'number' || !Number.isInteger(occurrence) || occurrence < 0) {
+      return { ok: false, error: 'Invalid prompt occurrence' }
+    }
+    return h.editPrompt(text, occurrence, newText)
   })
 
   ipcMain.handle(SESSION_ABORT_CHANNEL, (_event, hostId: unknown) => {

@@ -60,6 +60,8 @@ interface ChatState {
   applyStatus: (status: PiStatus) => void
   removeHost: (hostId: string) => void
   addUserMessage: (hostId: string, text: string) => void
+  /** Стереть ленту от записи включительно (после редактирования промпта — форк сессии). */
+  truncateFrom: (hostId: string, entryId: number) => void
   setDialogReceipt: (hostId: string, dialogId: string, receipt: string) => void
   toggleToolsHidden: (hostId: string) => void
   toggleMuted: (hostId: string) => void
@@ -483,6 +485,16 @@ export const useChatStore = create<ChatState>((set) => ({
       const host = state.hosts[hostId] ?? emptyHostChat()
       const next: HostChat = { ...host, entries: [...host.entries, { kind: 'user', id: newId(), text }] }
       return { hosts: { ...state.hosts, [hostId]: next } }
+    })
+  },
+  truncateFrom: (hostId, entryId) => {
+    resetBuffers(hostId)
+    set((state) => {
+      const host = state.hosts[hostId]
+      if (host === undefined) return state
+      const index = host.entries.findIndex((e) => e.id === entryId)
+      if (index < 0) return state
+      return { hosts: { ...state.hosts, [hostId]: { ...host, entries: host.entries.slice(0, index) } } }
     })
   },
   setDialogReceipt: (hostId, dialogId, receipt) =>

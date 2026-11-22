@@ -44,6 +44,28 @@ function modelKey(model: { provider: string; id: string } | null | undefined): s
   return model ? `${model.provider}/${model.id}` : null
 }
 
+/** Текст user-сообщения из записи pi (message.content — строка или блоки). */
+function userPromptText(entry: PiJsonObject): string | null {
+  if (entry['type'] !== 'message') return null
+  const message = entry['message']
+  if (typeof message !== 'object' || message === null) return null
+  const m = message as PiJsonObject
+  if (m['role'] !== 'user') return null
+  const content = m['content']
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    const parts: string[] = []
+    for (const block of content) {
+      if (typeof block === 'object' && block !== null && (block as PiJsonObject)['type'] === 'text') {
+        const text = (block as PiJsonObject)['text']
+        if (typeof text === 'string') parts.push(text)
+      }
+    }
+    return parts.join('')
+  }
+  return null
+}
+
 /** Вшитые PiWright расширения, ставятся перед спавном pi; порядок = порядок `-e`. */
 function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Promise<(string | null)[]> {
   const extensions = [
@@ -694,6 +716,89 @@ export class SessionHost {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }
     }
+  }
+
+  /** Редактирование отправленного промпта (порт Rewind из jb-pi): выделенного RPC нет —
+   *  `fork {entryId}` переводит pi на новую ветку-сессию (старый файл не трогается),
+   *  затем обычный prompt с новым текстом. История после сообщения стирается.
+   *  occurrence — номер вхождения текста среди user-промптов активной ветки с конца (0 = последнее). */
+  async editPrompt(text: string, occurrence: number, newText: string): Promise<PromptResult> {
+    if (this.streaming) return { ok: false, error: 'Session is busy — wait for the current turn to finish' }
+    try {
+      await this.ensureStarted()
+      const conn = this.conn
+      if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+      const entryId = await this.findUserPromptEntryId(conn, text, occurrence)
+      if (entryId === null) return { ok: false, error: 'Prompt not found in session history' }
+      const forkResponse = await conn.request('fork', { entryId })
+      if (!forkResponse.success) {
+        return { ok: false, error: `fork failed: ${forkResponse.error ?? 'no details'}` }
+      }
+      if (
+        typeof forkResponse.data === 'object' &&
+        forkResponse.data !== null &&
+        (forkResponse.data as PiJsonObject)['cancelled'] === true
+      ) {
+        return { ok: false, error: 'Edit was cancelled' }
+      }
+      await this.applyForkedState(conn)
+      return await this.sendPrompt(newText, [])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: message }
+    }
+  }
+
+  /** entryId промпта в активной ветке: get_entries → цепочка parentId от leafId → матч по тексту с конца. */
+  private async findUserPromptEntryId(conn: PiConnection, text: string, occurrence: number): Promise<string | null> {
+    const response = await conn.request('get_entries')
+    if (!response.success) return null
+    const data: PiJsonObject =
+      response.data !== null && typeof response.data === 'object' && !Array.isArray(response.data)
+        ? (response.data as PiJsonObject)
+        : {}
+    const entries = Array.isArray(data['entries']) ? (data['entries'] as unknown[]) : []
+    const byId = new Map<string, PiJsonObject>()
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const record = entry as PiJsonObject
+      const id = record['id']
+      if (typeof id === 'string') byId.set(id, record)
+    }
+    let cursor: unknown = data['leafId']
+    const prompts: { id: string; text: string }[] = []
+    while (typeof cursor === 'string' && byId.has(cursor)) {
+      const entry = byId.get(cursor)
+      if (entry === undefined) break
+      const promptText = userPromptText(entry)
+      if (promptText !== null) prompts.push({ id: cursor, text: promptText })
+      cursor = entry['parentId']
+    }
+    // Матч с конца (как matchPromptIds в jb-pi): начало ленты расходится после компакции.
+    let seen = 0
+    for (const prompt of prompts) {
+      if (prompt.text.trim() === text.trim()) {
+        if (seen === occurrence) return prompt.id
+        seen++
+      }
+    }
+    return null
+  }
+
+  /** После fork pi живёт в новом файле сессии — обновляем путь/id, чтобы рестарт и панель видели ветку. */
+  private async applyForkedState(conn: PiConnection): Promise<void> {
+    const state = await conn.request('get_state')
+    const data: PiJsonObject =
+      state.data !== null && typeof state.data === 'object' && !Array.isArray(state.data)
+        ? (state.data as PiJsonObject)
+        : {}
+    const sessionFile = data['sessionFile']
+    if (typeof sessionFile === 'string' && sessionFile.length > 0) this.sessionFile = sessionFile
+    const sessionId = data['sessionId']
+    if (this.handshake !== null && typeof sessionId === 'string' && sessionId.length > 0) {
+      this.handshake = { ...this.handshake, sessionId }
+    }
+    this.status(this.lastState)
   }
 
   /** Первое сообщение новой сессии: одноразовый pi с той же моделью придумывает название 2-3 слова,
