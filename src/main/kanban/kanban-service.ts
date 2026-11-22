@@ -12,6 +12,7 @@ import type {
   KanbanBoardResult,
   KanbanBoardsResult,
   KanbanCommentInput,
+  KanbanCommentUpdateInput,
   KanbanMutationResult,
   ProjectEntry,
   Settings
@@ -24,6 +25,8 @@ import {
   applyCardDelete,
   applyCardMove,
   applyCardUpdate,
+  applyCommentDelete,
+  applyCommentUpdate,
   applyColumnCreate,
   applyColumnDelete,
   applyColumnMove,
@@ -382,6 +385,20 @@ export class KanbanService {
       if (commits.length > 0) comment.commits = commits.map(({ hash, message }) => ({ hash, message }))
     }
     return this.mutate(project, boardId, (board) => applyCardComment(board, { id: input.cardId, comment }))
+  }
+
+  async commentUpdate(project: ProjectEntry, boardId: string, input: KanbanCommentUpdateInput): Promise<KanbanMutationResult> {
+    if (!isValidKanbanId(input.cardId, 'c')) return failBoard('Invalid card id')
+    if (!isValidKanbanId(input.commentId, 'm')) return failBoard('Invalid comment id')
+    return this.mutate(project, boardId, (board) =>
+      applyCommentUpdate(board, { cardId: input.cardId, commentId: input.commentId, text: input.text, images: input.images })
+    )
+  }
+
+  async commentDelete(project: ProjectEntry, boardId: string, cardId: string, commentId: string): Promise<KanbanMutationResult> {
+    if (!isValidKanbanId(cardId, 'c')) return failBoard('Invalid card id')
+    if (!isValidKanbanId(commentId, 'm')) return failBoard('Invalid comment id')
+    return this.mutate(project, boardId, (board) => applyCommentDelete(board, { cardId, commentId }))
   }
 
   async columnCreate(project: ProjectEntry, boardId: string, name: string): Promise<KanbanMutationResult> {

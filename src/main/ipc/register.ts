@@ -39,6 +39,8 @@ import {
   KANBAN_CARD_DELETE_CHANNEL,
   KANBAN_CARD_MOVE_CHANNEL,
   KANBAN_CARD_UPDATE_CHANNEL,
+  KANBAN_COMMENT_DELETE_CHANNEL,
+  KANBAN_COMMENT_UPDATE_CHANNEL,
   KANBAN_COLUMN_CREATE_CHANNEL,
   KANBAN_COLUMN_DELETE_CHANNEL,
   KANBAN_COLUMN_MOVE_CHANNEL,
@@ -103,7 +105,7 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanCommentInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -746,6 +748,23 @@ export function registerIpc(
     }
     return kanban.cardComment(project, boardId, input as KanbanCommentInput)
   })
+
+  ipcMain.handle(KANBAN_COMMENT_UPDATE_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.commentUpdate(project, boardId, input as KanbanCommentUpdateInput)
+  })
+
+  ipcMain.handle(
+    KANBAN_COMMENT_DELETE_CHANNEL,
+    async (_event, project: unknown, boardId: unknown, cardId: unknown, commentId: unknown) => {
+      if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof cardId !== 'string' || typeof commentId !== 'string') {
+        return { ok: false, error: 'Invalid request', board: null }
+      }
+      return kanban.commentDelete(project, boardId, cardId, commentId)
+    }
+  )
 
   ipcMain.handle(KANBAN_COLUMN_CREATE_CHANNEL, async (_event, project: unknown, boardId: unknown, name: unknown) => {
     if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof name !== 'string') {

@@ -132,6 +132,36 @@ describe('CRUD через сервис', () => {
     expect((await service.cardMove(project, boardId, { id: 'c-00000000', columnId: todo.id })).ok).toBe(false)
   })
 
+  it('комментарии: update/delete только своих', async () => {
+    const project = native(tmpDir('comments'))
+    const board = (await service.createBoard(project, 'B')).board!
+    const boardId = board.id
+    const cardId = (await service.cardCreate(project, boardId, { title: 'T' })).board!.cards[0].id
+    const commentId = (
+      await service.cardComment(project, boardId, { cardId, text: 'draft' })
+    ).board!.cards[0].comments[0].id
+
+    const updated = await service.commentUpdate(project, boardId, { cardId, commentId, text: 'edited' })
+    expect(updated.board!.cards[0].comments[0].text).toBe('edited')
+
+    expect((await service.commentUpdate(project, boardId, { cardId, commentId, text: '' })).ok).toBe(false)
+    expect(
+      (await service.commentUpdate(project, boardId, { cardId, commentId: 'm-00000000', text: 'x' })).ok
+    ).toBe(false)
+    expect((await service.commentUpdate(project, boardId, { cardId: 'c-00000000', commentId, text: 'x' })).ok).toBe(false)
+
+    expect((await service.commentDelete(project, boardId, cardId, commentId)).board!.cards[0].comments).toHaveLength(0)
+    expect((await service.commentDelete(project, boardId, cardId, commentId)).ok).toBe(false)
+
+    const agentCommentId = 'm-deadbeef'
+    const boardFile = join(project.dir, '.pi', 'kanban', `${boardId}.json`)
+    const raw = JSON.parse(await fs.readFile(boardFile, 'utf8'))
+    raw.cards[0].comments.push({ id: agentCommentId, author: 'agent', text: 'agent says', images: [], at: raw.cards[0].createdAt })
+    await fs.writeFile(boardFile, JSON.stringify(raw), 'utf8')
+    expect((await service.commentUpdate(project, boardId, { cardId, commentId: agentCommentId, text: 'hack' })).ok).toBe(false)
+    expect((await service.commentDelete(project, boardId, cardId, agentCommentId)).ok).toBe(false)
+  })
+
   it('колонки и workflow', async () => {
     const project = native(tmpDir('columns'))
     const board = (await service.createBoard(project, 'B')).board!

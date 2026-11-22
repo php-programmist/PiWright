@@ -378,6 +378,14 @@ export interface KanbanCardMoveInput {
   index?: number
 }
 
+/** Правка своего комментария: только author === 'user'. */
+export interface KanbanCommentUpdateInput {
+  cardId: string
+  commentId: string
+  text: string
+  images?: string[]
+}
+
 /** Комментарий от пользователя: id/author/at проставляет сервис. */
 export interface KanbanCommentInput {
   cardId: string
@@ -625,6 +633,8 @@ export interface PiWrightApi {
   kanbanCardDelete(project: ProjectEntry, boardId: string, cardId: string): Promise<KanbanMutationResult>
   kanbanCardMove(project: ProjectEntry, boardId: string, input: KanbanCardMoveInput): Promise<KanbanMutationResult>
   kanbanCardComment(project: ProjectEntry, boardId: string, input: KanbanCommentInput): Promise<KanbanMutationResult>
+  kanbanCommentUpdate(project: ProjectEntry, boardId: string, input: KanbanCommentUpdateInput): Promise<KanbanMutationResult>
+  kanbanCommentDelete(project: ProjectEntry, boardId: string, cardId: string, commentId: string): Promise<KanbanMutationResult>
   kanbanColumnCreate(project: ProjectEntry, boardId: string, name: string): Promise<KanbanMutationResult>
   kanbanColumnRename(project: ProjectEntry, boardId: string, columnId: string, name: string): Promise<KanbanMutationResult>
   kanbanColumnDelete(project: ProjectEntry, boardId: string, columnId: string): Promise<KanbanMutationResult>
@@ -734,6 +744,8 @@ export const KANBAN_CARD_UPDATE_CHANNEL = 'kanban:card-update'
 export const KANBAN_CARD_DELETE_CHANNEL = 'kanban:card-delete'
 export const KANBAN_CARD_MOVE_CHANNEL = 'kanban:card-move'
 export const KANBAN_CARD_COMMENT_CHANNEL = 'kanban:card-comment'
+export const KANBAN_COMMENT_UPDATE_CHANNEL = 'kanban:comment-update'
+export const KANBAN_COMMENT_DELETE_CHANNEL = 'kanban:comment-delete'
 export const KANBAN_COLUMN_CREATE_CHANNEL = 'kanban:column-create'
 export const KANBAN_COLUMN_RENAME_CHANNEL = 'kanban:column-rename'
 export const KANBAN_COLUMN_DELETE_CHANNEL = 'kanban:column-delete'

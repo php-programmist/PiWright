@@ -535,6 +535,8 @@ function CardModal({
   const [title, setTitle] = useState(card?.title ?? '')
   const [description, setDescription] = useState(card?.description ?? '')
   const [comment, setComment] = useState('')
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editCommentText, setEditCommentText] = useState('')
   const [pendingImages, setPendingImages] = useState<{ name: string; path: string }[]>([])
   const [lightbox, setLightbox] = useState<string | null>(null)
   const lightboxRef = useRef<string | null>(null)
@@ -632,6 +634,39 @@ function CardModal({
     apply(result)
   }
 
+  const startEditComment = (item: { id: string; text: string }): void => {
+    setEditingCommentId(item.id)
+    setEditCommentText(item.text)
+  }
+
+  const cancelEditComment = (): void => {
+    setEditingCommentId(null)
+    setEditCommentText('')
+  }
+
+  const saveEditComment = async (): Promise<void> => {
+    if (editingCommentId === null) return
+    const text = editCommentText.trim()
+    if (text.length === 0) return
+    const result = await window.piwright.kanbanCommentUpdate(tab.project, board.id, {
+      cardId: card.id,
+      commentId: editingCommentId,
+      text,
+    })
+    cancelEditComment()
+    apply(result)
+  }
+
+  const removeComment = async (commentId: string): Promise<void> => {
+    const ok = await confirmDialog({
+      message: t('Delete comment?'),
+      confirmLabel: t('Delete'),
+      danger: true,
+    })
+    if (!ok) return
+    apply(await window.piwright.kanbanCommentDelete(tab.project, board.id, card.id, commentId))
+  }
+
   const saveAndClose = async (): Promise<void> => {
     await saveDetails()
     await addComment()
@@ -697,8 +732,39 @@ function CardModal({
                     {item.author === 'agent' ? t('Agent') : t('You')}
                   </span>
                   <span className="board-comment-date">{new Date(item.at).toLocaleString(locale)}</span>
+                  {item.author === 'user' && editingCommentId !== item.id && (
+                    <div className="board-comment-actions">
+                      <button title={t('Edit')} onClick={() => startEditComment(item)}>
+                        ✏️
+                      </button>
+                      <button title={t('Delete')} onClick={() => void removeComment(item.id)}>
+                        ×
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="board-comment-text">{item.text}</div>
+                {editingCommentId === item.id ? (
+                  <>
+                    <textarea
+                      className="board-comment-edit"
+                      value={editCommentText}
+                      autoFocus
+                      onChange={(e) => setEditCommentText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.ctrlKey && e.key === 'Enter') void saveEditComment()
+                        if (e.key === 'Escape') cancelEditComment()
+                      }}
+                    />
+                    <div className="board-comment-edit-actions">
+                      <button className="board-primary" onClick={() => void saveEditComment()}>
+                        {t('Save')}
+                      </button>
+                      <button onClick={cancelEditComment}>{t('Cancel')}</button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="board-comment-text">{item.text}</div>
+                )}
                 {(item.session !== undefined || (item.commits?.length ?? 0) > 0) && (
                   <div className="board-comment-refs">
                     {item.session !== undefined && <SessionChip project={tab.project} session={item.session} />}

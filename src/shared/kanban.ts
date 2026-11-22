@@ -372,6 +372,52 @@ export function applyCardComment(board: KanbanBoard, input: CardCommentInput): K
   return withCard(board, next)
 }
 
+export interface CommentUpdateInput {
+  cardId: string
+  commentId: string
+  text: string
+  /** Полная замена списка картинок (пути внутри .pi/kanban); undefined — не трогать. */
+  images?: string[]
+  now?: string
+}
+
+/** Правка только своего (author === 'user') комментария; агентские не трогаем. */
+export function applyCommentUpdate(board: KanbanBoard, input: CommentUpdateInput): KanbanBoard {
+  const card = board.cards.find((item) => item.id === input.cardId)
+  if (card === undefined) throw new Error(`Card not found: ${input.cardId}`)
+  const comment = card.comments.find((item) => item.id === input.commentId)
+  if (comment === undefined) throw new Error(`Comment not found: ${input.commentId}`)
+  if (comment.author !== 'user') throw new Error('Only user comments can be edited')
+  const text = sanitizeKanbanText(input.text, KANBAN_COMMENT_MAX)
+  if (text === null) throw new Error('Invalid comment text')
+  const nextComment: KanbanComment = {
+    ...comment,
+    text,
+    ...(input.images !== undefined ? { images: input.images.filter(isValidKanbanImagePath) } : {}),
+  }
+  const next: KanbanCard = {
+    ...card,
+    comments: card.comments.map((item) => (item.id === input.commentId ? nextComment : item)),
+    updatedAt: input.now ?? new Date().toISOString(),
+  }
+  return withCard(board, next)
+}
+
+/** Удаление только своего (author === 'user') комментария. */
+export function applyCommentDelete(board: KanbanBoard, input: { cardId: string; commentId: string }): KanbanBoard {
+  const card = board.cards.find((item) => item.id === input.cardId)
+  if (card === undefined) throw new Error(`Card not found: ${input.cardId}`)
+  const comment = card.comments.find((item) => item.id === input.commentId)
+  if (comment === undefined) throw new Error(`Comment not found: ${input.commentId}`)
+  if (comment.author !== 'user') throw new Error('Only user comments can be deleted')
+  const next: KanbanCard = {
+    ...card,
+    comments: card.comments.filter((item) => item.id !== input.commentId),
+    updatedAt: new Date().toISOString(),
+  }
+  return withCard(board, next)
+}
+
 export function applyColumnCreate(board: KanbanBoard, name: string): KanbanBoard {
   const columnName = sanitizeKanbanName(name)
   if (columnName === null) throw new Error('Invalid column name')

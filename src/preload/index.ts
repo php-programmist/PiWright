@@ -25,6 +25,8 @@ import {
   KANBAN_CARD_DELETE_CHANNEL,
   KANBAN_CARD_MOVE_CHANNEL,
   KANBAN_CARD_UPDATE_CHANNEL,
+  KANBAN_COMMENT_DELETE_CHANNEL,
+  KANBAN_COMMENT_UPDATE_CHANNEL,
   KANBAN_COLUMN_CREATE_CHANNEL,
   KANBAN_COLUMN_DELETE_CHANNEL,
   KANBAN_COLUMN_MOVE_CHANNEL,
@@ -201,6 +203,9 @@ const api: PiWrightApi = {
   kanbanCardDelete: (project, boardId, cardId) => ipcRenderer.invoke(KANBAN_CARD_DELETE_CHANNEL, project, boardId, cardId),
   kanbanCardMove: (project, boardId, input) => ipcRenderer.invoke(KANBAN_CARD_MOVE_CHANNEL, project, boardId, input),
   kanbanCardComment: (project, boardId, input) => ipcRenderer.invoke(KANBAN_CARD_COMMENT_CHANNEL, project, boardId, input),
+  kanbanCommentUpdate: (project, boardId, input) => ipcRenderer.invoke(KANBAN_COMMENT_UPDATE_CHANNEL, project, boardId, input),
+  kanbanCommentDelete: (project, boardId, cardId, commentId) =>
+    ipcRenderer.invoke(KANBAN_COMMENT_DELETE_CHANNEL, project, boardId, cardId, commentId),
   kanbanColumnCreate: (project, boardId, name) => ipcRenderer.invoke(KANBAN_COLUMN_CREATE_CHANNEL, project, boardId, name),
   kanbanColumnRename: (project, boardId, columnId, name) =>
     ipcRenderer.invoke(KANBAN_COLUMN_RENAME_CHANNEL, project, boardId, columnId, name),
