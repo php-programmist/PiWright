@@ -7,7 +7,8 @@ import type { ProjectEntry, Settings, TerminalTabsSnapshot } from '../src/shared
 /** Фича 37: переименование вкладок терминала + персист/восстановление через settings.terminalTabs. */
 
 const project: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj' }
-const key = `native\u0000D:\\tmp\\proj`
+const key = `native\u0000D:/tmp/proj`
+const wtProject: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj\\.pi\\worktrees\\wt1' }
 
 const baseSettings: Settings = {
   wslDistro: '',
@@ -112,6 +113,22 @@ describe('terminal store rename + persist', () => {
     await vi.waitFor(() => {
       expect(useTerminalStore.getState().projects[key]?.ids).toEqual(['d1'])
     })
+    vi.unstubAllGlobals()
+  })
+
+  it('терминал worktree-сесси лежит в наборе родительского проекта (один док на проект)', async () => {
+    const termCreate = vi
+      .fn()
+      .mockResolvedValue({ ok: true, error: null, terminal: { id: 'w1', profileId: 'powershell', label: 'PowerShell' } })
+    vi.stubGlobal('window', { piwright: { termCreate, termProfiles: vi.fn().mockResolvedValue({ ok: true, profiles: [], defaultProfileId: 'powershell' }), setSettings: vi.fn().mockResolvedValue(baseSettings) } })
+    useSessionsStore.setState({ settings: baseSettings })
+    useTerminalStore.setState({ open: true, projectKey: null, projects: {}, terms: {}, error: null })
+    useTerminalStore.getState().setProject(wtProject)
+
+    await vi.waitFor(() => {
+      expect(useTerminalStore.getState().projects[key]?.ids).toEqual(['w1'])
+    })
+    expect(useTerminalStore.getState().projectKey).toBe(key)
     vi.unstubAllGlobals()
   })
 

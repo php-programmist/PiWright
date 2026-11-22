@@ -9,7 +9,8 @@ import type {
 import { setTerminalTabs } from '../../../shared/terminal-tabs'
 import { disposeEntry } from '../views/terminal/term-registry'
 import { persistPanel } from './panels-prefs'
-import { projectKey, useSessionsStore } from './sessions'
+import { useSessionsStore } from './sessions'
+import { parentTabKey } from './tabs'
 import { useGitLogStore } from './gitlog'
 
 interface TermTab {
@@ -27,7 +28,9 @@ interface ProjectTerms {
 }
 
 /** Вкладки терминалов на проект: терминалы живут в main, смена проекта переключает набор
- *  вкладок, не убивая чужие. Смена проекта сбрасывает профили, но не вкладки. */
+ *  вкладок, не убивая чужие. Смена проекта сбрасывает профили, но не вкладки.
+ *  Ключ набора — parentTabKey (как у вкладок центра): терминал worktree-сессии и корневого
+ *  проекта — один набор, иначе при переключениях док перескакивает между наборами. */
 interface TerminalState {
   open: boolean
   /** Высота горизонтального дока внизу экрана. */
@@ -68,12 +71,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   error: null,
 
   setProject: (project) => {
-    const key = project === null ? null : projectKey(project)
+    const key = project === null ? null : parentTabKey(project)
     if (get().projectKey === key) return
     set({ projectKey: key, profiles: [], defaultProfileId: null, error: null })
     if (project === null) return
     void window.piwright.termProfiles(project).then((result) => {
-      if (projectKey(project) !== get().projectKey) return
+      if (parentTabKey(project) !== get().projectKey) return
       if (!result.ok) {
         set({ error: result.error })
         return
@@ -95,7 +98,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return null
     }
     const info = result.terminal
-    const key = projectKey(project)
+    const key = parentTabKey(project)
     set((state) => {
       const current = state.projects[key] ?? { ids: [], activeId: null }
       // Терминал и история Git делят нижний док: спавн терминала закрывает историю.
@@ -154,7 +157,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   ensureTabs: (project) => {
-    const key = projectKey(project)
+    const key = parentTabKey(project)
     if (get().projects[key] !== undefined) return
     const saved = useSessionsStore.getState().settings?.terminalTabs?.[key]
     if (saved === undefined || saved.tabs.length === 0) {
@@ -165,10 +168,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   },
 
   restoreTabs: async (project, snapshot) => {
-    const key = projectKey(project)
+    const key = parentTabKey(project)
     const ids: string[] = []
     for (const saved of snapshot.tabs) {
-      if (projectKey(project) !== get().projectKey) return
+      if (parentTabKey(project) !== get().projectKey) return
       const id = await get().spawn(project, saved.profileId, { persist: false })
       if (id === null) continue
       ids.push(id)
@@ -180,7 +183,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         })
       }
     }
-    if (ids.length === 0 || projectKey(project) !== get().projectKey) return
+    if (ids.length === 0 || parentTabKey(project) !== get().projectKey) return
     const activeId = ids[Math.min(snapshot.activeIndex ?? 0, ids.length - 1)] ?? null
     set((state) => {
       const current = state.projects[key]

@@ -19,7 +19,9 @@ export function useCenterProject(): ProjectEntry | null {
   const sessionActive = sessionRow !== null && activeProjectKey !== null && parentTabKey(sessionRow.project) === activeProjectKey
   if (sessionActive) return sessionRow.project
   const tab = entry !== undefined ? entry.tabs.find((t) => tabId(t) === entry.activeId) : undefined
-  return tab?.project ?? sessionRow?.project ?? (activeProjectKey !== null ? projectForKey(activeProjectKey) : null)
+  // Fallback — только проект активного набора вкладок: чужая активная сессия (другого
+  // проекта) сюда попадать не должна, иначе панели центра показывают не тот проект.
+  return tab?.project ?? (activeProjectKey !== null ? projectForKey(activeProjectKey) : null)
 }
 
 export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'transcript'
