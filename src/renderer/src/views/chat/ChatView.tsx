@@ -21,6 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
   starting: 'starting…',
   ready: 'ready',
   streaming: 'streaming…',
+  waiting: 'waiting…',
   disconnected: 'disconnected',
   error: 'error'
 }

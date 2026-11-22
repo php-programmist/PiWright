@@ -666,7 +666,7 @@ export class RemoteBridge {
     }
     return [...this.sessions.values()].map((remote) => {
       const methods = [...this.pendingUi.values()].filter((p) => p.remote === remote).map((p) => p.method)
-      const status = sessionStatus(remote.streaming, methods)
+      const status = sessionStatus(remote.streaming, methods, remote.host.lastStatus?.()?.state === 'waiting')
       return {
         id: remote.id,
         title: remote.title,

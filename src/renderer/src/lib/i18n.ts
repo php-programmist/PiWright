@@ -46,6 +46,7 @@ const RU: Record<string, string> = {
   'starting…': 'запуск…',
   'ready': 'готова',
   'streaming…': 'работает…',
+  'waiting…': 'ждёт субагентов…',
   'disconnected': 'отключена',
   'error': 'ошибка',
   'thinking': 'размышления',

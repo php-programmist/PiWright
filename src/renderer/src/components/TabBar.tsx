@@ -10,7 +10,7 @@ import { useGitStore } from '../stores/git'
 import { useT } from '../lib/i18n'
 import { baseName } from '../views/git/GitPanel'
 
-const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', idle: 'idle' }
+const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle' }
 
 interface MenuState {
   x: number

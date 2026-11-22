@@ -1089,6 +1089,10 @@ body {
   background: var(--yellow);
 }
 
+.dot.waiting {
+  animation: pulse 1s infinite alternate;
+}
+
 .dot.error,
 .dot.disconnected {
   background: var(--red);

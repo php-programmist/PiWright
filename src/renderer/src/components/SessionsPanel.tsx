@@ -10,6 +10,7 @@ const DOT_CLASS: Record<string, string> = {
   confirm: 'confirm',
   question: 'question',
   busy: 'busy',
+  waiting: 'waiting',
   idle: 'idle'
 }
 

@@ -35,6 +35,10 @@ interface PendingDialogEntry {
 }
 
 const DIALOG_EXPIRY_GRACE_MS = 2000
+/** Инструменты, спавнящие фоновых субагентов/воркфлоу — только после них ждём грейс-паузу на subagents:started. */
+const SUBAGENT_SPAWNING_TOOLS = new Set(['Agent', 'SubagentWorkflow'])
+/** subagents:started уходит асинхронно и часто приходит после turn_end — столько ждём его. */
+const SUBAGENT_GRACE_MS = 2000
 
 function modelKey(model: { provider: string; id: string } | null | undefined): string | null {
   return model ? `${model.provider}/${model.id}` : null
@@ -63,6 +67,8 @@ export interface SessionHostOptions {
   /** Последний выбор пользователя (настройки) — применяется в новой сессии сразу после хендшейка. */
   initialModel?: string | null
   initialThinkingLevel?: string | null
+  /** Грейс-пауза на subagents:started после turn_end (переопределяется в тестах). */
+  subagentGraceMs?: number
 }
 
 export class SessionHost {
@@ -91,7 +97,17 @@ export class SessionHost {
   telegramEnabled = false
   private readonly seedModels: PiModelInfo[]
   private readonly seedThinkingLevels: string[]
+  private readonly subagentGraceMs: number
   private readonly pendingDialogs = new Map<string, PendingDialogEntry>()
+  /** Активные субагенты/воркфлоу (subagents_activity) — ход с ними не переходит в ready. */
+  private readonly subagents = new Set<string>()
+  private readonly workflows = new Set<string>()
+  private waitingSubagents = false
+  /** turn_end этого хода уже разрешён или отложен — дубль agent_end/agent_settled гасим. */
+  private turnEndHandled = false
+  private turnEndTimer: NodeJS.Timeout | null = null
+  /** В ходе был вызов Agent/SubagentWorkflow — спавн уходит асинхронно, нужен грейс-окно. */
+  private subagentToolSeen = false
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
@@ -107,6 +123,7 @@ export class SessionHost {
     this.installExtensions = opts.installExtensions ?? ensurePiwrightExtensions
     this.seedModels = opts.seedModels ?? []
     this.seedThinkingLevels = opts.seedThinkingLevels ?? []
+    this.subagentGraceMs = opts.subagentGraceMs ?? SUBAGENT_GRACE_MS
     this.desiredModel = opts.initialModel ?? null
     this.desiredThinkingLevel = opts.initialThinkingLevel ?? null
     this.status('idle')
@@ -134,7 +151,7 @@ export class SessionHost {
       thinkingLevel: this.handshake?.thinkingLevel ?? this.desiredThinkingLevel,
       project: this.project,
       title: this.title,
-      dot: sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind))
+      dot: sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind), state === 'waiting')
     }
     this.lastStatusData = snapshot
     this.listener.onStatus(snapshot)
@@ -235,7 +252,10 @@ export class SessionHost {
         this.emit({ type: 'user_message', text })
       },
       onQueueUpdate: (steering, followUp) => this.emit({ type: 'queue_update', steering, followUp }),
-      onToolStart: (call) => this.emit({ type: 'tool_start', call }),
+      onToolStart: (call) => {
+        if (call.parentToolCallId === null && SUBAGENT_SPAWNING_TOOLS.has(call.name)) this.subagentToolSeen = true
+        this.emit({ type: 'tool_start', call })
+      },
       onToolUpdate: (id, text) => this.emit({ type: 'tool_update', id, text }),
       onToolEnd: (call, result) => this.emit({ type: 'tool_end', call, result }),
       onContextUsageUpdate: (usage) => this.emit({ type: 'context_usage', used: usage.used, size: usage.size }),
@@ -249,7 +269,10 @@ export class SessionHost {
       onCompactionEnd: (end) => this.emit({ type: 'compaction_end', end }),
       onResult: (usage) => this.emit({ type: 'turn_result', usage }),
       onError: (message) => this.emit({ type: 'turn_error', message }),
-      onSubagentsActivity: (kind, id) => this.emit({ type: 'subagents_activity', kind, id })
+      onSubagentsActivity: (kind, id) => {
+        this.trackSubagents(kind, id)
+        this.emit({ type: 'subagents_activity', kind, id })
+      }
     })
     const conn = new PiConnection(created.backend.spawner, {
       onEvent: (type, payload) => this.handleEvent(translator, type, payload),
@@ -259,6 +282,9 @@ export class SessionHost {
         this.translator = null
         this.handshake = null
         this.clearPendingDialogs()
+        this.cancelTurnEndTimer()
+        this.turnEndHandled = false
+        this.waitingSubagents = false
         const message = cause !== null || exitCode !== null
           ? `pi exited (code ${exitCode ?? '?'}). stderr: ${stderrTail || '—'}`
           : 'pi exited'
@@ -312,18 +338,87 @@ export class SessionHost {
     if (type === 'agent_start') {
       const external = !this.ownPromptPending
       this.ownPromptPending = false
+      this.cancelTurnEndTimer()
+      this.turnEndHandled = false
+      this.waitingSubagents = false
+      this.subagentToolSeen = false
       this.emit({ type: 'turn_start', external })
       this.status('streaming')
     } else if (type === 'agent_settled' || type === 'agent_end') {
       translator.onEvent(type, payload)
-      this.emit({ type: 'turn_end' })
-      this.status('ready')
-      this.refreshSessionStats()
+      this.handleTurnEnd()
       return
     } else if (type === 'message_start' && (payload['message'] as Record<string, unknown> | undefined)?.['role'] === 'assistant') {
       this.emit({ type: 'assistant_message_start' })
     }
     translator.onEvent(type, payload)
+  }
+
+  /** Субагенты/воркфлоу: учёт активных; когда ожидающий их ход дождался — разрешаем turn_end. */
+  private trackSubagents(
+    kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed',
+    id: string | null
+  ): void {
+    if (kind === 'disposed') {
+      this.subagents.clear()
+      this.workflows.clear()
+    } else if (kind === 'started' && id !== null) {
+      this.subagents.add(id)
+    } else if (kind === 'completed' && id !== null) {
+      this.subagents.delete(id)
+    } else if (kind === 'workflow_started' && id !== null) {
+      this.workflows.add(id)
+    } else if (kind === 'workflow_settled' && id !== null) {
+      this.workflows.delete(id)
+    }
+    if (this.waitingSubagents && this.subagents.size === 0 && this.workflows.size === 0) {
+      this.resolveDeferredTurnEnd()
+    }
+  }
+
+  /** Конец хода: при живых субагентах — статус waiting, turn_end откладывается до их завершения;
+   *  после Agent/SubagentWorkflow — грейс-пауза (subagents:started приходит после turn_end).
+   *  Звук окончания хода и Telegram-уведомление привязаны к turn_end — при waiting они уходят
+   *  только когда субагенты завершатся и сессия реально перейдёт в ready. */
+  private handleTurnEnd(): void {
+    if (this.turnEndHandled) return
+    this.turnEndHandled = true
+    if (this.subagents.size > 0 || this.workflows.size > 0) {
+      this.waitingSubagents = true
+      this.status('waiting')
+      return
+    }
+    if (this.subagentToolSeen) {
+      this.status('waiting')
+      this.turnEndTimer = setTimeout(() => {
+        this.turnEndTimer = null
+        if (this.subagents.size === 0 && this.workflows.size === 0) this.resolveDeferredTurnEnd()
+      }, this.subagentGraceMs)
+      this.turnEndTimer.unref()
+      return
+    }
+    this.finishTurnEnd()
+  }
+
+  /** Отложенный turn_end разрешается: субагенты завершились или грейс-окно истекло пустым. */
+  private resolveDeferredTurnEnd(): void {
+    if (!this.turnEndHandled) return
+    this.turnEndHandled = false
+    this.finishTurnEnd()
+  }
+
+  private finishTurnEnd(): void {
+    this.waitingSubagents = false
+    this.emit({ type: 'turn_end' })
+    this.status('ready')
+    this.refreshSessionStats()
+  }
+
+  private cancelTurnEndTimer(): void {
+    if (this.turnEndTimer !== null) {
+      clearTimeout(this.turnEndTimer)
+      this.turnEndTimer = null
+    }
   }
 
   /** Суммарные токены сессии после хода — fire-and-forget, renderer заменяет totals целиком. */
@@ -620,6 +715,7 @@ export class SessionHost {
 
   dispose(): void {
     this.clearPendingDialogs()
+    this.cancelTurnEndTimer()
     this.conn?.close()
     this.conn = null
   }
