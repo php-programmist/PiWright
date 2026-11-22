@@ -44,6 +44,7 @@ import {
   KANBAN_COLUMN_MOVE_CHANNEL,
   KANBAN_COLUMN_RENAME_CHANNEL,
   KANBAN_ATTACHMENT_PUT_CHANNEL,
+  KANBAN_ATTACHMENT_GET_CHANNEL,
   KANBAN_WORKFLOW_SET_CHANNEL,
   MCP_LIST_CHANNEL,
   MCP_PROBE_CHANNEL,
@@ -786,6 +787,13 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request', name: '', path: '' }
     }
     return kanban.putAttachment(project, name, base64)
+  })
+
+  ipcMain.handle(KANBAN_ATTACHMENT_GET_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request', dataUrl: '' }
+    }
+    return kanban.getAttachment(project, path)
   })
 
   ipcMain.handle(SOUNDS_READ_CHANNEL, (_event, path: unknown) => {

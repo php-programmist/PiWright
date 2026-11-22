@@ -298,6 +298,8 @@ export interface CardUpdateInput {
   id: string
   title?: string
   description?: string
+  /** Полная замена списка картинок (пути внутри .pi/kanban); undefined — не трогать. */
+  images?: string[]
   now?: string
 }
 
@@ -310,6 +312,7 @@ export function applyCardUpdate(board: KanbanBoard, input: CardUpdateInput): Kan
     ...card,
     title,
     description: input.description === undefined ? card.description : input.description.slice(0, KANBAN_DESCRIPTION_MAX),
+    images: input.images === undefined ? card.images : input.images.filter(isValidKanbanImagePath),
     updatedAt: input.now ?? new Date().toISOString(),
   }
   return withCard(board, next)

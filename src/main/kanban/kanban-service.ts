@@ -7,6 +7,7 @@ import type { ChildProcess } from 'node:child_process'
 import { posix, win32 } from 'node:path'
 import type {
   GitOpResult,
+  KanbanAttachmentGetResult,
   KanbanAttachmentResult,
   KanbanBoardResult,
   KanbanBoardsResult,
@@ -31,6 +32,7 @@ import {
   casMutate,
   createDefaultBoard,
   isValidKanbanId,
+  isValidKanbanImagePath,
   KANBAN_COMMENT_MAX,
   KanbanConflictError,
   newKanbanId,
@@ -40,12 +42,13 @@ import {
   sanitizeKanbanTitle
 } from '../../shared/kanban'
 import type { KanbanBoardStore } from '../../shared/kanban'
-import { sanitizeAttachmentName } from '../../shared/attachments'
+import { imageMimeTypeForExtension, sanitizeAttachmentName } from '../../shared/attachments'
 import { buildBashCommand, buildWslSpawnArgs } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 
 const GITIGNORE_ENTRY = '.pi/kanban/attachments/'
 const GIT_TIMEOUT_MS = 10_000
+const KANBAN_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024
 
 interface ExecResult {
   code: number
@@ -326,11 +329,11 @@ export class KanbanService {
   async cardUpdate(
     project: ProjectEntry,
     boardId: string,
-    input: { id: string; title?: string; description?: string }
+    input: { id: string; title?: string; description?: string; images?: string[] }
   ): Promise<KanbanMutationResult> {
     if (!isValidKanbanId(input.id, 'c')) return failBoard('Invalid card id')
     return this.mutate(project, boardId, (board) =>
-      applyCardUpdate(board, { id: input.id, title: input.title, description: input.description })
+      applyCardUpdate(board, { id: input.id, title: input.title, description: input.description, images: input.images })
     )
   }
 
@@ -358,7 +361,7 @@ export class KanbanService {
       id: newKanbanId('m'),
       author: 'user',
       text,
-      images: [],
+      images: Array.isArray(input.images) ? input.images.filter(isValidKanbanImagePath) : [],
       at: new Date().toISOString()
     }
     if (input.session !== null && typeof input.session === 'object') {
@@ -430,6 +433,22 @@ export class KanbanService {
       return { ok: true, error: null, name, path: `attachments/${name}` }
     } catch (err) {
       return { ok: false, error: errorText(err), name: '', path: '' }
+    }
+  }
+
+  /** Картинка вложения → dataUrl для <img>; путь валидируется (только внутри attachments). */
+  async getAttachment(project: ProjectEntry, path: string): Promise<KanbanAttachmentGetResult> {
+    try {
+      if (!isValidKanbanImagePath(path)) return { ok: false, error: 'Invalid attachment path', dataUrl: '' }
+      const root = await this.resolveKanbanRoot(project)
+      const file = win32.join(this.kanbanDir(root), ...path.split('/'))
+      const mime = imageMimeTypeForExtension(win32.extname(file).slice(1))
+      if (mime === null) return { ok: false, error: 'Not an image', dataUrl: '' }
+      const bytes = await fs.readFile(file)
+      if (bytes.byteLength > KANBAN_ATTACHMENT_MAX_BYTES) return { ok: false, error: 'Image too large', dataUrl: '' }
+      return { ok: true, error: null, dataUrl: `data:${mime};base64,${bytes.toString('base64')}` }
+    } catch (err) {
+      return { ok: false, error: errorText(err), dataUrl: '' }
     }
   }
 }

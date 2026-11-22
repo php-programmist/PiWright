@@ -245,6 +245,7 @@ const RU: Record<string, string> = {
   'Move left': 'Сдвинуть влево',
   'Move right': 'Сдвинуть вправо',
   'Description': 'Описание',
+  'Attach image': 'Прикрепить картинку',
   'Add comment': 'Добавить комментарий (Ctrl+Enter)',
   'Add': 'Добавить',
   'Delete card': 'Удалить карточку',

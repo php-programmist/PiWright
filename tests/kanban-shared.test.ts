@@ -155,6 +155,17 @@ describe('чистые мутации', () => {
     expect(() => applyCardUpdate(boardWithCards(), { id: 'c-99999999', title: 'X' })).toThrow('Card not found')
   })
 
+  it('card update: images — замена, фильтрация невалидных, undefined не трогает', () => {
+    const withImages = applyCardUpdate(boardWithCards(), {
+      id: 'c-00000001',
+      images: ['attachments/a.png', '../evil.png', 'attachments/b.jpg', '/abs.png', ''],
+    })
+    expect(withImages.cards.find((item) => item.id === 'c-00000001')!.images).toEqual(['attachments/a.png', 'attachments/b.jpg'])
+
+    const untouched = applyCardUpdate(boardWithCards(), { id: 'c-00000001', title: 'X' })
+    expect(untouched.cards.find((item) => item.id === 'c-00000001')!.images).toEqual([])
+  })
+
   it('card delete убирает карточку', () => {
     const board = applyCardDelete(boardWithCards(), 'c-00000001')
     expect(board.cards.map((item) => item.id)).not.toContain('c-00000001')

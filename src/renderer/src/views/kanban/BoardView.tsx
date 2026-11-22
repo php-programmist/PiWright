@@ -1,14 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
 import type { KanbanBoard, KanbanCard } from '../../../../shared/kanban'
-import type { KanbanMutationResult } from '../../../../shared/ipc-contracts'
+import type { KanbanMutationResult, ProjectEntry } from '../../../../shared/ipc-contracts'
+import { base64FromBytes } from '../../../../shared/attachments'
 import type { ProjectTab } from '../../stores/tabs'
 import { useLang, useT } from '../../lib/i18n'
 import { confirmDialog } from '../../components/ConfirmDialog'
+import { Lightbox } from '../../components/Lightbox'
 
 interface DropTarget {
   columnId: string
   index: number
+}
+
+/** dataUrl превью по пути вложения — кэш на модуль, чтобы не перечитывать файл. */
+const thumbCache = new Map<string, string>()
+
+function KanbanThumb({ project, path, onOpen }: { project: ProjectEntry; path: string; onOpen: (src: string) => void }): React.JSX.Element {
+  const [src, setSrc] = useState(() => thumbCache.get(path) ?? '')
+  useEffect(() => {
+    if (src !== '') return
+    let cancelled = false
+    void window.piwright.kanbanAttachmentGet(project, path).then((res) => {
+      if (cancelled || !res.ok || res.dataUrl === '') return
+      thumbCache.set(path, res.dataUrl)
+      setSrc(res.dataUrl)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [project, path, src])
+  if (src === '') return <div className="board-thumb loading" />
+  return <img className="board-thumb" src={src} alt={path} onClick={() => onOpen(src)} />
 }
 
 /** Вкладка-доска: колонки в ряд, DnD карточек (между колонками и внутри), CRUD колонок,
@@ -321,7 +344,14 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
         )}
       </div>
       {modalCardId !== null && cardById(modalCardId) !== undefined && (
-        <CardModal tab={tab} board={board} cardId={modalCardId} apply={apply} onClose={() => setModalCardId(null)} />
+        <CardModal
+          tab={tab}
+          board={board}
+          cardId={modalCardId}
+          apply={apply}
+          onError={setError}
+          onClose={() => setModalCardId(null)}
+        />
       )}
     </div>
   )
@@ -332,12 +362,14 @@ function CardModal({
   board,
   cardId,
   apply,
+  onError,
   onClose,
 }: {
   tab: ProjectTab
   board: KanbanBoard
   cardId: string
   apply: (result: KanbanMutationResult) => void
+  onError: (message: string) => void
   onClose: () => void
 }): React.JSX.Element {
   const t = useT()
@@ -346,16 +378,81 @@ function CardModal({
   const [title, setTitle] = useState(card?.title ?? '')
   const [description, setDescription] = useState(card?.description ?? '')
   const [comment, setComment] = useState('')
+  const [pendingImages, setPendingImages] = useState<{ name: string; path: string }[]>([])
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  const lightboxRef = useRef<string | null>(null)
+  const uploadingRef = useRef(false)
+  const cardFileRef = useRef<HTMLInputElement | null>(null)
+  const commentFileRef = useRef<HTMLInputElement | null>(null)
+
+  const setLightboxSafe = (src: string | null): void => {
+    lightboxRef.current = src
+    setLightbox(src)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      if (lightboxRef.current !== null) {
+        setLightboxSafe(null)
+        return
+      }
+      onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
   if (card === undefined) return <></>
+
+  const uploadFiles = async (files: File[]): Promise<{ name: string; path: string }[]> => {
+    if (uploadingRef.current || files.length === 0) return []
+    uploadingRef.current = true
+    const uploaded: { name: string; path: string }[] = []
+    for (const file of files) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const res = await window.piwright.kanbanAttachmentPut(tab.project, file.name.length > 0 ? file.name : 'pasted.png', base64FromBytes(bytes))
+        if (res.ok) uploaded.push({ name: res.name, path: res.path })
+        else onError(res.error ?? 'Upload failed')
+      } catch (err) {
+        onError(err instanceof Error ? err.message : String(err))
+      }
+    }
+    uploadingRef.current = false
+    return uploaded
+  }
+
+  const addCardImages = (files: File[]): void => {
+    void uploadFiles(files).then((uploaded) => {
+      if (uploaded.length === 0) return
+      void window.piwright
+        .kanbanCardUpdate(tab.project, board.id, { id: card.id, images: [...card.images, ...uploaded.map((item) => item.path)] })
+        .then(apply)
+    })
+  }
+
+  const removeCardImage = (path: string): void => {
+    void window.piwright.kanbanCardUpdate(tab.project, board.id, { id: card.id, images: card.images.filter((item) => item !== path) }).then(apply)
+  }
+
+  const addCommentImages = (files: File[]): void => {
+    void uploadFiles(files).then((uploaded) => {
+      if (uploaded.length === 0) return
+      setPendingImages((prev) => [...prev, ...uploaded])
+    })
+  }
+
+  const pasteImages = (e: React.ClipboardEvent): void => {
+    const files = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (files.length === 0) return
+    e.preventDefault()
+    if (e.target instanceof HTMLTextAreaElement && e.target.classList.contains('board-comment-input')) addCommentImages(files)
+    else addCardImages(files)
+  }
 
   const saveDetails = async (): Promise<void> => {
     const nextTitle = title.trim()
@@ -370,9 +467,11 @@ function CardModal({
 
   const addComment = async (): Promise<void> => {
     const text = comment.trim()
-    if (text.length === 0) return
+    if (text.length === 0 && pendingImages.length === 0) return
     setComment('')
-    const result = await window.piwright.kanbanCardComment(tab.project, board.id, { cardId: card.id, text })
+    const images = pendingImages.map((item) => item.path)
+    setPendingImages([])
+    const result = await window.piwright.kanbanCardComment(tab.project, board.id, { cardId: card.id, text, images })
     apply(result)
   }
 
@@ -396,7 +495,7 @@ function CardModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="board-modal">
+      <div className="board-modal" onPaste={pasteImages}>
         <header className="board-modal-head">
           <input
             className="board-modal-title"
@@ -419,6 +518,19 @@ function CardModal({
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => void saveDetails()}
           />
+          <div className="board-card-images">
+            {card.images.map((path) => (
+              <div key={path} className="board-thumb-wrap">
+                <KanbanThumb project={tab.project} path={path} onOpen={setLightboxSafe} />
+                <button className="board-thumb-remove" title={t('Remove image')} onClick={() => removeCardImage(path)}>
+                  ×
+                </button>
+              </div>
+            ))}
+            <button className="board-thumb-add" title={t('Attach image')} onClick={() => cardFileRef.current?.click()}>
+              +
+            </button>
+          </div>
           <div className="board-comments">
             {card.comments.map((item) => (
               <div key={item.id} className="board-comment">
@@ -429,11 +541,34 @@ function CardModal({
                   <span className="board-comment-date">{new Date(item.at).toLocaleString(locale)}</span>
                 </div>
                 <div className="board-comment-text">{item.text}</div>
+                {item.images.length > 0 && (
+                  <div className="board-comment-images">
+                    {item.images.map((path) => (
+                      <KanbanThumb key={path} project={tab.project} path={path} onOpen={setLightboxSafe} />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
         <footer className="board-modal-foot">
+          {pendingImages.length > 0 && (
+            <div className="board-pending-images">
+              {pendingImages.map((item) => (
+                <span key={item.path} className="board-pending-image" title={item.name}>
+                  🖼 {item.name}
+                  <button
+                    className="board-pending-remove"
+                    title={t('Remove image')}
+                    onClick={() => setPendingImages((prev) => prev.filter((p) => p.path !== item.path))}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             className="board-comment-input"
             placeholder={t('Add comment')}
@@ -444,6 +579,9 @@ function CardModal({
             }}
           />
           <div className="board-modal-actions">
+            <button className="board-attach" title={t('Attach image')} onClick={() => commentFileRef.current?.click()}>
+              📎
+            </button>
             <button className="board-danger" onClick={() => void removeCard()}>
               {t('Delete card')}
             </button>
@@ -451,7 +589,30 @@ function CardModal({
               {t('Add')}
             </button>
           </div>
+          <input
+            ref={cardFileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              addCardImages(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
+          />
+          <input
+            ref={commentFileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              addCommentImages(Array.from(e.target.files ?? []))
+              e.target.value = ''
+            }}
+          />
         </footer>
+        {lightbox !== null && <Lightbox src={lightbox} alt="" onClose={() => setLightboxSafe(null)} />}
       </div>
     </div>
   )

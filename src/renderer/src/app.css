@@ -3980,3 +3980,145 @@ body {
 .board-primary:hover {
   filter: brightness(1.1);
 }
+
+.board-card-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.board-thumb-wrap {
+  position: relative;
+}
+
+.board-thumb {
+  width: 96px;
+  height: 72px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: zoom-in;
+  display: block;
+}
+
+.board-thumb.loading {
+  background: var(--bg);
+  cursor: default;
+}
+
+.board-thumb-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.board-thumb-remove:hover {
+  border-color: #d66;
+  color: #d66;
+}
+
+.board-thumb-add {
+  width: 96px;
+  height: 72px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.board-thumb-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.board-comment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.board-comment-images .board-thumb {
+  width: 80px;
+  height: 60px;
+}
+
+.board-pending-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.board-pending-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  font-size: 11px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-pending-remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+}
+
+.board-pending-remove:hover {
+  color: #d66;
+}
+
+.board-attach {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.board-attach:hover {
+  border-color: var(--accent);
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.lightbox-image {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: default;
+}

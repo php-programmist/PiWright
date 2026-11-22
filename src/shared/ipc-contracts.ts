@@ -368,6 +368,8 @@ export interface KanbanCardUpdateInput {
   id: string
   title?: string
   description?: string
+  /** Полная замена списка картинок (пути из kanban:attachment-put); undefined — не трогать. */
+  images?: string[]
 }
 
 export interface KanbanCardMoveInput {
@@ -382,12 +384,18 @@ export interface KanbanCommentInput {
   text: string
   session?: KanbanSessionRef
   commits?: KanbanCommitRef[]
+  images?: string[]
 }
 
 /** base64 → `.pi/kanban/attachments/`; path — относительный путь внутри `.pi/kanban`. */
 export interface KanbanAttachmentResult extends GitOpResult {
   name: string
   path: string
+}
+
+/** Чтение картинки вложения канбана: dataUrl для <img> (пустая строка при ошибке). */
+export interface KanbanAttachmentGetResult extends GitOpResult {
+  dataUrl: string
 }
 
 /** Файл из набора открытых изменился на диске (chokidar в main). */
@@ -623,6 +631,7 @@ export interface PiWrightApi {
   kanbanColumnMove(project: ProjectEntry, boardId: string, columnId: string, index: number): Promise<KanbanMutationResult>
   kanbanWorkflowSet(project: ProjectEntry, boardId: string, text: string): Promise<KanbanMutationResult>
   kanbanAttachmentPut(project: ProjectEntry, name: string, base64: string): Promise<KanbanAttachmentResult>
+  kanbanAttachmentGet(project: ProjectEntry, path: string): Promise<KanbanAttachmentGetResult>
   /** Диалог выбора файла → копия в `.pi/attachments/`. */
   chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
   soundsRead(path: string): Promise<SoundReadResult>
@@ -731,6 +740,7 @@ export const KANBAN_COLUMN_DELETE_CHANNEL = 'kanban:column-delete'
 export const KANBAN_COLUMN_MOVE_CHANNEL = 'kanban:column-move'
 export const KANBAN_WORKFLOW_SET_CHANNEL = 'kanban:workflow-set'
 export const KANBAN_ATTACHMENT_PUT_CHANNEL = 'kanban:attachment-put'
+export const KANBAN_ATTACHMENT_GET_CHANNEL = 'kanban:attachment-get'
 export const SOUNDS_READ_CHANNEL = 'sounds:read'
 export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
 export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'

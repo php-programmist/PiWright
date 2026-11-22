@@ -210,3 +210,38 @@ describe('putAttachment', () => {
     expect(again.name.startsWith('shot-')).toBe(true)
   })
 })
+
+describe('getAttachment и картинки в карточке/комментарии', () => {
+  it('getAttachment: dataUrl по валидному пути, ошибка на чужом/битом пути', async () => {
+    const project = native(tmpDir('attget'))
+    const put = await service.putAttachment(project, 'pic.png', Buffer.from('png-bytes').toString('base64'))
+    expect(put.ok).toBe(true)
+
+    const got = await service.getAttachment(project, put.path)
+    expect(got.ok).toBe(true)
+    expect(got.dataUrl).toBe(`data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`)
+
+    expect((await service.getAttachment(project, '../evil.png')).ok).toBe(false)
+    expect((await service.getAttachment(project, 'attachments/missing.png')).ok).toBe(false)
+    expect((await service.getAttachment(project, 'attachments/note.txt')).ok).toBe(false)
+  })
+
+  it('cardUpdate images и cardComment images: валидные пути сохраняются, мусор отфильтрован', async () => {
+    const project = native(tmpDir('cardimg'))
+    const boardId = (await service.createBoard(project, 'B')).board!.id
+    const cardId = (await service.cardCreate(project, boardId, { title: 'T' })).board!.cards[0].id
+
+    const updated = await service.cardUpdate(project, boardId, {
+      id: cardId,
+      images: ['attachments/a.png', '../evil.png'],
+    })
+    expect(updated.board!.cards[0].images).toEqual(['attachments/a.png'])
+
+    const commented = await service.cardComment(project, boardId, {
+      cardId,
+      text: 'with pic',
+      images: ['attachments/b.jpg', '/abs.png'],
+    })
+    expect(commented.board!.cards[0].comments[0].images).toEqual(['attachments/b.jpg'])
+  })
+})
