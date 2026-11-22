@@ -2751,12 +2751,11 @@ body {
 }
 
 .diff-overlay {
-  position: absolute;
-  inset: 0;
+  flex: 1;
+  min-height: 0;
   background: var(--bg);
   display: flex;
   flex-direction: column;
-  z-index: 20;
 }
 
 .diff-head {
