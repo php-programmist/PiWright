@@ -17,6 +17,7 @@ import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './
 import { ensureAskExtension } from './ask-extension'
 import { ensureSessionToolsExtension } from './session-tools-extension'
 import { ensureLoopStopExtension } from './loop-stop-extension'
+import { ensureKanbanExtension } from './kanban-extension'
 import { ensureSubagentBridgeExtension } from './subagent-bridge-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens, decodeCommands, dataObject } from './handshake'
@@ -72,7 +73,8 @@ function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Pr
     ensureAskExtension(project, settings),
     ensureSessionToolsExtension(project, settings),
     ensureSubagentBridgeExtension(project, settings),
-    ...(settings.loopsEnabled ? [ensureLoopStopExtension(project, settings)] : [])
+    ...(settings.loopsEnabled ? [ensureLoopStopExtension(project, settings)] : []),
+    ...(settings.kanbanEnabled ? [ensureKanbanExtension(project, settings)] : [])
   ]
   return Promise.all(extensions)
 }

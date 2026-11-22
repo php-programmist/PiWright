@@ -255,6 +255,20 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
               <div className="panel-hint">{t('Loops explanation')}</div>
             </section>
           )}
+          {tab === 'advanced' && (
+            <section className="settings-section">
+              <h3>{t('Kanban')}</h3>
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={draft.kanbanEnabled}
+                  onChange={(e) => update({ kanbanEnabled: e.target.checked })}
+                />
+                {t('Enable kanban boards (agent tools and the boards panel)')}
+              </label>
+              <div className="panel-hint">{t('Kanban explanation')}</div>
+            </section>
+          )}
         </div>
       </div>
     </>

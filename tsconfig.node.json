@@ -19,6 +19,7 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "resources/kanban/lib/**/*.ts",
     "src/renderer/src/stores/chat.ts",
     "src/renderer/src/stores/sessions.ts",
     "src/renderer/src/stores/terminal.ts",

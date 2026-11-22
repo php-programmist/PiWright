@@ -211,6 +211,9 @@ export function registerIpc(
       if (typeof raw['loopsEnabled'] === 'boolean') {
         safe.loopsEnabled = raw['loopsEnabled']
       }
+      if (typeof raw['kanbanEnabled'] === 'boolean') {
+        safe.kanbanEnabled = raw['kanbanEnabled']
+      }
       if (raw['language'] === 'en' || raw['language'] === 'ru') {
         safe.language = raw['language']
       }
