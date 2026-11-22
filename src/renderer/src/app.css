@@ -1297,10 +1297,6 @@ body {
   white-space: normal;
 }
 
-.tool-block.single[open] .tool-command {
-  display: none;
-}
-
 .tool-block.single .tool-detail {
   flex-shrink: 0;
 }
