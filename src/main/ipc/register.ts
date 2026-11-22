@@ -9,6 +9,7 @@ import {
   ATTACHMENTS_PUT_CHANNEL,
   FILES_LIST_CHANNEL,
   FILES_READ_CHANNEL,
+  FILES_READ_IMAGE_CHANNEL,
   FILES_RENAME_CHANNEL,
   FILES_DELETE_CHANNEL,
   FILES_MKDIR_CHANNEL,
@@ -541,6 +542,13 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request', content: '' }
     }
     return files.read(project, path)
+  })
+
+  ipcMain.handle(FILES_READ_IMAGE_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request', dataUrl: '' }
+    }
+    return files.readImage(project, path)
   })
 
   ipcMain.handle(FILES_WRITE_CHANNEL, async (_event, project: unknown, path: unknown, content: unknown) => {

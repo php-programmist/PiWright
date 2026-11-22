@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, sanitizeAttachmentName } from '../src/shared/attachments'
+import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, sanitizeAttachmentName } from '../src/shared/attachments'
 import { putAttachment, readAttachmentImages } from '../src/main/attachments/attachments'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
@@ -34,6 +34,14 @@ describe('shared attachments helpers', () => {
   it('base64FromBytes round-trips binary', () => {
     const bytes = new Uint8Array([0, 1, 2, 250, 255])
     expect(Buffer.from(base64FromBytes(bytes), 'base64')).toEqual(Buffer.from(bytes))
+  })
+
+  it('isImageFilePath by extension', () => {
+    expect(isImageFilePath('a/b/shot.PNG')).toBe(true)
+    expect(isImageFilePath('x.jpeg')).toBe(true)
+    expect(isImageFilePath('x.bmp')).toBe(true)
+    expect(isImageFilePath('x.txt')).toBe(false)
+    expect(isImageFilePath('noext')).toBe(false)
   })
 })
 

@@ -2,6 +2,7 @@
  *  Открытые файлы — вкладки проекта (stores/tabs.ts), здесь только кэш содержимого + watch. */
 import { create } from 'zustand'
 import type { FileEntry, ProjectEntry } from '../../../shared/ipc-contracts'
+import { isImageFilePath } from '../../../shared/attachments'
 import { projectKey } from './sessions'
 import { useTabsStore } from './tabs'
 
@@ -12,6 +13,8 @@ interface FilesData {
   expanded: Record<string, boolean>
   /** Кэш содержимого открытых файлов — ключи синхронизированы с файловыми вкладками tabs-стора. */
   contents: Record<string, string>
+  /** Кэш картинок-вкладок (data URL) — те же ключи, что и contents. */
+  images: Record<string, string>
   error: string | null
 }
 
@@ -26,7 +29,7 @@ interface FilesState extends FilesData {
   loadDir: (project: ProjectEntry, dir: string) => Promise<void>
   toggleDir: (project: ProjectEntry, dir: string) => Promise<void>
   refresh: (project: ProjectEntry) => Promise<void>
-  /** Загрузка содержимого файла (идемпотентно) + watch открытых. */
+  /** Загрузка содержимого файла (идемпотентно; картинки — data URL в images) + watch открытых. */
   openFile: (project: ProjectEntry, path: string) => Promise<void>
   rename: (project: ProjectEntry, path: string, newName: string) => Promise<boolean>
   remove: (project: ProjectEntry, path: string) => Promise<boolean>
@@ -49,6 +52,7 @@ function resetState(): FilesData {
     tree: {},
     expanded: {},
     contents: {},
+    images: {},
     error: null
   }
 }
@@ -56,6 +60,10 @@ function resetState(): FilesData {
 function projectFromKey(key: string): ProjectEntry {
   const [kind, dir] = key.split('\u0000')
   return { kind: kind as ProjectEntry['kind'], dir }
+}
+
+function watchedPaths(state: FilesData): string[] {
+  return [...Object.keys(state.contents), ...Object.keys(state.images)]
 }
 
 export const useFilesStore = create<FilesState>((set, get) => ({
@@ -105,8 +113,23 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   openFile: async (project, path) => {
     if (projectKey(project) !== get().projectKey) return
+    if (isImageFilePath(path)) {
+      if (get().images[path] !== undefined) {
+        void window.piwright.filesWatch(project, watchedPaths(get()))
+        return
+      }
+      set({ error: null })
+      const result = await window.piwright.filesReadImage(project, path)
+      if (projectKey(project) !== get().projectKey) return
+      set((state) => {
+        const images = result.ok ? { ...state.images, [path]: result.dataUrl } : state.images
+        void window.piwright.filesWatch(project, watchedPaths({ ...state, images }))
+        return { images, error: !result.ok ? result.error : state.error }
+      })
+      return
+    }
     if (get().contents[path] !== undefined) {
-      void window.piwright.filesWatch(project, Object.keys(get().contents))
+      void window.piwright.filesWatch(project, watchedPaths(get()))
       return
     }
     set({ error: null })
@@ -114,7 +137,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     if (projectKey(project) !== get().projectKey) return
     set((state) => {
       const contents = result.ok ? { ...state.contents, [path]: result.content } : state.contents
-      void window.piwright.filesWatch(project, Object.keys(contents))
+      void window.piwright.filesWatch(project, watchedPaths({ ...state, contents }))
       return { contents, error: !result.ok ? result.error : state.error }
     })
   },
@@ -146,9 +169,11 @@ export const useFilesStore = create<FilesState>((set, get) => ({
       for (const [dir, value] of Object.entries(state.expanded)) expanded[remap(dir)] = value
       const contents: Record<string, string> = {}
       for (const [p, content] of Object.entries(state.contents)) contents[remap(p)] = content
-      return { tree, expanded, contents }
+      const images: Record<string, string> = {}
+      for (const [p, url] of Object.entries(state.images)) images[remap(p)] = url
+      return { tree, expanded, contents, images }
     })
-    void window.piwright.filesWatch(project, Object.keys(get().contents))
+    void window.piwright.filesWatch(project, watchedPaths(get()))
     return true
   },
 
@@ -183,11 +208,19 @@ export const useFilesStore = create<FilesState>((set, get) => ({
         }
         contents[p] = content
       }
-      return { tree, expanded, contents }
+      const images: Record<string, string> = {}
+      for (const [p, url] of Object.entries(state.images)) {
+        if (p === path || p.startsWith(`${path}/`)) {
+          deleted.push(p)
+          continue
+        }
+        images[p] = url
+      }
+      return { tree, expanded, contents, images }
     })
     const tabs = useTabsStore.getState()
     for (const p of deleted) tabs.closeTab(project, `file\u0000${p}`)
-    void window.piwright.filesWatch(project, Object.keys(get().contents))
+    void window.piwright.filesWatch(project, watchedPaths(get()))
     return true
   },
 
@@ -217,6 +250,13 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   reloadFile: async (project, path) => {
     if (projectKey(project) !== get().projectKey) return
+    if (isImageFilePath(path)) {
+      if (get().images[path] === undefined) return
+      const result = await window.piwright.filesReadImage(project, path)
+      if (!result.ok || projectKey(project) !== get().projectKey || get().images[path] === undefined) return
+      set((state) => ({ images: { ...state.images, [path]: result.dataUrl } }))
+      return
+    }
     if (get().contents[path] === undefined) return
     const result = await window.piwright.filesRead(project, path)
     if (projectKey(project) !== get().projectKey || get().contents[path] === undefined) return
@@ -227,8 +267,10 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   closeContent: (project, path) => {
     const contents = { ...get().contents }
     delete contents[path]
-    set({ contents })
-    void window.piwright.filesWatch(project, Object.keys(contents))
+    const images = { ...get().images }
+    delete images[path]
+    set({ contents, images })
+    void window.piwright.filesWatch(project, watchedPaths({ ...get(), contents, images }))
   },
 
   setError: (error) => set({ error }),
@@ -248,7 +290,15 @@ export const useFilesStore = create<FilesState>((set, get) => ({
 
   applyFileChanged: async (project, path) => {
     const state = get()
-    if (projectKey(project) !== state.projectKey || state.contents[path] === undefined) return
+    if (projectKey(project) !== state.projectKey) return
+    if (isImageFilePath(path)) {
+      if (state.images[path] === undefined) return
+      const result = await window.piwright.filesReadImage(project, path)
+      if (projectKey(project) !== get().projectKey || get().images[path] === undefined) return
+      set((s) => ({ images: result.ok ? { ...s.images, [path]: result.dataUrl } : s.images }))
+      return
+    }
+    if (state.contents[path] === undefined) return
     const result = await window.piwright.filesRead(project, path)
     if (projectKey(project) !== get().projectKey || get().contents[path] === undefined) return
     set((s) => ({ contents: { ...s.contents, [path]: result.ok ? result.content : (s.contents[path] ?? '') } }))

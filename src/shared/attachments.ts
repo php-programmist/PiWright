@@ -19,6 +19,12 @@ export function imageMimeTypeForExtension(ext: string): string | null {
   }
 }
 
+/** Путь в проекте указывает на картинку (для вкладки-просмотрщика). */
+export function isImageFilePath(path: string): boolean {
+  const ext = path.slice(path.lastIndexOf('.') + 1)
+  return path.includes('.') && imageMimeTypeForExtension(ext) !== null
+}
+
 /** Имя файла внутри `.pi/attachments/`: плоское, без разделителей пути. */
 export function sanitizeAttachmentName(name: string): string {
   const cleaned = name.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 100)

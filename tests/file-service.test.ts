@@ -22,6 +22,8 @@ beforeAll(() => {
   writeFileSync(join(dir, 'sub', 'deep', 'c.txt'), 'sea')
   writeFileSync(join(dir, '.git', 'head'), 'ref')
   writeFileSync(join(dir, 'binary.bin'), Buffer.from([1, 0, 2]))
+  writeFileSync(join(dir, 'pic.png'), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 1]))
+  writeFileSync(join(dir, 'pic.txt'), 'not an image')
   writeFileSync(join(dir, 'big.txt'), 'x'.repeat(3 * 1024 * 1024))
   service = new FileService({ onChanged: () => {} })
 })
@@ -39,7 +41,9 @@ describe('FileService.listDir', () => {
       { name: 'sub', kind: 'dir' },
       { name: 'a.txt', kind: 'file' },
       { name: 'big.txt', kind: 'file' },
-      { name: 'binary.bin', kind: 'file' }
+      { name: 'binary.bin', kind: 'file' },
+      { name: 'pic.png', kind: 'file' },
+      { name: 'pic.txt', kind: 'file' }
     ])
   })
 
@@ -76,6 +80,24 @@ describe('FileService.read', () => {
     expect(await service.read(project, 'sub')).toMatchObject({ ok: false })
     expect(await service.read(project, 'nope.txt')).toMatchObject({ ok: false })
     expect(await service.read(project, '../x')).toMatchObject({ ok: false, error: 'Path is outside the project' })
+  })
+})
+
+describe('FileService.readImage', () => {
+  it('returns a data URL for an image file', async () => {
+    const result = await service.readImage(project, 'pic.png')
+    expect(result.ok).toBe(true)
+    expect(result.dataUrl).toBe(`data:image/png;base64,${Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 1]).toString('base64')}`)
+  })
+
+  it('rejects non-image extensions and paths outside the project', async () => {
+    expect(await service.readImage(project, 'pic.txt')).toMatchObject({ ok: false, error: 'Not an image file' })
+    expect(await service.readImage(project, 'nope.png')).toMatchObject({ ok: false })
+    expect(await service.readImage(project, '../x.png')).toMatchObject({ ok: false, error: 'Path is outside the project' })
+  })
+
+  it('rejects directories', async () => {
+    expect(await service.readImage(project, 'sub')).toMatchObject({ ok: false })
   })
 })
 

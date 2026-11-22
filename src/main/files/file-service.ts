@@ -4,9 +4,11 @@
 import { promises as fs } from 'node:fs'
 import { win32 } from 'node:path'
 import * as chokidar from 'chokidar'
-import type { FileListResult, FileReadResult, FileRenameResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
+import { imageMimeTypeForExtension } from '../../shared/attachments'
+import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 const BINARY_PLACEHOLDER = '(binary file)'
 const LARGE_PLACEHOLDER = '(file too large to display)'
 const WSL_POLL_INTERVAL_MS = 1500
@@ -61,6 +63,23 @@ export class FileService {
       return { ok: true, error: null, content: buffer.includes(0) ? BINARY_PLACEHOLDER : buffer.toString('utf8') }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), content: '' }
+    }
+  }
+
+  async readImage(project: ProjectEntry, relPath: string): Promise<FileReadImageResult> {
+    const abs = resolveWithinRoot(project.dir, relPath)
+    if (abs === null) return { ok: false, error: 'Path is outside the project', dataUrl: '' }
+    const ext = relPath.slice(relPath.lastIndexOf('.') + 1)
+    const mime = imageMimeTypeForExtension(ext)
+    if (mime === null) return { ok: false, error: 'Not an image file', dataUrl: '' }
+    try {
+      const stat = await fs.stat(abs)
+      if (!stat.isFile()) return { ok: false, error: 'Not a regular file', dataUrl: '' }
+      if (stat.size > MAX_IMAGE_BYTES) return { ok: false, error: 'Image too large to display', dataUrl: '' }
+      const buffer = await fs.readFile(abs)
+      return { ok: true, error: null, dataUrl: `data:${mime};base64,${buffer.toString('base64')}` }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), dataUrl: '' }
     }
   }
 

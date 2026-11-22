@@ -168,6 +168,7 @@ const RU: Record<string, string> = {
   'Close viewer (back to chat)': 'Закрыть просмотр (вернуться к чату)',
   'Soft wrap long lines': 'Мягкий перенос длинных строк',
   'Wrap': 'Перенос',
+  'Image is not loaded': 'Картинка не загружена',
 
   // Дифф
   'Previous file': 'Предыдущий файл',

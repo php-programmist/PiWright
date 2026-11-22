@@ -280,6 +280,12 @@ export interface FileReadResult {
   content: string
 }
 
+export interface FileReadImageResult {
+  ok: boolean
+  error: string | null
+  dataUrl: string
+}
+
 export interface FileWriteResult {
   ok: boolean
   error: string | null
@@ -487,6 +493,7 @@ export interface PiWrightApi {
   worktreeRemove(project: ProjectEntry, name: string, force: boolean): Promise<WorktreeRemoveResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
+  filesReadImage(project: ProjectEntry, path: string): Promise<FileReadImageResult>
   filesWrite(project: ProjectEntry, path: string, content: string): Promise<FileWriteResult>
   filesRename(project: ProjectEntry, path: string, newName: string): Promise<FileRenameResult>
   filesDelete(project: ProjectEntry, path: string): Promise<FileWriteResult>
@@ -572,6 +579,7 @@ export const WORKTREE_CREATE_CHANNEL = 'worktree:create'
 export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'
 export const FILES_LIST_CHANNEL = 'files:list'
 export const FILES_READ_CHANNEL = 'files:read'
+export const FILES_READ_IMAGE_CHANNEL = 'files:read-image'
 export const FILES_WRITE_CHANNEL = 'files:write'
 export const FILES_RENAME_CHANNEL = 'files:rename'
 export const FILES_DELETE_CHANNEL = 'files:delete'
