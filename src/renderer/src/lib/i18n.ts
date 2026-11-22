@@ -296,6 +296,7 @@ const RU: Record<string, string> = {
   'Chat id': 'ID чата',
   'Sounds': 'Звуки',
   'Turn completed': 'Ход завершён',
+  'Loop completed': 'Петля завершена',
   'Pi asks a question': 'Pi задаёт вопрос',
   'Error': 'Ошибка',
   'empty = off (wav / aif / aiff / au)': 'Пусто = выкл (wav / aif / aiff / au)',

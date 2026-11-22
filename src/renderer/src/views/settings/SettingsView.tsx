@@ -498,6 +498,14 @@ function NotificationsTab({
           />
           {t('Extension error')}
         </label>
+        <label className="settings-check">
+          <input
+            type="checkbox"
+            checked={telegram.events.loopEnd}
+            onChange={(e) => updateTelegram({ events: { ...telegram.events, loopEnd: e.target.checked } })}
+          />
+          {t('Loop completed')}
+        </label>
         <div className="settings-row">
           <button className="ghost" onClick={() => void sendTest()} disabled={telegram.chatId.trim().length === 0}>
             {t('Send test message')}

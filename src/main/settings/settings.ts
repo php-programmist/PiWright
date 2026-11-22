@@ -13,7 +13,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     await: 'C:\\Windows\\Media\\Windows Notify.wav',
     error: 'C:\\Windows\\Media\\Windows Exclamation.wav'
   },
-  telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true } },
+  telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
   remote: { enabled: false, port: 7690 }
 }
 
@@ -67,7 +67,7 @@ export function mergeNotifications(value: unknown): NotificationSettings {
     if (typeof tg['chatId'] === 'string') out.telegram.chatId = tg['chatId']
     if (tg['events'] !== null && typeof tg['events'] === 'object' && !Array.isArray(tg['events'])) {
       const events = tg['events'] as Record<string, unknown>
-      for (const key of ['turnEnd', 'permission', 'question', 'error'] as const) {
+      for (const key of ['turnEnd', 'permission', 'question', 'error', 'loopEnd'] as const) {
         if (typeof events[key] === 'boolean') out.telegram.events[key] = events[key]
       }
     }

@@ -1,17 +1,30 @@
 /** Уведомления через бота Telegram: HTTPS POST в api.telegram.org. Порт `TelegramNotifier.kt`
  *  (raw fetch, без библиотек; сообщение об ошибке не содержит токен — он в URL). */
+import type { LoopStopReason } from '../../shared/agent-events'
 
-export type RemoteNotifyKind = 'turnEnd' | 'permission' | 'question' | 'error'
+export type RemoteNotifyKind = 'turnEnd' | 'permission' | 'question' | 'error' | 'loopEnd'
 
 export const NOTIFY_KIND_TEXT: Record<RemoteNotifyKind, string> = {
   turnEnd: 'ход завершён',
   permission: 'просит разрешение на команду',
   question: 'нужен ответ',
-  error: 'ошибка расширения'
+  error: 'ошибка расширения',
+  loopEnd: 'петля завершена'
 }
 
-export function telegramMessage(project: string, title: string, kind: RemoteNotifyKind): string {
-  return `${project} · ${title}: ${NOTIFY_KIND_TEXT[kind]}`
+/** Причина завершения петли — human-readable текст для телеграм-уведомления. */
+export const LOOP_END_REASON_TEXT: Record<LoopStopReason, string> = {
+  agent: 'ход без вызовов инструментов',
+  exit: 'условие выхода выполнено',
+  user: 'остановлена пользователем',
+  max: 'достигнут лимит итераций',
+  'short-circuit': '3 итерации подряд быстрее 10 секунд',
+  error: 'не удалось запустить следующую итерацию'
+}
+
+export function telegramMessage(project: string, title: string, kind: RemoteNotifyKind, detail?: string): string {
+  const suffix = detail !== undefined && detail.length > 0 ? ` (${detail})` : ''
+  return `${project} · ${title}: ${NOTIFY_KIND_TEXT[kind]}${suffix}`
 }
 
 const REQUEST_TIMEOUT_MS = 10000
@@ -49,7 +62,7 @@ export function sendTestTelegram(chatId: string, token: string): Promise<string 
 }
 
 /** Уведомление о событии сессии; ошибки глотаются (fire-and-forget). */
-export function sendTelegramNotification(chatId: string, token: string, project: string, title: string, kind: RemoteNotifyKind): void {
+export function sendTelegramNotification(chatId: string, token: string, project: string, title: string, kind: RemoteNotifyKind, detail?: string): void {
   if (chatId.trim().length === 0 || token.length === 0) return
-  void send(chatId.trim(), token, telegramMessage(project, title, kind))
+  void send(chatId.trim(), token, telegramMessage(project, title, kind, detail))
 }

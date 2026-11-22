@@ -100,7 +100,10 @@ app.whenReady().then(() => {
   )
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
-    if (event.type === 'loop_state') bridge?.loopState(hostId, event.info)
+    if (event.type === 'loop_state') {
+      bridge?.loopState(hostId, event.info)
+      if (!event.info.active && event.info.reason !== null) hub?.onLoopStopped(hostId, event.info.reason)
+    }
   }, (previousHostId, createdHostId) => {
     const previous = piHost?.get(previousHostId) ?? null
     if (previous === null) return

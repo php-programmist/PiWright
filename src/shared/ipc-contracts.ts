@@ -79,7 +79,7 @@ export interface NotificationSettings {
   sounds: NotificationSounds
   telegram: {
     chatId: string
-    events: { turnEnd: boolean; permission: boolean; question: boolean; error: boolean }
+    events: { turnEnd: boolean; permission: boolean; question: boolean; error: boolean; loopEnd: boolean }
   }
   remote: { enabled: boolean; port: number }
 }

@@ -25,7 +25,7 @@ describe('mergeNotifications', () => {
     expect(merged.sounds.completion).toBe('C:\\x.wav')
     expect(merged.sounds.await).toBe(DEFAULT_SETTINGS.notifications.sounds.await)
     expect(merged.sounds.error).toBe(DEFAULT_SETTINGS.notifications.sounds.error)
-    expect(merged.telegram).toEqual({ chatId: '42', events: { turnEnd: false, permission: true, question: true, error: true } })
+    expect(merged.telegram).toEqual({ chatId: '42', events: { turnEnd: false, permission: true, question: true, error: true, loopEnd: false } })
     expect(merged.remote).toEqual({ enabled: true, port: 65535 })
   })
 
@@ -42,6 +42,8 @@ describe('telegramMessage', () => {
     expect(telegramMessage('api', 'fix auth', 'permission')).toBe('api · fix auth: просит разрешение на команду')
     expect(telegramMessage('api', 'fix auth', 'question')).toBe('api · fix auth: нужен ответ')
     expect(telegramMessage('api', 'fix auth', 'error')).toBe('api · fix auth: ошибка расширения')
+    expect(telegramMessage('api', 'fix auth', 'loopEnd')).toBe('api · fix auth: петля завершена')
+    expect(telegramMessage('api', 'fix auth', 'loopEnd', 'условие выхода выполнено')).toBe('api · fix auth: петля завершена (условие выхода выполнено)')
   })
 })
 
@@ -148,7 +150,7 @@ describe('NotificationHub', () => {
   })
 
   it('event checkbox off suppresses sending', () => {
-    hub({ events: { turnEnd: false, permission: true, question: true, error: true } }).onEvent(event({ type: 'turn_end' }))
+    hub({ events: { turnEnd: false, permission: true, question: true, error: true, loopEnd: true } }).onEvent(event({ type: 'turn_end' }))
     expect(sent).toEqual([])
   })
 
@@ -175,5 +177,21 @@ describe('NotificationHub', () => {
     h.onEvent(event({ type: 'notify', message: 'boom', isError: true }))
     h.onEvent(event({ type: 'notify', message: 'info', isError: false }))
     expect(sent).toEqual([{ chatId: '42', text: 'api · fix auth: ошибка расширения' }])
+  })
+
+  it('loop stopped sends loopEnd notification with reason', () => {
+    hub({ chatId: '42', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: true } }).onLoopStopped('h1', 'exit')
+    expect(sent).toEqual([{ chatId: '42', text: 'api · fix auth: петля завершена (условие выхода выполнено)' }])
+  })
+
+  it('loopEnd checkbox off suppresses sending', () => {
+    hub({ chatId: '42', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } }).onLoopStopped('h1', 'max')
+    expect(sent).toEqual([])
+  })
+
+  it('loop stopped: phone visible or session telegram off suppresses sending', () => {
+    hub({ chatId: '42' }, { isPhoneVisible: () => true } as unknown as RemoteBridge).onLoopStopped('h1', 'user')
+    hub({ chatId: '42' }, null, false).onLoopStopped('h1', 'user')
+    expect(sent).toEqual([])
   })
 })

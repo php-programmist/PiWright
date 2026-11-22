@@ -1,9 +1,10 @@
-/** Раздача событий сессий в Telegram: turn_end / dialog_open (confirm → permission) / ошибки.
+/** Раздача событий сессий в Telegram: turn_end / dialog_open (confirm → permission) / ошибки / конец петли.
  *  Гейт: чекбоксы события в настройках × telegram-флаг сессии × телефон не на переднем плане. */
 import { basename } from 'node:path'
+import type { LoopStopReason } from '../../shared/agent-events'
 import type { PiEventMessage } from '../../shared/ipc-contracts'
 import type { RemoteNotifyKind } from './telegram'
-import { sendTelegramNotification } from './telegram'
+import { LOOP_END_REASON_TEXT, sendTelegramNotification } from './telegram'
 import type { TelegramTokenStore } from './token-store'
 import type { PiHost } from '../pi/pi-host'
 import type { RemoteBridge } from '../remote/bridge'
@@ -39,5 +40,27 @@ export class NotificationHub {
     const status = host.lastStatus()
     if (status === null || status === undefined) return
     sendTelegramNotification(settings.notifications.telegram.chatId, token, basename(status.project.dir) || status.project.dir, status.title, kind)
+  }
+
+  /** Петля завершена (loop_state с reason): уведомление с причиной, если чекбокс loopEnd включён. */
+  onLoopStopped(hostId: string, reason: LoopStopReason): void {
+    const settings = this.getSettings()
+    if (!settings.notifications.telegram.events.loopEnd) return
+    const host = this.piHost.get(hostId)
+    if (host === null || host === undefined || !host.telegramEnabled) return
+    const bridge = this.bridge()
+    if (bridge !== null && bridge.isPhoneVisible()) return
+    const token = this.tokenStore.read()
+    if (token === null) return
+    const status = host.lastStatus()
+    if (status === null || status === undefined) return
+    sendTelegramNotification(
+      settings.notifications.telegram.chatId,
+      token,
+      basename(status.project.dir) || status.project.dir,
+      status.title,
+      'loopEnd',
+      LOOP_END_REASON_TEXT[reason]
+    )
   }
 }

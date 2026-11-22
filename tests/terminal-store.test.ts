@@ -33,7 +33,7 @@ const baseSettings: Settings = {
   lastThinkingLevel: null,
   notifications: {
     sounds: { completion: '', await: '', error: '' },
-    telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true } },
+    telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
     remote: { enabled: false, port: 7690 }
   },
   projects: []
