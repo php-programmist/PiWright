@@ -48,6 +48,36 @@ export class PiHost {
     return host
   }
 
+  /** Форк сессии в новую (порт openForkTab из jb-pi): новый хост стартует на файле родителя,
+   *  первый запрос ветвляет его (fork на промпт/clone), родитель не трогается.
+   *  Имя — «<родитель> (fork)», уровень thinking переезжает от родителя. */
+  createFork(parentHostId: string, fork: { userText: string | null; occurrence: number }): SessionHost | null {
+    const parent = this.hosts.get(parentHostId)
+    if (parent === undefined) return null
+    const sessionFile = parent.sessionFilePath
+    if (sessionFile === null) return null
+    const seed = this.catalogs.get(parent.project.kind)
+    const listener: SessionHostListener = {
+      onStatus: (status) => {
+        if (status.models.length > 0) this.catalogs.set(parent.project.kind, { models: status.models, thinkingLevels: status.thinkingLevels })
+        this.sink.onStatus(status)
+      },
+      onEvent: (event) => this.sink.onEvent({ hostId: host.id, event })
+    }
+    const host = new SessionHost(this.getSettings, listener, parent.project, {
+      sessionFile,
+      forkSpec: fork,
+      createBackend: this.createBackend,
+      installExtensions: this.installExtensions,
+      seedModels: seed?.models,
+      seedThinkingLevels: seed?.thinkingLevels,
+      initialSessionName: `${parent.displayTitle} (fork)`,
+      initialThinkingLevel: parent.lastStatus()?.thinkingLevel ?? null
+    })
+    this.hosts.set(host.id, host)
+    return host
+  }
+
   /** Есть ли кэш каталога для бэкенда — без него новую сессию поднимаем сразу (см. sessions:new). */
   hasCatalog(kind: BackendMode): boolean {
     return this.catalogs.has(kind)

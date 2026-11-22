@@ -53,6 +53,7 @@ import {
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_EDIT_PROMPT_CHANNEL,
+  SESSION_FORK_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
@@ -384,6 +385,27 @@ export function registerIpc(
       return { ok: false, error: 'Invalid prompt occurrence' }
     }
     return h.editPrompt(text, occurrence, newText)
+  })
+
+  ipcMain.handle(SESSION_FORK_CHANNEL, async (_event, hostId: unknown, userText: unknown, occurrence: unknown) => {
+    const parent = host(piHost, hostId)
+    if (parent === null) return { ok: false, error: 'Session not found' }
+    if (parent.streaming) return { ok: false, error: 'Session is busy — wait for the current turn to finish' }
+    if (userText !== null && (typeof userText !== 'string' || userText.trim().length === 0)) {
+      return { ok: false, error: 'Invalid fork point' }
+    }
+    if (typeof occurrence !== 'number' || !Number.isInteger(occurrence) || occurrence < 0) {
+      return { ok: false, error: 'Invalid prompt occurrence' }
+    }
+    const forked = piHost.createFork(parent.id, { userText: typeof userText === 'string' ? userText : null, occurrence })
+    if (forked === null) return { ok: false, error: 'Session file is not available for forking' }
+    try {
+      await forked.ensureStarted()
+    } catch (err) {
+      piHost.close(forked.id)
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+    return { ok: true, error: null, hostId: forked.id }
   })
 
   ipcMain.handle(SESSION_ABORT_CHANNEL, (_event, hostId: unknown) => {

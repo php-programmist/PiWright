@@ -865,6 +865,81 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('fork host branches the parent session at the matched prompt before the handshake', async () => {
+    const entries = {
+      entries: [
+        { id: 'e1', parentId: null, type: 'message', message: { role: 'user', content: 'hello' } },
+        { id: 'e2', parentId: 'e1', type: 'message', message: { role: 'assistant', content: [{ type: 'text', text: 'hi' }] } },
+        { id: 'e3', parentId: 'e2', type: 'message', message: { role: 'user', content: 'hello again' } }
+      ],
+      leafId: 'e3'
+    }
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\branch.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_entries') return entries
+      return null
+    })
+    currentChild = child
+    const { host, statuses, spawnArgs } = makeHost([child], SETTINGS, {
+      sessionFile: 'C:\\proj\\.pi\\sessions\\parent.jsonl',
+      forkSpec: { userText: 'hello again', occurrence: 0 },
+      initialSessionName: 'Parent (fork)'
+    })
+    await host.ensureStarted()
+    expect(spawnArgs[0]).toContain('--session')
+    const forkIndex = child.sent.findIndex((c) => c['type'] === 'fork')
+    const handshakeIndex = child.sent.findIndex((c) => c['type'] === 'get_available_models')
+    expect(forkIndex).toBeGreaterThanOrEqual(0)
+    expect(forkIndex).toBeLessThan(handshakeIndex)
+    expect(child.sent[forkIndex]).toMatchObject({ entryId: 'e3' })
+    expect(child.sent.some((c) => c['type'] === 'set_session_name' && c['name'] === 'Parent (fork)')).toBe(true)
+    expect(statuses[statuses.length - 1]?.sessionFile).toBe('C:\\proj\\.pi\\sessions\\branch.jsonl')
+    expect(statuses[statuses.length - 1]?.title).toBe('Parent (fork)')
+    host.dispose()
+  })
+
+  it('fork host clones the whole session when there is no following prompt', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\clone.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child], SETTINGS, {
+      sessionFile: 'C:\\proj\\.pi\\sessions\\parent.jsonl',
+      forkSpec: { userText: null, occurrence: 0 }
+    })
+    await host.ensureStarted()
+    expect(child.sent.some((c) => c['type'] === 'clone')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'fork')).toBe(false)
+    expect(statuses[statuses.length - 1]?.sessionFile).toBe('C:\\proj\\.pi\\sessions\\clone.jsonl')
+    host.dispose()
+  })
+
+  it('fork host fails with an error when the fork point is not in the session', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_entries') return { entries: [], leafId: null }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child], SETTINGS, {
+      sessionFile: 'C:\\proj\\.pi\\sessions\\parent.jsonl',
+      forkSpec: { userText: 'missing', occurrence: 0 }
+    })
+    await expect(host.ensureStarted()).rejects.toThrow('Prompt not found in session history')
+    expect(statuses[statuses.length - 1]?.state).toBe('error')
+    host.dispose()
+  })
+
   it('queueRemove when idle returns the remaining texts instead of re-queueing', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

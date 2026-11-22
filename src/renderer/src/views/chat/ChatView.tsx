@@ -7,6 +7,7 @@ import { ToolBlock } from '../../components/ToolBlock'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
+import { useTabsStore, parentTabKey } from '../../stores/tabs'
 import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
 import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
@@ -32,12 +33,18 @@ export interface UserEntry {
   text: string
 }
 
-export function EntryView({ entry, onAnswer, onEdit }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void }): React.JSX.Element | null {
+export interface TextEntry {
+  kind: 'text'
+  id: number
+  text: string
+}
+
+export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
       return <UserMessage entry={entry} onEdit={onEdit} />
     case 'text':
-      return <div className="assistant-message"><Markdown text={entry.text} /></div>
+      return <AssistantMessage entry={entry} onFork={onFork} />
     case 'thinking':
       return (
         <details className="thinking">
@@ -73,6 +80,30 @@ export function EntryView({ entry, onAnswer, onEdit }: { entry: Entry; onAnswer:
 export function ChatThinkingSummary(): React.JSX.Element {
   const t = useT()
   return <summary>{t('thinking')}</summary>
+}
+
+/** Ответ агента; ветка по ховеру форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
+function AssistantMessage({ entry, onFork }: { entry: TextEntry; onFork?: (entry: TextEntry) => void }): React.JSX.Element {
+  const t = useT()
+  return (
+    <div className="assistant-message">
+      <Markdown text={entry.text} />
+      {onFork !== undefined && (
+        <button
+          className="assistant-fork"
+          title={t('Fork into a new session from this point')}
+          onClick={() => onFork(entry)}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+            <line x1="6" y1="6" x2="6" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="18" cy="6" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M18 9a9 9 0 0 1-9 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
 }
 
 /** Пузырь пользователя; карандаш по ховеру открывает инлайн-редактор (порт MessageActions из jb-pi). */
@@ -369,6 +400,35 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     addUserMessage(activeHostId, newText)
   }
 
+  /** Форк сессии после ответа агента в новую сессию (родитель не трогается): точка — следующий
+   *  за ответом промпт; после последнего ответа — клон всей сессии. Новая сессия открывается активной. */
+  const forkFrom = async (entry: TextEntry): Promise<void> => {
+    if (activeHostId === null || streaming) return
+    const index = entries.findIndex((e) => e.id === entry.id)
+    if (index < 0) return
+    const nextUser = entries.slice(index + 1).find((e): e is UserEntry => e.kind === 'user')
+    let userText: string | null = null
+    let occurrence = 0
+    if (nextUser !== undefined) {
+      userText = nextUser.text
+      const userIndex = entries.findIndex((e) => e.id === nextUser.id)
+      occurrence = entries.slice(userIndex + 1).filter((e) => e.kind === 'user' && e.text === nextUser.text).length
+    }
+    const result = await window.piwright.forkSession(activeHostId, userText, occurrence)
+    if (!result.ok || result.hostId === undefined) {
+      if (result.error !== null) {
+        applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      }
+      return
+    }
+    const row = useSessionsStore.getState().active.find((r) => r.hostId === activeHostId)
+    if (row !== undefined) {
+      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
+      useTabsStore.getState().activateSession(row.project)
+    }
+    useSessionsStore.getState().setActive(result.hostId)
+  }
+
   const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
     setDialogReceipt(activeHostId, dialogId, answer.kind === 'cancelled' ? 'cancelled' : 'answered')
     const result = await window.piwright.respondDialog(activeHostId, dialogId, answer)
@@ -647,6 +707,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             entry={entry}
             onAnswer={(id, answer) => void answerDialog(id, answer)}
             onEdit={streaming ? undefined : (e, text) => void submitEdit(e, text)}
+            onFork={streaming ? undefined : (e) => void forkFrom(e)}
           />
         ))}
         {streaming && <div className="cursor">▍</div>}

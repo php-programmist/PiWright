@@ -89,6 +89,11 @@ export interface SessionHostOptions {
   /** Последний выбор пользователя (настройки) — применяется в новой сессии сразу после хендшейка. */
   initialModel?: string | null
   initialThinkingLevel?: string | null
+  /** Имя сессии до подъёма процесса — уйдет в хендшейке (fork: «<родитель> (fork)»). */
+  initialSessionName?: string | null
+  /** Форк при старте на файле родительской сессии: userText=null → clone всей сессии,
+   *  иначе fork на user-промпт (точка после ответа агента) до хендшейка — порт handshake-fork из jb-pi. */
+  forkSpec?: { userText: string | null; occurrence: number }
   /** Грейс-пауза на subagents:started после turn_end (переопределяется в тестах). */
   subagentGraceMs?: number
 }
@@ -112,6 +117,8 @@ export class SessionHost {
   private desiredThinkingLevel: string | null = null
   private desiredSessionName: string | null = null
   private desiredModel: string | null = null
+  /** Форк/клон родительской сессии при старте (см. SessionHostOptions.forkSpec). */
+  private readonly forkSpec: { userText: string | null; occurrence: number } | undefined
   /** Название первой сессии уже генерировали (успешно или нет) — второй раз не спавним одноразовый pi. */
   private titleGenerated = false
   /** Тоггл Telegram-уведомлений этой сессии — независим от remote-шаринга (jb-pi: поле вкладки);
@@ -148,6 +155,8 @@ export class SessionHost {
     this.subagentGraceMs = opts.subagentGraceMs ?? SUBAGENT_GRACE_MS
     this.desiredModel = opts.initialModel ?? null
     this.desiredThinkingLevel = opts.initialThinkingLevel ?? null
+    this.desiredSessionName = opts.initialSessionName ?? null
+    this.forkSpec = opts.forkSpec
     this.status('idle')
   }
 
@@ -187,6 +196,11 @@ export class SessionHost {
   /** Идёт ход (agent_start…agent_settled) — для remote-моста при регистрации. */
   get streaming(): boolean {
     return this.lastState === 'streaming'
+  }
+
+  /** Файл сессии текущей ветки — для форка в новую сессию (PiHost.createFork). */
+  get sessionFilePath(): string | null {
+    return this.sessionFile
   }
 
   /** Заголовок для remote-моста (имя → первый текст → «New Chat»). */
@@ -320,11 +334,15 @@ export class SessionHost {
         path !== null && this.project.kind === 'wsl' ? (stripWslUncPrefix(path) ?? path) : path
       )
       await conn.start({ cwd: projectDir, args: piArgs(this.sessionFile, extensionPaths, splitArgs(settings.piExtraArgs)) })
+      // Форк/клон до хендшейка — иначе pi писал бы в файл родительской сессии (как в jb-pi).
+      if (this.forkSpec !== undefined) await this.branchAtStart(conn)
       const handshake = await runHandshake(conn, {
         desiredThinkingLevel: this.desiredThinkingLevel,
         sessionName: this.desiredSessionName
       })
+      const handshakeSessionName = this.desiredSessionName
       this.desiredSessionName = null
+      if (this.sessionName === null && handshakeSessionName !== null) this.sessionName = handshakeSessionName
       this.sessionFile = handshake.sessionFile
       this.handshake = handshake
       translator.contextWindow = handshake.model?.contextWindow ?? 0
@@ -747,6 +765,22 @@ export class SessionHost {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }
     }
+  }
+
+  /** Форк/клон при старте на файле родительской сессии: точка — user-промпт активной ветки
+   *  (ответ агента перед ним остаётся в ветке); null — clone всей сессии. */
+  private async branchAtStart(conn: PiConnection): Promise<void> {
+    const spec = this.forkSpec
+    if (spec === undefined) return
+    if (spec.userText === null) {
+      const response = await conn.request('clone', {})
+      if (!response.success) throw new Error(`clone failed: ${response.error ?? 'no details'}`)
+      return
+    }
+    const entryId = await this.findUserPromptEntryId(conn, spec.userText, spec.occurrence)
+    if (entryId === null) throw new Error('Prompt not found in session history')
+    const response = await conn.request('fork', { entryId })
+    if (!response.success) throw new Error(`fork failed: ${response.error ?? 'no details'}`)
   }
 
   /** entryId промпта в активной ветке: get_entries → цепочка parentId от leafId → матч по тексту с конца. */

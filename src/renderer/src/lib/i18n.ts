@@ -71,6 +71,7 @@ const RU: Record<string, string> = {
   'Ask Pi (Ctrl+Enter to send)': 'Спросить pi (Ctrl+Enter — отправить)',
   'Send': 'Отправить',
   'Edit prompt and resend': 'Редактировать промпт и отправить заново',
+  'Fork into a new session from this point': 'Форкнуть в новую сессию с этого места',
   'Attach file': 'Прикрепить файл',
   'Remove image': 'Убрать изображение',
   'Loop': 'Петля',

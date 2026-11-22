@@ -235,4 +235,85 @@ describe('PiHost', () => {
     SETTINGS.lastModel = null
     SETTINGS.lastThinkingLevel = null
   })
+
+  it('createFork: new host inherits parent session file, name gets (fork), events carry new hostId', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-2',
+          sessionFile: 'C:\\proj\\branch.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_messages') return { messages: [{ role: 'user', content: [{ type: 'text', text: 'earlier' }] }] }
+      return null
+    })
+    currentChild = child
+    const forkChild = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-2',
+          sessionFile: 'C:\\proj\\branch.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_messages') return { messages: [{ role: 'user', content: [{ type: 'text', text: 'earlier' }] }] }
+      return null
+    })
+    const titleChild = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-t',
+          sessionFile: 'C:\\proj\\title.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          titleChild.emitData('{"type":"agent_settled","aborted":false}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    const { piHost, events, statuses } = makePiHost([child, titleChild, forkChild])
+    const parent = piHost.create(PROJECT)
+    await parent.prompt('ping')
+    await vi.waitFor(() => {
+      expect(parent.lastStatus()?.state).toBe('ready')
+    })
+    const forked = piHost.createFork(parent.id, { userText: null, occurrence: 0 })
+    expect(forked).not.toBeNull()
+    await forked!.ensureStarted()
+    expect(forkChild.sent.some((c) => c['type'] === 'clone')).toBe(true)
+    expect(forked!.lastStatus()?.title).toBe('New Chat (fork)')
+    expect(forked!.lastStatus()?.sessionFile).toBe('C:\\proj\\branch.jsonl')
+    expect(events.filter((e) => e.hostId === forked!.id).length).toBeGreaterThan(0)
+    expect(statuses.some((s) => s.hostId === forked!.id)).toBe(true)
+    forked!.dispose()
+    parent.dispose()
+  })
+
+  it('createFork returns null for unknown host or a session without a file', () => {
+    const { piHost } = makePiHost([])
+    expect(piHost.createFork('no-such-host', { userText: null, occurrence: 0 })).toBeNull()
+    const host = piHost.create(PROJECT)
+    expect(piHost.createFork(host.id, { userText: null, occurrence: 0 })).toBeNull()
+    host.dispose()
+  })
 })

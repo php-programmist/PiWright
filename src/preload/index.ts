@@ -62,6 +62,7 @@ import {
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_EDIT_PROMPT_CHANNEL,
+  SESSION_FORK_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
@@ -90,6 +91,7 @@ import type {
   McpServerEntry,
   PiWrightApi,
   ProjectEntry,
+  ForkSessionResult,
   PromptBehavior,
   QueueTexts,
   Settings,
@@ -125,6 +127,8 @@ const api: PiWrightApi = {
     ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
   editPrompt: (hostId: string, text: string, occurrence: number, newText: string) =>
     ipcRenderer.invoke(SESSION_EDIT_PROMPT_CHANNEL, hostId, text, occurrence, newText),
+  forkSession: (hostId: string, userText: string | null, occurrence: number): Promise<ForkSessionResult> =>
+    ipcRenderer.invoke(SESSION_FORK_CHANNEL, hostId, userText, occurrence),
   loopStart: (hostId: string, prompt: string, maxIterations: number, exitCondition: string) =>
     ipcRenderer.invoke(LOOP_START_CHANNEL, hostId, prompt, maxIterations, exitCondition),
   loopStop: (hostId: string) => ipcRenderer.invoke(LOOP_STOP_CHANNEL, hostId),
