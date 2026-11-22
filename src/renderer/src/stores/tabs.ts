@@ -119,6 +119,8 @@ interface TabsState {
   closeAllOfType: (project: ProjectEntry, kind: TabKind) => void
   closeLeft: (project: ProjectEntry, id: string) => void
   closeRight: (project: ProjectEntry, id: string) => void
+  /** Закрыть канбан-вкладки во всех проектах (при выключенном kanbanEnabled). */
+  purgeKanbanTabs: () => void
   forgetProject: (key: string) => void
 }
 
@@ -136,7 +138,8 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       } else {
         const snap = useSessionsStore.getState().settings?.projectTabs[key]
         if (snap !== undefined) {
-          const tabs = snap.tabs.map((t) => ({
+          const kanbanOn = useSessionsStore.getState().settings?.kanbanEnabled ?? false
+          const restored = snap.tabs.map((t) => ({
             kind: t.kind,
             project: projectForKey(key),
             path: t.path,
@@ -144,10 +147,9 @@ export const useTabsStore = create<TabsState>((set, get) => ({
             ...(t.boardId !== undefined ? { boardId: t.boardId } : {}),
             ...(t.title !== undefined ? { title: t.title } : {})
           }))
-          entry = {
-            tabs,
-            activeId: snap.activeIndex !== undefined && snap.activeIndex < tabs.length ? tabId(tabs[snap.activeIndex]) : null
-          }
+          const savedActiveId = snap.activeIndex !== undefined && snap.activeIndex < restored.length ? tabId(restored[snap.activeIndex]) : null
+          const tabs = kanbanOn ? restored : restored.filter((t) => t.kind !== 'kanban')
+          entry = { tabs, activeId: savedActiveId !== null && tabs.some((t) => tabId(t) === savedActiveId) ? savedActiveId : null }
         }
       }
     }
@@ -276,6 +278,13 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     const activeId = tabs.some((t) => tabId(t) === entry.activeId) ? entry.activeId : id
     set((state) => ({ byProject: { ...state.byProject, [key]: { tabs, activeId } } }))
     persist(key, tabs, activeId)
+  },
+
+  purgeKanbanTabs: () => {
+    if (useSessionsStore.getState().settings?.kanbanEnabled ?? false) return
+    for (const [key, entry] of Object.entries(get().byProject)) {
+      if (entry.tabs.some((t) => t.kind === 'kanban')) get().closeAllOfType(projectForKey(key), 'kanban')
+    }
   },
 
   forgetProject: (key) => {

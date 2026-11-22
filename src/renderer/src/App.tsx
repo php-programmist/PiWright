@@ -55,6 +55,11 @@ export function App(): React.JSX.Element {
     applyAppearance(theme, chatFontSize)
   }, [theme, chatFontSize])
 
+  // Канбан выключен — убрать канбан-вкладки из всех проектов.
+  useEffect(() => {
+    if (settings !== null && !settings.kanbanEnabled) useTabsStore.getState().purgeKanbanTabs()
+  }, [settings?.kanbanEnabled])
+
   useEffect(() => {
     if (settings === null || hydratedRef.current) return
     hydratedRef.current = true
@@ -246,7 +251,7 @@ export function App(): React.JSX.Element {
               <div className="right-side">
                 {gitOpen && <GitPanel />}
                 {filesOpen && <FilesPanel />}
-                {kanbanOpen && <KanbanPanel />}
+                {settings?.kanbanEnabled && kanbanOpen && <KanbanPanel />}
               </div>
             </div>
             {termOpen && <TerminalPanel />}
@@ -270,13 +275,15 @@ export function App(): React.JSX.Element {
                 />
               </svg>
             </button>
-            <button className={kanbanOpen ? 'active' : ''} title={t('Kanban')} onClick={toggleKanban}>
-              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
-                <rect x="1.5" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                <rect x="6.2" y="2.5" width="3.6" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
-                <rect x="10.9" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
-              </svg>
-            </button>
+            {settings?.kanbanEnabled && (
+              <button className={kanbanOpen ? 'active' : ''} title={t('Kanban')} onClick={toggleKanban}>
+                <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="1.5" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <rect x="6.2" y="2.5" width="3.6" height="8" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                  <rect x="10.9" y="2.5" width="3.6" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+              </button>
+            )}
             <button
               className={activeTab?.kind === 'mcp' ? 'active' : ''}
               title={t('MCP servers')}
