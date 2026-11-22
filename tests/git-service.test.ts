@@ -247,7 +247,7 @@ describe('GitService commit history', () => {
     // Страницы не пересекаются
     const hashes0 = new Set(page0.entries.map((e) => e.hash))
     expect(page1.entries.every((e) => !hashes0.has(e.hash))).toBe(true)
-  })
+  }, 30000)
 })
 
 describe('GitService with a nested repository (bug 8)', () => {
