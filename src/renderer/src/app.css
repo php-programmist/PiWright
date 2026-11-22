@@ -1111,6 +1111,10 @@ body {
   flex: 1;
 }
 
+.header .icon {
+  flex: none;
+}
+
 .error {
   padding: 6px 14px;
   background: var(--error-bg);

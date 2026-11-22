@@ -711,6 +711,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             · PIN {remoteStatusInfo.pin}
           </span>
         )}
+        <span className="spacer" />
         <button
           className="icon"
           title={shared ? t('Stop sharing this session with the phone') : t('Share this session with a phone on the same Wi-Fi')}
@@ -806,7 +807,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             </svg>
           )}
         </button>
-        <span className="spacer" />
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
       {queuedCount > 0 && <QueuePanel queue={queue} onRemove={(kind, index) => void removeQueued(kind, index)} onClearAll={() => void clearQueue()} />}
