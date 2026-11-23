@@ -13,9 +13,17 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 - Interactive question cards (ask_question) with options, free-text answers and multi-select
 - Todo widget pinned above the chat, live context-usage indicator with color grading and cache stats
 - Paste images and attach files (copied to `.pi/attachments`, referenced with `@`)
-- Session history with subagent sessions nested under their parent, unread dots and busy badges per project; the agent can rename its own session (`rename_session`)
+- Session history with subagent sessions nested under their parent, unread dots and busy badges per project; rename sessions via dialog, search across history
+- Live tok/s during streaming, turn timer, per-bucket context token breakdown popover
+- Copy button on code blocks, view-diff button for write tool blocks, full command shown when a tool block is expanded
 
 ![Chat with todo widget and tool calls](docs/screenshots/chat.png)
+
+### Kanban
+- Kanban boards in a right-rail panel: columns, drag-and-drop cards, card modal with properties rail and activity feed
+- Card comments with images and clickable session/commit chips; agent tools for cards, columns and workflow — the agent picks tasks, moves them and reports via comments
+- Board themes (built-in + custom via Appearance manager, JSON import/export)
+- Durable board storage: cross-process file locking, atomic writes, corrupt-file quarantine
 
 ### Projects and backends
 - Multiple projects in a sidebar, each with its own sessions, git repo and settings
@@ -38,7 +46,7 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 
 ### Terminal
 - Docked terminal at the bottom (node-pty / ConPTY, native and WSL)
-- Multiple tabs, renameable, restored after restart
+- Multiple tabs, renameable, restored after restart; cmd profile, copy selection to clipboard
 
 ![Terminal dock](docs/screenshots/terminal.png)
 
@@ -50,14 +58,16 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 ### Notifications and remote access
 - Sound notifications for completed turns, questions and errors (system sounds or custom wav)
 - Telegram bot notifications with per-event checkboxes and per-session toggle
-- Remote control from a phone: built-in WebSocket bridge with PIN auth serves the web UI — session list, chat with images, abort, dialog answers, session creation
+- Remote control from a phone: built-in WebSocket bridge with PIN auth (static PIN option) serves the web UI — session list, chat with images, abort, dialog answers, session creation; web UI follows the app language, failed server start retries with backoff
 
 ![Remote sign-in from a phone](docs/screenshots/remote-login.png)
 
 ![Chat over the remote web UI](docs/screenshots/remote-chat.png)
 
 ### Interface
-- Project tabs: sessions, files, diffs, MCP and skills open as tabs in a single window
+- Project tabs: sessions, files, diffs, kanban boards, MCP and skills open as tabs in a single window; MRU tab restore on close and Ctrl+Tab switcher, type icons per tab
+- **Search Everywhere** overlay on double Shift
+- Resizable/collapsible projects sidebar, new-session and new-worktree buttons in the tab bar
 - Dark and light themes, adjustable chat font size
 - English and Russian UI
 - Configurable send key (Enter / Ctrl+Enter), model/thinking selector placement
