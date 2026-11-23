@@ -145,7 +145,7 @@ export default function (pi: ExtensionAPI): void {
       'Add an agent comment to a kanban card. Optionally link the current session (sessionName), commit refs, and attach image files (copied into the board attachments).',
     promptSnippet: 'kanban_comment: comment on a kanban card',
     promptGuidelines: [
-      'When finishing a kanban task, add two comments to the card: one with the session link (sessionName) and commit hashes, another with a short completion report.'
+      'When finishing a kanban task, add two comments to the card: one with the session link (sessionName), another with a short completion report. Always pass commit hashes via the commits parameter (hash + optional message), never as plain text in the body — only structured commits render as clickable badges.'
     ],
     parameters: Type.Object({
       board: BOARD_PARAM,

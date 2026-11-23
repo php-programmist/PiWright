@@ -56,7 +56,7 @@ export const KANBAN_DEFAULT_WORKFLOW = [
   '2. Add link to this session (sessionName) as a comment.',
   '3. Implement the task.',
   '4. When done, call kanban_move to Review and add comment to the card:',
-  '   a) the hashes of your commits;',
+  '   a) pass commit hashes via the commits parameter of kanban_move/kanban_comment (hash + optional message); hashes written as plain text in the comment body do not become clickable badges;',
   '   b) a short completion report.',
   '5. Never move a card to Done yourself — the user does that after review.'
 ].join('\n')
