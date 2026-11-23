@@ -393,6 +393,23 @@ export class SessionHost {
           await this.applyModelKey(this.desiredModel)
         }
       }
+      // Handshake gated the level against the default model's levels; after a model
+      // switch pi clamps the level (e.g. max -> high), so re-apply the desired one.
+      const desired = this.desiredThinkingLevel
+      const hs = this.handshake
+      if (
+        hs !== null &&
+        desired !== null &&
+        desired.length > 0 &&
+        desired !== hs.thinkingLevel &&
+        hs.thinkingLevels.includes(desired)
+      ) {
+        const response = await conn.request('set_thinking_level', { level: desired })
+        if (response.success) {
+          this.handshake = { ...hs, thinkingLevel: desired }
+          await this.refreshThinkingState()
+        }
+      }
       this.status('ready')
     } catch (err) {
       conn.close()
