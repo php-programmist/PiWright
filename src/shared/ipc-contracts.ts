@@ -3,6 +3,7 @@ import type { DialogAnswer, ExtensionDialog, LoopInfo, UiEvent } from './agent-e
 import type { PiModelInfo, PiSlashCommand } from './protocol-types'
 import type { ProjectTabsSnapshot } from './project-tabs'
 import type { KanbanBoard, KanbanCommitRef, KanbanSessionRef } from './kanban'
+import type { KanbanTheme } from './kanban-theme'
 
 /** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
 export type BackendMode = 'native' | 'wsl'
@@ -45,6 +46,8 @@ export interface Settings {
   loopCloseSession: boolean
   /** Канбан-доски проекта: бандл-расширение resources/kanban (туы агента) + UI-панель. */
   kanbanEnabled: boolean
+  /** Id темы оформления досок (дефолт 'slate'); id пользовательской темы — из kanban-themes.json. */
+  kanbanTheme: string
   /** Язык интерфейса (дефолт English). */
   language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
@@ -425,6 +428,22 @@ export interface KanbanAttachmentGetResult extends GitOpResult {
   dataUrl: string
 }
 
+/** Список пользовательских тем канбана (дефолтные темы — в коде, shared/kanban-theme.ts). */
+export interface KanbanThemeListResult extends GitOpResult {
+  themes: KanbanTheme[]
+}
+
+/** Импорт тем диалогом: imported — новых id, skipped — перезаписанных; error 'cancelled' — отмена диалога. */
+export interface KanbanThemeImportResult extends KanbanThemeListResult {
+  imported: number
+  skipped: number
+}
+
+/** Экспорт темы диалогом «Сохранить»: path — записанный файл. */
+export interface KanbanThemeExportResult extends GitOpResult {
+  path: string
+}
+
 /** Файл из набора открытых изменился на диске (chokidar в main). */
 export interface FileChangedMessage {
   project: ProjectEntry
@@ -667,6 +686,13 @@ export interface PiWrightApi {
   kanbanWorkflowSet(project: ProjectEntry, boardId: string, text: string): Promise<KanbanMutationResult>
   kanbanAttachmentPut(project: ProjectEntry, name: string, base64: string): Promise<KanbanAttachmentResult>
   kanbanAttachmentGet(project: ProjectEntry, path: string): Promise<KanbanAttachmentGetResult>
+  /** Пользовательские темы досок (без дефолтных — они в коде). */
+  kanbanThemeList(): Promise<KanbanThemeListResult>
+  /** Диалог «Открыть» → импорт JSON-тем (одна тема, массив или { version, themes }). */
+  kanbanThemeImport(): Promise<KanbanThemeImportResult>
+  /** Диалог «Сохранить» → экспорт темы; id `*` — все пользовательские темы. */
+  kanbanThemeExport(id: string): Promise<KanbanThemeExportResult>
+  kanbanThemeDelete(id: string): Promise<KanbanThemeListResult>
   /** Диалог выбора файла → копия в `.pi/attachments/`. */
   chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
   soundsRead(path: string): Promise<SoundReadResult>
@@ -782,6 +808,10 @@ export const KANBAN_COLUMN_MOVE_CHANNEL = 'kanban:column-move'
 export const KANBAN_WORKFLOW_SET_CHANNEL = 'kanban:workflow-set'
 export const KANBAN_ATTACHMENT_PUT_CHANNEL = 'kanban:attachment-put'
 export const KANBAN_ATTACHMENT_GET_CHANNEL = 'kanban:attachment-get'
+export const KANBAN_THEME_LIST_CHANNEL = 'kanban:theme-list'
+export const KANBAN_THEME_IMPORT_CHANNEL = 'kanban:theme-import'
+export const KANBAN_THEME_EXPORT_CHANNEL = 'kanban:theme-export'
+export const KANBAN_THEME_DELETE_CHANNEL = 'kanban:theme-delete'
 export const SOUNDS_READ_CHANNEL = 'sounds:read'
 export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
 export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'

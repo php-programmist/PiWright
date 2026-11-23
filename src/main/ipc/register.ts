@@ -48,6 +48,10 @@ import {
   KANBAN_COLUMN_RENAME_CHANNEL,
   KANBAN_ATTACHMENT_PUT_CHANNEL,
   KANBAN_ATTACHMENT_GET_CHANNEL,
+  KANBAN_THEME_DELETE_CHANNEL,
+  KANBAN_THEME_EXPORT_CHANNEL,
+  KANBAN_THEME_IMPORT_CHANNEL,
+  KANBAN_THEME_LIST_CHANNEL,
   KANBAN_WORKFLOW_SET_CHANNEL,
   MCP_LIST_CHANNEL,
   MCP_PROBE_CHANNEL,
@@ -112,6 +116,8 @@ import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCar
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
+import type { KanbanThemeService } from '../kanban/kanban-theme-service'
+import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import type { TerminalService } from '../terminal/terminal-service'
 import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
@@ -178,6 +184,7 @@ export function registerIpc(
   terminals: TerminalService,
   loops: LoopController,
   kanban: KanbanService,
+  kanbanThemes: KanbanThemeService,
   notifications?: NotificationServices
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
@@ -219,6 +226,9 @@ export function registerIpc(
       }
       if (typeof raw['kanbanEnabled'] === 'boolean') {
         safe.kanbanEnabled = raw['kanbanEnabled']
+      }
+      if (typeof raw['kanbanTheme'] === 'string' && raw['kanbanTheme'].trim().length > 0) {
+        safe.kanbanTheme = raw['kanbanTheme'].trim().slice(0, 32)
       }
       if (raw['language'] === 'en' || raw['language'] === 'ru') {
         safe.language = raw['language']
@@ -834,6 +844,22 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request', dataUrl: '' }
     }
     return kanban.getAttachment(project, path)
+  })
+
+  ipcMain.handle(KANBAN_THEME_LIST_CHANNEL, () => kanbanThemes.list())
+
+  ipcMain.handle(KANBAN_THEME_IMPORT_CHANNEL, async () => kanbanThemes.importWithDialog())
+
+  ipcMain.handle(KANBAN_THEME_EXPORT_CHANNEL, async (_event, id: unknown) => {
+    if (typeof id !== 'string' || id.trim().length === 0) return { ok: false, error: 'Invalid request', path: '' }
+    return kanbanThemes.exportWithDialog(id.trim())
+  })
+
+  ipcMain.handle(KANBAN_THEME_DELETE_CHANNEL, (_event, id: unknown) => {
+    if (typeof id !== 'string' || id.trim().length === 0) return { ok: false, error: 'Invalid request', themes: [] }
+    const result = kanbanThemes.remove(id.trim())
+    if (result.ok && settings.get().kanbanTheme === id.trim()) settings.set({ kanbanTheme: KANBAN_DEFAULT_THEME_ID })
+    return result
   })
 
   ipcMain.handle(SOUNDS_READ_CHANNEL, (_event, path: unknown) => {

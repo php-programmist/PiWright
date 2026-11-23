@@ -4,6 +4,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { isValidStaticPin } from '../remote/auth'
 
@@ -31,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loopsEnabled: false,
   loopCloseSession: false,
   kanbanEnabled: false,
+  kanbanTheme: KANBAN_DEFAULT_THEME_ID,
   language: 'en',
   panels: {},
   expandedProjects: {},
@@ -175,6 +177,7 @@ export class SettingsService {
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
   merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null
+      if (typeof merged.kanbanTheme !== 'string' || merged.kanbanTheme.trim().length === 0) merged.kanbanTheme = KANBAN_DEFAULT_THEME_ID
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null
       if (typeof merged.lastProjectKey !== 'string') merged.lastProjectKey = null
       return migrateLegacy(raw as Record<string, unknown>, merged)

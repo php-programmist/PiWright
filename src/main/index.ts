@@ -5,6 +5,7 @@ import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { FileService } from './files/file-service'
 import { KanbanService } from './kanban/kanban-service'
+import { KanbanThemeService } from './kanban/kanban-theme-service'
 import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
@@ -88,6 +89,7 @@ function createWindow(bg: string): void {
 app.whenReady().then(() => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
+  const kanbanThemes = new KanbanThemeService(join(app.getPath('userData'), 'kanban-themes.json'))
   gitService = new GitService(() => settings.get())
   kanbanService = new KanbanService(() => settings.get())
   fileService = new FileService({
@@ -139,7 +141,7 @@ app.whenReady().then(() => {
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
-  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, {
+  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
     tokenStore,
     bridge,
     onSettingsChanged: (next) => bridge?.applySettings(next)
