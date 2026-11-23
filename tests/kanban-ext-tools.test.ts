@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, copyFileSync, writeFileSync, readFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -72,6 +72,26 @@ describe('kanban_pick_task', () => {
     const dir = tmpDir('piwright-kanban-tool-')
     const result = await kanbanPickTask(env(dir), { board: 'b-00000000' })
     expect(result.text).toContain('Board not found: b-00000000')
+  })
+
+  it('returns card images of the picked card as inline blocks', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const imagePath = join(dir, 'shot.png')
+    writeFileSync(imagePath, 'png-bytes', 'utf8')
+    await kanbanCreateCard(env(dir), { title: 'Task with card image' })
+    const id = await cardIdByTitle(dir, 'Task with card image')
+    const attachmentsDir = join(dir, '.pi', 'kanban', 'attachments')
+    mkdirSync(attachmentsDir, { recursive: true })
+    copyFileSync(imagePath, join(attachmentsDir, 'shot.png'))
+    const board = await findBoard(dir)
+    const boardFile = join(dir, '.pi', 'kanban', `${board.id}.json`)
+    const raw = JSON.parse(readFileSync(boardFile, 'utf8'))
+    raw.cards.find((c: { id: string }) => c.id === id).images = ['attachments/shot.png']
+    writeFileSync(boardFile, JSON.stringify(raw))
+    const result = await kanbanPickTask(env(dir), {})
+    expect(result.text).toContain('Attached images (in order): #1')
+    expect(result.images).toHaveLength(1)
+    expect(result.images![0].mimeType).toBe('image/png')
   })
 
   it('returns comments with inline images of the picked card', async () => {
