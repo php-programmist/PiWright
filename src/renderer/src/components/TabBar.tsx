@@ -1,7 +1,7 @@
-/** Таб-бар workspace: вкладки активного проекта. Обычные сессии, кнопка «новая сессия»,
- *  затем worktree-сессии и кнопка «новый worktree», затем файлы/диффы/MCP/навыки/транскрипты.
- *  Контекстное меню: закрыть, закрыть другие, закрыть все: <тип>, слева/справа; для сессий
- *  сверху «Переименовать». */
+/** Таб-бар workspace: вкладки активного проекта. Канбан-вкладки — самые левые, затем
+ *  обычные сессии, кнопка «новая сессия», worktree-сессии и кнопка «новый worktree»,
+ *  затем файлы/диффы/MCP/навыки/транскрипты. Контекстное меню: закрыть, закрыть другие,
+ *  закрыть все: <тип>, слева/справа; для сессий сверху «Переименовать». */
 import { useEffect, useRef, useState } from 'react'
 import { useSessionsStore } from '../stores/sessions'
 import { useChatStore } from '../stores/chat'
@@ -207,8 +207,15 @@ export function TabBar(): React.JSX.Element | null {
     useTabsStore.getState().closeTab(tab.project, tabId(tab))
   }
 
-  // Порядок для «слева/справа»: обычные сессии, worktree-сессии, затем остальные вкладки.
-  const orderedIds: string[] = [...regularRows, ...wtRows].map((r) => r.hostId).concat((entry?.tabs ?? []).map(tabId))
+  const allTabs = entry?.tabs ?? []
+  const kanbanTabs = allTabs.filter((tab) => tab.kind === 'kanban')
+  const otherTabs = allTabs.filter((tab) => tab.kind !== 'kanban')
+
+  // Порядок для «слева/справа»: канбан, обычные сессии, worktree-сессии, затем остальные вкладки.
+  const orderedIds: string[] = kanbanTabs
+    .map(tabId)
+    .concat([...regularRows, ...wtRows].map((r) => r.hostId))
+    .concat(otherTabs.map(tabId))
   const menuIndex = menu !== null ? orderedIds.indexOf(menu.id) : -1
 
   const menuAction = (action: 'close' | 'others' | 'type' | 'left' | 'right'): void => {
@@ -250,6 +257,32 @@ export function TabBar(): React.JSX.Element | null {
     for (const id of range) closeOne(id, false)
   }
 
+  const renderProjectTab = (tab: ProjectTab): React.JSX.Element => (
+    <div
+      key={tabId(tab)}
+      className={`tab ${tab.kind}${activeTab !== null && tabId(tab) === tabId(activeTab) ? ' active' : ''}`}
+      title={tab.path ?? tabLabel(tab, t)}
+      onClick={() => activateTab(tab)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenu({ x: e.clientX, y: e.clientY, id: tabId(tab), isSession: false, kind: tab.kind })
+      }}
+    >
+      <span className="tab-icon">{TAB_ICONS[tab.kind]}</span>
+      <span className="tab-name">{tabLabel(tab, t)}</span>
+      <button
+        className="icon tab-close"
+        title={t('Close tab')}
+        onClick={(e) => {
+          e.stopPropagation()
+          closeTabById(tab)
+        }}
+      >
+        ×
+      </button>
+    </div>
+  )
+
   const renderSessionTab = (r: (typeof sessionRows)[number]): React.JSX.Element => {
         const unread = chatHosts[r.hostId]?.unread ?? false
         const cls = DOT_CLASS[r.dot] ?? 'idle'
@@ -286,6 +319,7 @@ export function TabBar(): React.JSX.Element | null {
 
   return (
     <div className="tab-bar">
+      {kanbanTabs.map(renderProjectTab)}
       {regularRows.map(renderSessionTab)}
       <button className="icon tab-add" title={t('New session')} onClick={() => void newSession()}>
         {NEW_SESSION_ICON}
@@ -311,31 +345,7 @@ export function TabBar(): React.JSX.Element | null {
           {WORKTREE_ICON}
         </button>
       )}
-      {(entry?.tabs ?? []).map((tab) => (
-        <div
-          key={tabId(tab)}
-          className={`tab ${tab.kind}${activeTab !== null && tabId(tab) === tabId(activeTab) ? ' active' : ''}`}
-          title={tab.path ?? tabLabel(tab, t)}
-          onClick={() => activateTab(tab)}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            setMenu({ x: e.clientX, y: e.clientY, id: tabId(tab), isSession: false, kind: tab.kind })
-          }}
-        >
-          <span className="tab-icon">{TAB_ICONS[tab.kind]}</span>
-          <span className="tab-name">{tabLabel(tab, t)}</span>
-          <button
-            className="icon tab-close"
-            title={t('Close tab')}
-            onClick={(e) => {
-              e.stopPropagation()
-              closeTabById(tab)
-            }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
+      {otherTabs.map(renderProjectTab)}
       {menu !== null && (
         <div className="tab-menu" style={{ left: menu.x, top: menu.y }} ref={menuRef}>
           {menu.isSession && (
