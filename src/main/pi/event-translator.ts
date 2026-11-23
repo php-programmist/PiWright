@@ -14,6 +14,7 @@ import type { PiJsonObject } from '../../shared/protocol-types'
 export interface StreamListener {
   onAssistantTextDelta(text: string): void
   onThoughtDelta(text: string): void
+  onStreamSpeed(kind: 'thinking' | 'text', tps: number | null): void
   onInjectedUserMessage(text: string): void
   onUserMessage(text: string): void
   onQueueUpdate(steering: string[], followUp: string[]): void
@@ -78,6 +79,9 @@ function toolResult(result: PiJsonObject | null, isError: boolean): ToolResult {
   }
 }
 
+/** Окно обновления живого TPS: и первый замер, и троттлинг повторных. */
+const SPEED_EMIT_INTERVAL_NANOS = 400 * 1e6
+
 interface TurnAccumulator {
   input: number
   output: number
@@ -116,6 +120,8 @@ export class PiEventTranslator {
   private turn: TurnAccumulator = freshTurn()
   private messageStartNanos: number | null = null
   private firstDeltaNanos: number | null = null
+  /** Текущая серия дельт (thinking/text) для живого TPS; null — стрима нет. */
+  private speedRun: { kind: 'thinking' | 'text'; startNanos: number; chars: number; lastEmitNanos: number } | null = null
 
   constructor(
     private readonly listener: StreamListener,
@@ -123,6 +129,7 @@ export class PiEventTranslator {
   ) {}
 
   onEvent(type: string, payload: PiJsonObject): void {
+    if (type !== 'message_update') this.endSpeedRun()
     switch (type) {
       case 'message_start': {
         if (str(obj(payload, 'message'), 'role') === 'assistant') {
@@ -136,10 +143,20 @@ export class PiEventTranslator {
         if (event === null) return
         const kind = str(event, 'type')
         if (kind !== null && kind.endsWith('_delta')) this.markFirstDelta()
+        if (kind !== 'thinking_delta' && kind !== 'text_delta') {
+          this.endSpeedRun()
+          return
+        }
         const delta = str(event, 'delta')
         if (delta === null) return
-        if (kind === 'text_delta') this.listener.onAssistantTextDelta(delta)
-        if (kind === 'thinking_delta') this.listener.onThoughtDelta(delta)
+        if (kind === 'text_delta') {
+          this.listener.onAssistantTextDelta(delta)
+          this.feedSpeed('text', delta)
+        }
+        if (kind === 'thinking_delta') {
+          this.listener.onThoughtDelta(delta)
+          this.feedSpeed('thinking', delta)
+        }
         return
       }
       case 'message_end': {
@@ -227,6 +244,29 @@ export class PiEventTranslator {
         this.onSettled()
         return
     }
+  }
+
+  /** Живой TPS серии дельт: токены ≈ chars/4, окно — от первой дельты серии; эмиссия раз в 400 мс.
+   *  Смена kind (thinking↔text) и конец серии — эмиссия null, чтобы UI скрыл устаревшее значение. */
+  private feedSpeed(kind: 'thinking' | 'text', delta: string): void {
+    const now = this.nanoTime()
+    if (this.speedRun === null || this.speedRun.kind !== kind) {
+      if (this.speedRun !== null) this.listener.onStreamSpeed(this.speedRun.kind, null)
+      this.speedRun = { kind, startNanos: now, chars: 0, lastEmitNanos: 0 }
+    }
+    this.speedRun.chars += delta.length
+    const elapsed = now - this.speedRun.startNanos
+    if (elapsed < SPEED_EMIT_INTERVAL_NANOS) return
+    if (now - this.speedRun.lastEmitNanos < SPEED_EMIT_INTERVAL_NANOS) return
+    this.speedRun.lastEmitNanos = now
+    this.listener.onStreamSpeed(kind, this.speedRun.chars / 4 / (elapsed / 1e9))
+  }
+
+  private endSpeedRun(): void {
+    if (this.speedRun === null) return
+    const kind = this.speedRun.kind
+    this.speedRun = null
+    this.listener.onStreamSpeed(kind, null)
   }
 
   private markFirstDelta(): void {

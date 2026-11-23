@@ -1815,6 +1815,19 @@ pre.code-block {
   min-width: 12ch;
 }
 
+.turn-tps {
+  color: var(--faint);
+  font-size: 0.85em;
+  white-space: nowrap;
+  min-width: 9ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking-tps {
+  color: var(--faint);
+}
+
 .model-select {
   background: var(--input-bg);
   color: var(--muted);

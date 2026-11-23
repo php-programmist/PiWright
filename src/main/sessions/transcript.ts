@@ -12,6 +12,7 @@ export function replaySessionEvents(messages: unknown[]): UiEvent[] {
   const translator = new PiEventTranslator({
     onAssistantTextDelta: (text) => events.push({ type: 'assistant_delta', text }),
     onThoughtDelta: (text) => events.push({ type: 'thought_delta', text }),
+    onStreamSpeed: () => {},
     onInjectedUserMessage: (text) => events.push({ type: 'injected_user_message', text }),
     onUserMessage: (text) => events.push({ type: 'user_message', text }),
     onQueueUpdate: () => {},

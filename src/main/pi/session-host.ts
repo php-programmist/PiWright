@@ -292,6 +292,7 @@ export class SessionHost {
     const translator = new PiEventTranslator({
       onAssistantTextDelta: (text) => this.emit({ type: 'assistant_delta', text }),
       onThoughtDelta: (text) => this.emit({ type: 'thought_delta', text }),
+      onStreamSpeed: (kind, tps) => this.emit({ type: 'stream_speed', kind, tps }),
       onInjectedUserMessage: (text) => {
         if (this.firstUserText === null && text.trim().length > 0) this.firstUserText = text.trim()
         this.emit({ type: 'injected_user_message', text })

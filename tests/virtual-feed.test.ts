@@ -14,7 +14,7 @@ function tool(id: number): Entry {
 
 describe('estimateEntryHeight', () => {
   it('даёт положительную оценку для всех видов записей', () => {
-    const kinds: Entry[] = [user(1), text(2), { kind: 'thinking', id: 3, text: 'x', open: false }, tool(4), { kind: 'info', id: 5, text: 'x' }, { kind: 'error', id: 6, text: 'x' }, { kind: 'result', id: 7, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: null, contextTokens: null, speed: null }, durationMs: null }]
+    const kinds: Entry[] = [user(1), text(2), { kind: 'thinking', id: 3, text: 'x', open: false, tps: null }, tool(4), { kind: 'info', id: 5, text: 'x' }, { kind: 'error', id: 6, text: 'x' }, { kind: 'result', id: 7, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: null, contextTokens: null, speed: null }, durationMs: null }]
     for (const e of kinds) expect(estimateEntryHeight(e)).toBeGreaterThan(0)
   })
 })

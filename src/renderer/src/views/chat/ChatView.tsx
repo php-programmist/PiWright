@@ -55,7 +55,7 @@ function EntryViewBase({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAn
     case 'thinking':
       return (
         <details className="thinking">
-          <ChatThinkingSummary />
+          <ChatThinkingSummary tps={entry.open ? entry.tps : null} />
           <pre>{entry.text}</pre>
         </details>
       )
@@ -91,9 +91,14 @@ export const EntryView = memo(
   (a, b) => a.entry === b.entry && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork
 )
 
-export function ChatThinkingSummary(): React.JSX.Element {
+export function ChatThinkingSummary({ tps }: { tps?: number | null }): React.JSX.Element {
   const t = useT()
-  return <summary>{t('thinking')}</summary>
+  return (
+    <summary>
+      {t('thinking')}
+      {tps != null && <span className="thinking-tps"> · {Math.round(tps)} tok/s</span>}
+    </summary>
+  )
 }
 
 /** Ответ агента; кнопка под сообщением форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
@@ -557,7 +562,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   }
 
   const queuedCount = queue.steering.length + queue.followUp.length
-  const turnTicker = streaming && turnStartedAt !== null ? <TurnTimer startedAt={turnStartedAt} /> : null
+  const turnTicker =
+    streaming && turnStartedAt !== null ? (
+      <>
+        {chat?.streamTps != null && <span className="turn-tps">{Math.round(chat.streamTps)} tok/s</span>}
+        <TurnTimer startedAt={turnStartedAt} />
+      </>
+    ) : null
   const loopReasonText = (reason: string): string =>
     reason === 'agent'
       ? t('the turn had no tool calls')

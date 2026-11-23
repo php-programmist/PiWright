@@ -34,6 +34,7 @@ function translateFixture(): UiEvent[] {
     onCompactionEnd: (end) => events.push({ type: 'compaction_end', end }),
     onResult: (usage) => events.push({ type: 'turn_result', usage }),
     onError: (message) => events.push({ type: 'turn_error', message }),
+    onStreamSpeed: () => {},
     onSubagentsActivity: () => {}
   }
   const translator = new PiEventTranslator(listener)
@@ -72,6 +73,24 @@ describe('chat store transcript', () => {
     store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
     expect(entries()[0]).toMatchObject({ text: 'hello', open: false })
     expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
+  })
+
+  it('stream speed feeds the timer and the open thinking entry, kind-aware', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'thought_delta', text: 'hmm' } })
+    vi.advanceTimersByTime(200)
+    store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: 42.4 } })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(42.4)
+    expect(entries()[0]).toMatchObject({ kind: 'thinking', open: true, tps: 42.4 })
+    store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: null } })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBeNull()
+    expect(entries()[0]).toMatchObject({ tps: null })
+    store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'text', tps: 30 } })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(30)
+    expect(entries()[0]).toMatchObject({ tps: null })
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBeNull()
   })
 
   it('non-delta events flush pending deltas first', () => {

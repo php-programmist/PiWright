@@ -16,7 +16,7 @@ export interface ToolEntry {
 export type Entry =
   | { kind: 'user'; id: number; text: string }
   | { kind: 'text'; id: number; text: string; open: boolean }
-  | { kind: 'thinking'; id: number; text: string; open: boolean }
+  | { kind: 'thinking'; id: number; text: string; open: boolean; tps: number | null }
   | ToolEntry
   | { kind: 'dialog'; id: number; dialogId: string; dialog: ExtensionDialog; receipt: string | null }
   | { kind: 'info'; id: number; text: string }
@@ -43,6 +43,8 @@ export interface HostChat {
   extensionStatuses: Record<string, string>
   /** Виджеты расширений (todo): key → строки. */
   widgets: Record<string, string[]>
+  /** Живой TPS стрима (thinking или текст ответа, chars/4) — слева от таймера хода; null — стрима нет. */
+  streamTps: number | null
   toolsHidden: boolean
   /** Звуки этой сессии выключены (кнопка-колокольчик в шапке; не персистится). */
   muted: boolean
@@ -133,6 +135,7 @@ function emptyHostChat(): HostChat {
     turnStartedAt: null,
     queue: { steering: [], followUp: [] },
     contextUsage: null,
+    streamTps: null,
     usageTotals: null,
     extensionStatuses: {},
     widgets: {},
@@ -169,7 +172,7 @@ function withFlushed(hostId: string, host: HostChat): HostChat {
     if (last?.kind === 'thinking' && last.open) {
       entries[entries.length - 1] = { ...last, text: last.text + b.pendingThought }
     } else {
-      entries.push({ kind: 'thinking', id: newId(), text: b.pendingThought, open: true })
+      entries.push({ kind: 'thinking', id: newId(), text: b.pendingThought, open: true, tps: null })
     }
     b.pendingThought = ''
   }
@@ -242,7 +245,7 @@ export function transcriptEntries(events: UiEvent[]): Entry[] {
       case 'thought_delta': {
         const last = entries[entries.length - 1]
         if (last?.kind === 'thinking') last.text += event.text
-        else entries.push({ kind: 'thinking', id: newId(), text: event.text, open: false })
+        else entries.push({ kind: 'thinking', id: newId(), text: event.text, open: false, tps: null })
         break
       }
       case 'tool_start': {
@@ -311,14 +314,14 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
       return host
     case 'turn_start': {
       const flushed = withFlushed(hostId, host)
-      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: true, turnStartedAt: Date.now() }
+      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: true, turnStartedAt: Date.now(), streamTps: null }
     }
     case 'turn_end': {
       const flushed = withFlushed(hostId, host)
       ownEchoes.set(hostId, 0)
       // turnStartedAt не сбрасываем: agent_end приходит раньше agent_settled, поэтому
       // turn_end часто опережает turn_result, которому таймстамп ещё нужен.
-      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false }
+      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false, streamTps: null }
     }
     case 'subagents_activity':
       return host
@@ -371,6 +374,21 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     }
     case 'context_usage':
       return { ...host, contextUsage: { used: event.used, size: event.size } }
+    case 'stream_speed': {
+      if (event.tps === null) {
+        const entries =
+          event.kind === 'thinking'
+            ? host.entries.map((e) => (e.kind === 'thinking' && e.open && e.tps !== null ? { ...e, tps: null } : e))
+            : host.entries
+        return { ...host, streamTps: null, entries }
+      }
+      const last = host.entries[host.entries.length - 1]
+      const entries =
+        event.kind === 'thinking' && last !== undefined && last.kind === 'thinking' && last.open
+          ? [...host.entries.slice(0, -1), { ...last, tps: event.tps }]
+          : host.entries
+      return { ...host, streamTps: event.tps, entries }
+    }
     case 'session_stats':
       return { ...host, usageTotals: event.tokens }
     case 'extension_status': {

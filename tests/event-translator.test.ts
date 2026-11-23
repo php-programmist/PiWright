@@ -17,6 +17,7 @@ class Recorder implements StreamListener {
   thoughts = ''
   results: ToolResult[] = []
   speeds: (TurnUsage['speed'] | null)[] = []
+  streamSpeeds: { kind: 'thinking' | 'text'; tps: number | null }[] = []
   durations: (number | null)[] = []
   started: { name: string; parent: string | null }[] = []
   ended: { name: string; parent: string | null }[] = []
@@ -26,6 +27,9 @@ class Recorder implements StreamListener {
   }
   onThoughtDelta(text: string): void {
     this.thoughts += text
+  }
+  onStreamSpeed(kind: 'thinking' | 'text', tps: number | null): void {
+    this.streamSpeeds.push({ kind, tps })
   }
   onInjectedUserMessage(text: string): void {
     this.calls.push(`user:${text}`)
@@ -121,7 +125,7 @@ describe('PiEventTranslator', () => {
 
   it('speed averages ttft over messages and divides output by generation windows', () => {
     const recorder = new Recorder()
-    const clock = [0, 100, 1_100, 2_000, 2_300, 3_300].map((ms) => ms * 1e6)
+    const clock = [0, 100, 1_100, 2_100, 2_200, 3_200, 4_200, 5_200].map((ms) => ms * 1e6)
     let index = 0
     const translator = new PiEventTranslator(recorder, () => clock[index++] ?? 0)
     feed(translator, [
@@ -137,7 +141,33 @@ describe('PiEventTranslator', () => {
       '{"type":"message_end","message":{"role":"assistant","usage":{"output":30}}}',
       '{"type":"agent_settled"}'
     ])
-    expect(recorder.speeds).toEqual([{ ttftMs: 200, tokensPerSecond: 20 }])
+    expect(recorder.speeds).toEqual([{ ttftMs: 550, tokensPerSecond: 10 }])
+    expect(recorder.streamSpeeds).toEqual([
+      { kind: 'thinking', tps: null },
+      { kind: 'text', tps: null }
+    ])
+  })
+
+  it('live stream speed: chars/4 per second, 400 ms throttle, null on kind switch and run end', () => {
+    const recorder = new Recorder()
+    const clock = [0, 100, 200, 700, 800, 900, 1_400].map((ms) => ms * 1e6)
+    let index = 0
+    const translator = new PiEventTranslator(recorder, () => clock[index++] ?? 0)
+    feed(translator, [
+      '{"type":"message_start","message":{"role":"assistant"}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"aaaa"}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"aaaa"}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"aaaa"}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"bbbbbbbb"}}',
+      '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"bbbbbbbb"}}',
+      '{"type":"tool_execution_start","toolCallId":"t1","toolName":"read","args":{}}'
+    ])
+    expect(recorder.streamSpeeds).toEqual([
+      { kind: 'thinking', tps: 4 },
+      { kind: 'thinking', tps: null },
+      { kind: 'text', tps: 8 },
+      { kind: 'text', tps: null }
+    ])
   })
 
   it('turn without deltas has no speed', () => {
