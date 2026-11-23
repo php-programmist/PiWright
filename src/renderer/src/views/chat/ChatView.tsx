@@ -127,7 +127,7 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
       if (onEdit !== undefined && draft.trim().length > 0 && draft !== entry.text) onEdit(entry, draft)
     }
     return (
-      <div className="user-entry">
+      <div className="user-entry editing">
         <div className="user-message editing">
         <textarea
           className="user-edit-area"

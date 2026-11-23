@@ -1194,6 +1194,12 @@ body {
   max-width: 75%;
 }
 
+.user-entry.editing {
+  align-self: stretch;
+  max-width: 100%;
+  align-items: stretch;
+}
+
 .user-message {
   position: relative;
   align-self: stretch;
