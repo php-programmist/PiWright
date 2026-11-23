@@ -916,6 +916,11 @@ function CardModal({
     onClose()
   }
 
+  const moveCardToColumn = (columnId: string): void => {
+    if (columnId === card.columnId) return
+    void window.piwright.kanbanCardMove(tab.project, board.id, { id: card.id, columnId }).then(apply)
+  }
+
   const removeCard = async (): Promise<void> => {
     const ok = await confirmDialog({
       message: t('Delete card "{title}"?', { title: card.title }),
@@ -1062,6 +1067,18 @@ function CardModal({
             }}
           />
           <div className="board-modal-actions">
+            <select
+              className="board-column-select"
+              title={t('Move to column')}
+              value={card.columnId}
+              onChange={(e) => moveCardToColumn(e.target.value)}
+            >
+              {board.columns.map((column) => (
+                <option key={column.id} value={column.id}>
+                  {column.name}
+                </option>
+              ))}
+            </select>
             <button className="board-attach" title={t('Attach image')} onClick={() => commentFileRef.current?.click()}>
               📎
             </button>

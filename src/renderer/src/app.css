@@ -4285,7 +4285,20 @@ body {
 .board-modal-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+}
+
+.board-column-select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 200px;
+  margin-right: auto;
 }
 
 .board-modal-description-actions {

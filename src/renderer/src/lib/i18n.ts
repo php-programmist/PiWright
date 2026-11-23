@@ -268,6 +268,7 @@ const RU: Record<string, string> = {
   'Attach image': 'Прикрепить картинку',
   'Add comment': 'Добавить комментарий (Ctrl+Enter)',
   'Send comment': 'Отправить комментарий',
+  'Move to column': 'Переместить в колонку',
   'Delete comment?': 'Удалить комментарий?',
   'Ok': 'Ок',
   'Delete card': 'Удалить карточку',
