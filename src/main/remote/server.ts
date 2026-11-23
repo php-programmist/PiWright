@@ -8,6 +8,7 @@ import { app } from 'electron'
 import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo, Socket as NetSocket } from 'node:net'
 import { networkInterfaces } from 'node:os'
+import type { UiLanguage } from '../../shared/ipc-contracts'
 import type { RemoteAuth } from './auth'
 import type { RemoteSocket } from './ws'
 import { WsConnection, wsAcceptKey } from './ws'
@@ -102,11 +103,27 @@ function writeRedirect(res: ServerResponse, location: string, cookieTokenValue: 
   res.end()
 }
 
-function loginPage(error: boolean): string {
+const LOGIN_TEXT: Record<UiLanguage, { title: string; hint: string; submit: string; error: string }> = {
+  en: {
+    title: 'PiWright remote — sign in',
+    hint: 'Enter the PIN from PiWright settings (Notifications → Remote).',
+    submit: 'Sign in',
+    error: 'Wrong PIN or too many attempts.'
+  },
+  ru: {
+    title: 'PiWright remote — вход',
+    hint: 'Введи PIN из настроек PiWright (Notifications → Remote).',
+    submit: 'Войти',
+    error: 'Неверный PIN или слишком много попыток.'
+  }
+}
+
+function loginPage(error: boolean, lang: UiLanguage): string {
+  const text = LOGIN_TEXT[lang] ?? LOGIN_TEXT.en
   return `<!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>PiWright remote — вход</title>
+<title>${text.title}</title>
 <link rel="icon" href="/icon.ico">
 <style>
   :root{color-scheme:dark}
@@ -124,10 +141,10 @@ function loginPage(error: boolean): string {
 </style></head><body>
 <form method="post" action="/login">
   <h1>PiWright remote</h1>
-  <p>Введи PIN из настроек PiWright (Notifications → Remote).</p>
+  <p>${text.hint}</p>
   <input name="pin" inputmode="numeric" autocomplete="one-time-code" autofocus maxlength="7" placeholder="000 000">
-  <button type="submit">Войти</button>
-  ${error ? '<div class="err">Неверный PIN или слишком много попыток.</div>' : ''}
+  <button type="submit">${text.submit}</button>
+  ${error ? `<div class="err">${text.error}</div>` : ''}
 </form></body></html>`
 }
 
@@ -157,7 +174,8 @@ export class RemoteWebServer {
   constructor(
     private readonly requestedPort: number,
     private readonly auth: RemoteAuth,
-    private readonly listener: RemoteWebServerListener
+    private readonly listener: RemoteWebServerListener,
+    private readonly getLanguage: () => UiLanguage = () => 'en'
   ) {}
 
   async start(): Promise<RemoteStartResult> {
@@ -200,7 +218,7 @@ export class RemoteWebServer {
     const path = (req.url ?? '/').split('?')[0]
     if (path === '/login' && req.method === 'GET') {
       const error = (req.url ?? '').includes('e=1')
-      writeHttp(res, 200, 'text/html; charset=utf-8', loginPage(error))
+      writeHttp(res, 200, 'text/html; charset=utf-8', loginPage(error, this.getLanguage()))
       return
     }
     if (path === '/login' && req.method === 'POST') {
@@ -208,7 +226,7 @@ export class RemoteWebServer {
       const pin = parseForm(body).get('pin') ?? ''
       const peer = req.socket.remoteAddress ?? '?'
       if (this.auth.isLocked(peer)) {
-        writeHttp(res, 429, 'text/html; charset=utf-8', loginPage(true))
+        writeHttp(res, 429, 'text/html; charset=utf-8', loginPage(true, this.getLanguage()))
         return
       }
       if (this.auth.checkPin(pin)) {
@@ -239,8 +257,15 @@ export class RemoteWebServer {
       writeRedirect(res, '/login', null)
       return
     }
+    const lang = this.getLanguage()
     const resource =
-      path === '/' || path === '/index.html' ? indexHtml : path === '/app.js' ? appJs : path === '/style.css' ? styleCss : null
+      path === '/' || path === '/index.html'
+        ? indexHtml.replace('<html lang="en">', `<html lang="${lang}">`)
+        : path === '/app.js'
+          ? appJs
+          : path === '/style.css'
+            ? styleCss
+            : null
     if (resource === null) {
       writeHttp(res, 404, 'text/plain', 'Not found')
       return

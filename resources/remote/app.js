@@ -37,6 +37,97 @@ const loopMaxInput = el("loopMax");
 const loopInfoLabel = el("loopInfo");
 const loopExitInput = el("loopExit");
 
+// Page language: server serves index.html with <html lang> taken from PC settings (settings.language).
+const LANG = document.documentElement.lang === "ru" ? "ru" : "en";
+const RU = {
+  "error": "ошибка",
+  "extension error": "ошибка расширения",
+  "context compaction…": "компакция контекста…",
+  "compaction done": "компакция завершена",
+  "Sessions": "Сессии",
+  "PC link": "связь с ПК",
+  "New session": "Новая сессия",
+  "Name": "Имя",
+  "Project": "Проект",
+  "Model": "Модель",
+  "Thinking": "Мышление",
+  "Cancel": "Отмена",
+  "Create": "Создать",
+  "Loop": "Петля",
+  "Loop iterations left": "Сколько итераций ещё осталось",
+  "Loop exit condition (optional): the loop stops when the agent calls loop_stop; empty — until the iteration limit": "Условие выхода из петли (необязательно): петля остановится, когда агент вызовет loop_stop; пустое — до лимита итераций",
+  "Message…": "Сообщение…",
+  "Attach image": "Прикрепить картинку",
+  "Telegram notifications on": "Уведомления в Telegram включены",
+  "Telegram notifications off": "Уведомления в Telegram выключены",
+  "Show tool blocks": "Показать блоки инструментов",
+  "Hide tool blocks": "Скрыть блоки инструментов",
+  "Exit read mode": "Выйти из режима чтения",
+  "Read mode": "Режим чтения",
+  "Stop": "Стоп",
+  "Steer": "Подсказать",
+  "Send": "Отправить",
+  "Rename": "Переименовать",
+  "Close": "Закрыть",
+  "Rename tab": "Переименовать вкладку",
+  "Save": "Сохранить",
+  "Close tab?": "Закрыть вкладку?",
+  "«{title}» will be unshared and disappear from the phone list. The tab will stay open on the PC.": "«{title}» снимется с remote и исчезнет из списка на телефоне. На ПК вкладка останется открытой.",
+  "No remote sessions. Enable the toggle in the tab header in the IDE.": "Нет сессий на remote. Включи тоггл в шапке вкладки в IDE.",
+  "{n}% context": "{n}% контекста",
+  "[image]": "[картинка]",
+  "Thinking…": "Размышления…",
+  "Plan": "План",
+  "Command": "Команда",
+  "steer": "подсказка",
+  "follow-up": "после хода",
+  "Extension request": "Запрос расширения",
+  "Method \"{method}\" can't be shown on the phone. Answer on the PC.": "Метод «{method}» телефон не умеет показывать. Ответь на ПК.",
+  "pi asks": "pi спрашивает",
+  "Timed out — pi used the default answer": "Время вышло — pi использовал ответ по умолчанию",
+  "Yes": "Да",
+  "No": "Нет",
+  "OK": "OK",
+  "Agent questions": "Вопросы агента",
+  "{n} q.": "{n} вопр.",
+  "Own answer": "Свой вариант",
+  "Add note": "Добавить заметку",
+  "Remove note": "Убрать заметку",
+  "Note to answer…": "Заметка к ответу…",
+  "Needs clarification": "Нужно пояснение",
+  "Submit": "Отправить",
+  "PC answered": "Ответил ПК",
+  "Phone answered": "Ответил телефон",
+  "Model does not accept images": "Модель не принимает картинки",
+  "Model does not accept images — attachments removed": "Модель не принимает картинки — вложения сняты",
+  "Max {n} images": "Максимум {n} картинки",
+  "Image unreadable or too large": "Картинка не читается или слишком большая",
+  "the turn had no tool calls": "ход без вызовов инструментов",
+  "exit condition met": "условие выхода выполнено",
+  "stopped by user": "остановлена пользователем",
+  "iteration limit reached": "достигнут лимит итераций",
+  "3 iterations in a row faster than 10 seconds": "3 итерации подряд быстрее 10 секунд",
+  "failed to start the next iteration": "не удалось запустить следующую итерацию",
+  "stopped: {reason}": "остановлена: {reason}",
+  "active": "активна",
+  "Default": "По умолчанию",
+  "Copy": "Копировать"
+};
+
+function t(key, vars) {
+  let text = LANG === "ru" && RU[key] !== undefined ? RU[key] : key;
+  if (vars) for (const name of Object.keys(vars)) text = text.replaceAll(`{${name}}`, String(vars[name]));
+  return text;
+}
+
+/** Static index.html markup keeps no translations — applied via data-i18n* attributes. */
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-ph]").forEach((node) => { node.placeholder = t(node.dataset.i18nPh); });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAria)); });
+}
+
 const MAX_IMAGES = 3;
 const MAX_IMAGE_SIDE = 1600;
 const JPEG_QUALITIES = [0.8, 0.65, 0.5];
@@ -188,7 +279,7 @@ function handleFrame(frame) {
     case "snapshot": return onSnapshot(frame);
     case "error":
       attachPending = false;
-      return addInfo(frame.message || "ошибка", true);
+      return addInfo(frame.message || t("error"), true);
     case "ui_answered": return onUiAnswered(frame);
     case "pong": return;
     case "response": return onResponse(frame);
@@ -205,9 +296,9 @@ function handleFrame(frame) {
     case "todos": return onTodos(frame);
     case "session_info_changed": return onSessionName(frame);
     case "extension_ui_request": return onUiRequest(frame);
-    case "extension_error": return addInfo(frame.error || "ошибка расширения", true);
-    case "compaction_start": return addInfo("компакция контекста…");
-    case "compaction_end": return addInfo("компакция завершена");
+    case "extension_error": return addInfo(frame.error || t("extension error"), true);
+    case "compaction_start": return addInfo(t("context compaction…"));
+    case "compaction_end": return addInfo(t("compaction done"));
     case "session_created": return onSessionCreated(frame);
     case "catalog": return onCatalog(frame);
     case "loop_state": return onLoopState(frame);
@@ -289,7 +380,7 @@ function openTabMenu(sessionId) {
   const rename = document.createElement("button");
   rename.type = "button";
   rename.className = "menu-item";
-  rename.textContent = "Переименовать";
+  rename.textContent = t("Rename");
   rename.addEventListener("click", () => {
     close();
     openRenameDialog(session);
@@ -297,7 +388,7 @@ function openTabMenu(sessionId) {
   const closeTab = document.createElement("button");
   closeTab.type = "button";
   closeTab.className = "menu-item danger";
-  closeTab.textContent = "Закрыть";
+  closeTab.textContent = t("Close");
   closeTab.addEventListener("click", () => {
     close();
     confirmUnshare(session);
@@ -306,7 +397,7 @@ function openTabMenu(sessionId) {
 }
 
 function openRenameDialog(session) {
-  const { body, close } = openModal("Переименовать вкладку");
+  const { body, close } = openModal(t("Rename tab"));
   const field = document.createElement("input");
   field.type = "text";
   field.maxLength = 100;
@@ -319,21 +410,21 @@ function openRenameDialog(session) {
   field.addEventListener("keydown", (event) => {
     if (event.key === "Enter") submit();
   });
-  body.append(field, actionsRow(button("Отмена", close, true), button("Сохранить", submit)));
+  body.append(field, actionsRow(button(t("Cancel"), close, true), button(t("Save"), submit)));
   field.focus();
   field.select();
 }
 
 function confirmUnshare(session) {
-  const { body, close } = openModal("Закрыть вкладку?");
+  const { body, close } = openModal(t("Close tab?"));
   const text = document.createElement("p");
-  text.textContent = `«${session.title}» снимется с remote и исчезнет из списка на телефоне. На ПК вкладка останется открытой.`;
-  const drop = button("Закрыть", () => {
+  text.textContent = t("«{title}» will be unshared and disappear from the phone list. The tab will stay open on the PC.", { title: session.title });
+  const drop = button(t("Close"), () => {
     close();
     send({ type: "unshare", id: session.id });
   });
   drop.classList.add("danger");
-  body.append(text, actionsRow(button("Отмена", close, true), drop));
+  body.append(text, actionsRow(button(t("Cancel"), close, true), drop));
 }
 
 /** Затемнённое окно поверх ленты: карточка с заголовком, телом и рядом кнопок. */
@@ -372,7 +463,7 @@ function onSessions(sessions) {
     tgEnabled = false;
     applyTgNotify();
     stream.innerHTML = "";
-    addInfo("Нет сессий на remote. Включи тоггл в шапке вкладки в IDE.");
+    addInfo(t("No remote sessions. Enable the toggle in the tab header in the IDE."));
     updateAttachButton();
     setDot();
     return;
@@ -500,7 +591,7 @@ function thinkingBlock() {
   const details = document.createElement("details");
   details.className = "thinking";
   const summary = document.createElement("summary");
-  summary.textContent = "Thinking…";
+  summary.textContent = t("Thinking…");
   const body = document.createElement("div");
   body.className = "body";
   details.append(summary, body);
@@ -556,7 +647,7 @@ function onMessageEnd(frame) {
 /** Заполнение контекста — только текущий ход (usage.totalTokens / contextUsage), не сумма сессии. */
 function updateContextUsage(tokens, window) {
   if (!(tokens > 0) || !(window > 0)) return;
-  contextLabel.textContent = `${Math.round((tokens / window) * 100)}% контекста`;
+  contextLabel.textContent = t("{n}% context", { n: Math.round((tokens / window) * 100) });
 }
 
 /** Ход без текста, но с thinking (ответ, который сразу ушёл в tool call) не выбрасываем:
@@ -614,7 +705,7 @@ function createToolCard(nameText, argsText, commandText) {
   if (commandText) {
     const label = document.createElement("div");
     label.className = "label";
-    label.textContent = "Command";
+    label.textContent = t("Command");
     const command = document.createElement("pre");
     command.className = "command";
     command.textContent = commandText;
@@ -675,8 +766,8 @@ function onToolEnd(frame) {
 
 function onQueue(frame) {
   const parts = [];
-  (frame.steering || []).forEach((text) => parts.push(`steer: ${text}`));
-  (frame.followUp || []).forEach((text) => parts.push(`follow-up: ${text}`));
+  (frame.steering || []).forEach((text) => parts.push(`${t("steer")}: ${text}`));
+  (frame.followUp || []).forEach((text) => parts.push(`${t("follow-up")}: ${text}`));
   queueLabel.textContent = parts.join(" · ");
 }
 
@@ -705,7 +796,7 @@ function renderTodos() {
   caret.textContent = todoExpanded ? "▾" : "▸";
   const title = document.createElement("span");
   title.className = "todo-title";
-  title.textContent = "Plan";
+  title.textContent = t("Plan");
   const counter = document.createElement("span");
   counter.className = "todo-counter";
   counter.textContent = `${done} / ${todos.length}`;
@@ -775,7 +866,7 @@ function renderHistory(messages) {
         const details = document.createElement("details");
         details.className = "thinking";
         const summary = document.createElement("summary");
-        summary.textContent = "Thinking…";
+        summary.textContent = t("Thinking…");
         const body = document.createElement("div");
         body.className = "body";
         body.textContent = thinking;
@@ -830,7 +921,7 @@ function addUserMessage(message) {
     .join("");
   const images = content.filter((block) => block.type === "image").length;
   if (!text && !images) return;
-  addUser(images ? `${text}${text ? " " : ""}[картинка]` : text);
+  addUser(images ? `${text}${text ? " " : ""}${t("[image]")}` : text);
 }
 
 function addInfo(text, isError) {
@@ -889,7 +980,7 @@ function contentText(payload) {
   const content = payload.content;
   if (Array.isArray(content)) {
     return content
-      .map((block) => (block.type === "text" ? block.text : block.type === "image" ? "[image]" : ""))
+      .map((block) => (block.type === "text" ? block.text : block.type === "image" ? t("[image]") : ""))
       .filter(Boolean)
       .join("\n");
   }
@@ -924,9 +1015,9 @@ function onUiRequest(frame) {
 // Неизвестный метод не отвечаем сами: молчаливый cancelled может отклонить разрешение,
 // которое пользователь хотел дать. Показываем запрос и даём ответить с ПК.
 function renderUnknown(frame) {
-  const { card, body, close } = dialogShell(frame.title || "Запрос расширения");
+  const { card, body, close } = dialogShell(frame.title || t("Extension request"));
   const text = document.createElement("p");
-  text.textContent = `Метод «${frame.method}» телефон не умеет показывать. Ответь на ПК.`;
+  text.textContent = t("Method \"{method}\" can't be shown on the phone. Answer on the PC.", { method: frame.method });
   body.append(text);
   const pre = document.createElement("pre");
   pre.className = "md-code";
@@ -934,7 +1025,7 @@ function renderUnknown(frame) {
   body.append(pre);
   const actions = document.createElement("div");
   actions.className = "actions";
-  actions.append(button("Отмена", () => respondUi(frame.id, { cancelled: true }), true));
+  actions.append(button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true));
   body.append(actions);
   registerDialog(frame.id, card, close);
   scheduleDialogTimeout(frame.id, frame.timeout);
@@ -951,7 +1042,7 @@ function dialogShell(title, summary) {
   caret.className = "caret";
   caret.textContent = "▾";
   const heading = document.createElement("h3");
-  heading.textContent = title || "pi asks";
+  heading.textContent = title || t("pi asks");
   head.append(caret, heading);
   if (summary) {
     const note = document.createElement("span");
@@ -983,7 +1074,7 @@ function scheduleDialogTimeout(id, timeoutMs) {
     if (!entry) return;
     entry.close();
     openDialogs.delete(id);
-    addInfo("Время вышло — pi использовал ответ по умолчанию");
+    addInfo(t("Timed out — pi used the default answer"));
   }, timeoutMs);
 }
 
@@ -1005,9 +1096,9 @@ function renderConfirm(frame) {
   }
   const actions = document.createElement("div");
   actions.className = "actions";
-  const yes = button("Yes", () => respondUi(frame.id, { confirmed: true }));
-  const no = button("No", () => respondUi(frame.id, { confirmed: false }));
-  const cancel = button("Cancel", () => respondUi(frame.id, { cancelled: true }), true);
+  const yes = button(t("Yes"), () => respondUi(frame.id, { confirmed: true }));
+  const no = button(t("No"), () => respondUi(frame.id, { confirmed: false }));
+  const cancel = button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true);
   actions.append(yes, no, cancel);
   body.append(actions);
   registerDialog(frame.id, card, close);
@@ -1031,7 +1122,7 @@ function renderSelect(frame) {
   (frame.options || []).forEach((option) => {
     actions.append(button(option, () => respondUi(frame.id, { value: option })));
   });
-  actions.append(button("Cancel", () => respondUi(frame.id, { cancelled: true }), true));
+  actions.append(button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true));
   body.append(actions);
   registerDialog(frame.id, card, close);
   scheduleDialogTimeout(frame.id, frame.timeout);
@@ -1046,8 +1137,8 @@ function renderInput(frame) {
   const actions = document.createElement("div");
   actions.className = "actions";
   actions.append(
-    button("OK", () => respondUi(frame.id, { value: field.value })),
-    button("Cancel", () => respondUi(frame.id, { cancelled: true }), true),
+    button(t("OK"), () => respondUi(frame.id, { value: field.value })),
+    button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true),
   );
   body.append(actions);
   registerDialog(frame.id, card, close);
@@ -1063,8 +1154,8 @@ function renderEditor(frame) {
   const actions = document.createElement("div");
   actions.className = "actions";
   actions.append(
-    button("OK", () => respondUi(frame.id, { value: area.value })),
-    button("Cancel", () => respondUi(frame.id, { cancelled: true }), true),
+    button(t("OK"), () => respondUi(frame.id, { value: area.value })),
+    button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true),
   );
   body.append(actions);
   registerDialog(frame.id, card, close);
@@ -1088,7 +1179,7 @@ function renderAsk(frame) {
     renderInput(frame);
     return;
   }
-  const { card, body, close } = dialogShell("Вопросы агента", `${questions.length} вопр.`);
+  const { card, body, close } = dialogShell(t("Agent questions"), t("{n} q.", { n: questions.length }));
   const state = questions.map((question) => ({
     question,
     selected: question.multiSelect ? [] : null,
@@ -1147,7 +1238,7 @@ function renderAsk(frame) {
 
     const custom = document.createElement("input");
     custom.type = "text";
-    custom.placeholder = "Свой вариант";
+    custom.placeholder = t("Own answer");
     custom.addEventListener("input", () => {
       entry.custom = custom.value;
     });
@@ -1156,15 +1247,15 @@ function renderAsk(frame) {
     const noteToggle = document.createElement("button");
     noteToggle.type = "button";
     noteToggle.className = "note-toggle";
-    noteToggle.textContent = "✎ Добавить заметку";
+    noteToggle.textContent = "✎ " + t("Add note");
     const noteField = document.createElement("input");
     noteField.type = "text";
     noteField.className = "note-field";
-    noteField.placeholder = "Заметка к ответу…";
+    noteField.placeholder = t("Note to answer…");
     noteField.hidden = true;
     noteToggle.addEventListener("click", () => {
       noteField.hidden = !noteField.hidden;
-      noteToggle.textContent = noteField.hidden ? "✎ Добавить заметку" : "✎ Убрать заметку";
+      noteToggle.textContent = noteField.hidden ? "✎ " + t("Add note") : "✎ " + t("Remove note");
       if (!noteField.hidden) noteField.focus();
     });
     noteField.addEventListener("input", () => {
@@ -1179,7 +1270,7 @@ function renderAsk(frame) {
     checkbox.addEventListener("change", () => {
       entry.notes = checkbox.checked;
     });
-    notes.append(checkbox, document.createTextNode("Нужно пояснение"));
+    notes.append(checkbox, document.createTextNode(t("Needs clarification")));
     block.append(notes);
 
     body.append(block);
@@ -1188,7 +1279,7 @@ function renderAsk(frame) {
   const actions = document.createElement("div");
   actions.className = "actions";
   actions.append(
-    button("Отправить", () => {
+    button(t("Submit"), () => {
       const answers = state.map((entry, index) => {
         const question = entry.question;
         const answer = { questionIndex: index, question: question.question };
@@ -1213,7 +1304,7 @@ function renderAsk(frame) {
       });
       respondUi(frame.id, { value: JSON.stringify({ answers, cancelled: false }) });
     }),
-    button("Отмена", () => respondUi(frame.id, { cancelled: true }), true),
+    button(t("Cancel"), () => respondUi(frame.id, { cancelled: true }), true),
   );
   body.append(actions);
   registerDialog(frame.id, card, close);
@@ -1225,7 +1316,7 @@ function onUiAnswered(frame) {
   if (!entry) return;
   entry.close();
   openDialogs.delete(frame.id);
-  addInfo(frame.by === "pc" ? "Ответил ПК" : "Ответил телефон");
+  addInfo(frame.by === "pc" ? t("PC answered") : t("Phone answered"));
 }
 
 function button(label, onClick, ghost) {
@@ -1254,7 +1345,7 @@ hideToolsButton.addEventListener("click", () => {
 function applyToolsHidden() {
   stream.classList.toggle("hide-tools", toolsHidden);
   hideToolsButton.innerHTML = toolsHidden ? EYE_OFF_SVG : EYE_SVG;
-  hideToolsButton.title = toolsHidden ? "Показать блоки инструментов" : "Скрыть блоки инструментов";
+  hideToolsButton.title = toolsHidden ? t("Show tool blocks") : t("Hide tool blocks");
 }
 
 // -------------------------------------------------------------- read mode
@@ -1269,7 +1360,7 @@ function setReadMode(value) {
   readExitButton.hidden = !value;
   readModeButton.innerHTML = BOOK_SVG;
   readExitButton.innerHTML = BOOK_SVG;
-  readModeButton.title = value ? "Выйти из режима чтения" : "Режим чтения";
+  readModeButton.title = value ? t("Exit read mode") : t("Read mode");
 }
 
 setReadMode(false);
@@ -1288,8 +1379,8 @@ function applyTgNotify() {
   tgNotifyButton.disabled = !attached;
   tgNotifyButton.innerHTML = tgEnabled ? TG_SVG : TG_OFF_SVG;
   tgNotifyButton.title = tgEnabled
-    ? "Уведомления в Telegram включены"
-    : "Уведомления в Telegram выключены";
+    ? t("Telegram notifications on")
+    : t("Telegram notifications off");
 }
 
 applyTgNotify();
@@ -1307,26 +1398,26 @@ function updateAttachButton() {
   const allowed = !!attached && modelSupportsImages;
   attachButton.disabled = !allowed;
   attachButton.title = modelSupportsImages
-    ? "Прикрепить картинку"
-    : "Модель не принимает картинки";
+    ? t("Attach image")
+    : t("Model does not accept images");
   if (!modelSupportsImages && pendingImages.length) {
     pendingImages = [];
     renderChips();
-    addInfo("Модель не принимает картинки — вложения сняты", true);
+    addInfo(t("Model does not accept images — attachments removed"), true);
   }
 }
 
 async function addFiles(files) {
   for (const file of files) {
     if (pendingImages.length >= MAX_IMAGES) {
-      addInfo(`Максимум ${MAX_IMAGES} картинки`, true);
+      addInfo(t("Max {n} images", { n: MAX_IMAGES }), true);
       break;
     }
     if (!file.type.startsWith("image/")) continue;
     try {
       pendingImages.push(await shrinkImage(file));
     } catch {
-      addInfo("Картинка не читается или слишком большая", true);
+      addInfo(t("Image unreadable or too large"), true);
     }
   }
   renderChips();
@@ -1420,13 +1511,13 @@ input.addEventListener("input", () => {
 
 // ---------------------------------------------------------------------- loop
 
-const LOOP_REASON_TEXT = {
-  agent: "ход без вызовов инструментов",
-  exit: "условие выхода выполнено",
-  user: "остановлена пользователем",
-  max: "достигнут лимит итераций",
-  "short-circuit": "3 итерации подряд быстрее 10 секунд",
-  error: "не удалось запустить следующую итерацию"
+const LOOP_REASON_KEY = {
+  agent: "the turn had no tool calls",
+  exit: "exit condition met",
+  user: "stopped by user",
+  max: "iteration limit reached",
+  "short-circuit": "3 iterations in a row faster than 10 seconds",
+  error: "failed to start the next iteration"
 };
 
 function onLoopState(frame) {
@@ -1448,9 +1539,9 @@ function applyLoopUi() {
   loopMaxInput.value = String(active ? loopInfo.remaining : loopMax);
   loopExitInput.hidden = !loopEnabled || active;
   if (loopInfo && !active && loopInfo.reason) {
-    loopInfoLabel.textContent = `остановлена: ${LOOP_REASON_TEXT[loopInfo.reason] || loopInfo.reason}`;
+    loopInfoLabel.textContent = t("stopped: {reason}", { reason: t(LOOP_REASON_KEY[loopInfo.reason] || loopInfo.reason) });
   } else if (active) {
-    loopInfoLabel.textContent = "активна";
+    loopInfoLabel.textContent = t("active");
   } else {
     loopInfoLabel.textContent = "";
   }
@@ -1525,7 +1616,7 @@ function resetCatalogSelects() {
 function addDefaultOption(select) {
   const opt = document.createElement("option");
   opt.value = "";
-  opt.textContent = "По умолчанию";
+  opt.textContent = t("Default");
   select.append(opt);
   select.value = "";
 }
@@ -1669,7 +1760,7 @@ function markdown(text) {
   if (!text) return "";
   const blocks = [];
   let prepared = text.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    blocks.push(`<div class="md-code-wrap"><pre class="md-code">${escapeHtml(code.replace(/\n$/, ""))}</pre><button type="button" class="md-copy-btn" title="Copy"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4.5A1.5 1.5 0 0 0 3 3.5v5A1.5 1.5 0 0 0 4.5 10h1"/></svg><svg class="check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5 6.5 12 13 4.5"/></svg></button></div>`);
+    blocks.push(`<div class="md-code-wrap"><pre class="md-code">${escapeHtml(code.replace(/\n$/, ""))}</pre><button type="button" class="md-copy-btn" title="${t("Copy")}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4.5A1.5 1.5 0 0 0 3 3.5v5A1.5 1.5 0 0 0 4.5 10h1"/></svg><svg class="check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5 6.5 12 13 4.5"/></svg></button></div>`);
     return `\u0000BLOCK${blocks.length - 1}\u0000`;
   });
   prepared = extractTables(prepared, blocks);
@@ -1691,6 +1782,7 @@ function markdown(text) {
 }
 
 connect();
+applyI18n();
 applyToolsHidden();
 
 stream.addEventListener("click", (event) => {

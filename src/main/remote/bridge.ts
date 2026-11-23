@@ -192,11 +192,16 @@ export class RemoteBridge {
   }
 
   private async startServer(port: number): Promise<void> {
-    const created = new RemoteWebServer(port, this.auth, {
-      onOpen: (socket) => this.onOpen(socket),
-      onText: (socket, text) => this.onText(socket, text),
-      onClose: (socket) => this.onClose(socket)
-    })
+    const created = new RemoteWebServer(
+      port,
+      this.auth,
+      {
+        onOpen: (socket) => this.onOpen(socket),
+        onText: (socket, text) => this.onText(socket, text),
+        onClose: (socket) => this.onClose(socket)
+      },
+      () => this.getSettings().language
+    )
     const result = await created.start()
     const live = this.getSettings().notifications.remote
     if (!live.enabled || live.port !== port) {
