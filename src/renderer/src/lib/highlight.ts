@@ -1,5 +1,6 @@
 /** Shiki-подсветка кода: ленивый синглтон-хайлайтер, неизвестный язык — plain.
  *  Тема передаётся вызовом (переключение темы — перерисовка блоков). */
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 import type { Highlighter } from 'shiki'
 import type { Theme } from '../../../shared/ipc-contracts'
 
@@ -13,7 +14,11 @@ let highlighterPromise: Promise<Highlighter> | null = null
 async function getHighlighter(): Promise<Highlighter> {
   if (highlighterPromise === null) {
     highlighterPromise = import('shiki').then((shiki) =>
-      shiki.createHighlighter({ themes: ['github-dark', 'github-light'], langs: [] })
+      shiki.createHighlighter({
+        themes: ['github-dark', 'github-light'],
+        langs: [],
+        engine: createJavaScriptRegexEngine({ forgiving: true })
+      })
     )
   }
   return highlighterPromise
@@ -28,7 +33,8 @@ export async function highlightCode(code: string, language: string, theme: Theme
       lang: language as Parameters<Highlighter['codeToHtml']>[1]['lang'],
       theme: SHIKI_THEMES[theme]
     })
-  } catch {
+  } catch (err) {
+    console.warn('shiki highlight failed:', err)
     return null
   }
 }
