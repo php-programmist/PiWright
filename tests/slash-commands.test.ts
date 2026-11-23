@@ -11,6 +11,7 @@ const cmd = (name: string, source: string | null = null): PiSlashCommand => ({
 const COMMANDS: PiSlashCommand[] = [
   cmd('compact', 'core'),
   cmd('skill:autopilot', 'skill'),
+  cmd('skill:release', 'skill'),
   cmd('auto-review', 'extension'),
   cmd('Auto-Install', 'extension')
 ]
@@ -36,14 +37,19 @@ describe('slashTokenOf', () => {
 })
 
 describe('filterSlashCommands', () => {
-  it('фильтрует по префиксу без учёта регистра', () => {
+  it('фильтрует по префиксу без учёта регистра, подстрочные — после', () => {
     const names = filterSlashCommands(COMMANDS, 'auto').map((c) => c.name)
-    expect(names).toEqual(['Auto-Install', 'auto-review'])
+    expect(names).toEqual(['Auto-Install', 'auto-review', 'skill:autopilot'])
+  })
+
+  it('ищет не только от начала: /rele находит skill:release', () => {
+    const names = filterSlashCommands(COMMANDS, 'rele').map((c) => c.name)
+    expect(names).toEqual(['skill:release'])
   })
 
   it('пустой токен — все команды по алфавиту', () => {
     const names = filterSlashCommands(COMMANDS, '').map((c) => c.name)
-    expect(names).toEqual(['Auto-Install', 'auto-review', 'compact', 'skill:autopilot'])
+    expect(names).toEqual(['Auto-Install', 'auto-review', 'compact', 'skill:autopilot', 'skill:release'])
   })
 
   it('нет совпадений — пустой список', () => {

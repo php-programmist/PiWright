@@ -7,10 +7,17 @@ export function slashTokenOf(input: string): string | null {
   return input.slice(1)
 }
 
-/** Команды с именем, начинающимся на токен (без учёта регистра), по алфавиту. */
+/** Команды с именем, начинающимся на токен или содержащим его (без учёта регистра); префиксные — первыми, внутри групп по алфавиту. */
 export function filterSlashCommands(commands: PiSlashCommand[], token: string): PiSlashCommand[] {
   const query = token.toLowerCase()
-  return commands
-    .filter((c) => c.name.toLowerCase().startsWith(query))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const byName = (a: PiSlashCommand, b: PiSlashCommand): number => a.name.localeCompare(b.name)
+  const prefix = commands.filter((c) => c.name.toLowerCase().startsWith(query)).sort(byName)
+  if (query === '') return prefix
+  const substring = commands
+    .filter((c) => {
+      const name = c.name.toLowerCase()
+      return !name.startsWith(query) && name.includes(query)
+    })
+    .sort(byName)
+  return [...prefix, ...substring]
 }
