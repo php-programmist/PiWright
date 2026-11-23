@@ -369,6 +369,7 @@ footer [hidden] { display: none !important; }
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+  margin-bottom: 8px;
   font-size: 13px;
 }
 .loop-bar .loop-toggle {
@@ -391,6 +392,7 @@ footer [hidden] { display: none !important; }
 .loop-info { color: var(--muted, #9aa); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #loopExit {
   margin-top: 8px;
+  margin-bottom: 8px;
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;

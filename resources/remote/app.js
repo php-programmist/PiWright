@@ -1440,6 +1440,7 @@ function applyLoopUi() {
   }
   const active = !!(loopInfo && loopInfo.active);
   loopCheck.checked = active || loopEnabled;
+  loopMaxInput.hidden = !loopCheck.checked;
   loopMaxInput.value = String(active ? loopInfo.remaining : loopMax);
   loopExitInput.hidden = !loopEnabled || active;
   if (loopInfo && !active && loopInfo.reason) {
