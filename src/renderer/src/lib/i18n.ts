@@ -263,6 +263,8 @@ const RU: Record<string, string> = {
   'Loop: while there are tasks': 'Петля: пока есть задачи',
   'Loop: exact count': 'Петля: точное количество',
   'Kanban. Take a task from the {name} column and complete it': 'Канбан. Возьми задачу из колонки {name} и выполни её',
+  'Kanban. Take a task from the {name} column on the {board} board and complete it': 'Канбан. Возьми задачу из колонки {name} на доске {board} и выполни её',
+  'Kanban. Take the task with ID {id} and complete it': 'Канбан. Возьми задачу с ID {id} и выполни её',
   'Kanban. Take the task with ID {id} on the {board} board and complete it': 'Канбан. Возьми задачу с ID {id} на доске {board} и выполни её',
   'Card menu': 'Меню задачи',
   'Run in new session': 'Выполнить в новой сессии',

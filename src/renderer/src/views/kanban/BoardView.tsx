@@ -417,8 +417,15 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
 
   const startCardSession = async (card: KanbanCard): Promise<void> => {
     setCardMenu(null)
+    const boards = await window.piwright.kanbanBoards(tab.project)
+    const multiBoard = boards.ok && boards.boards.length > 1
     const ref = await window.piwright.newSession(tab.project)
-    draftMap.set(ref.hostId, t('Kanban. Take the task with ID {id} on the {board} board and complete it', { id: card.id, board: board.name }))
+    draftMap.set(
+      ref.hostId,
+      multiBoard
+        ? t('Kanban. Take the task with ID {id} on the {board} board and complete it', { id: card.id, board: board.name })
+        : t('Kanban. Take the task with ID {id} and complete it', { id: card.id }),
+    )
     useTabsStore.getState().setActiveProject(parentTabKey(tab.project))
     useTabsStore.getState().activateSession(tab.project)
     useSessionsStore.getState().setActive(ref.hostId)
@@ -426,6 +433,8 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
 
   const startLoopSession = async (column: KanbanColumn, mode: 'while' | 'count'): Promise<void> => {
     setColumnMenu(null)
+    const boards = await window.piwright.kanbanBoards(tab.project)
+    const multiBoard = boards.ok && boards.boards.length > 1
     const ref = await window.piwright.newSession(tab.project)
     const chatStore = useChatStore.getState()
     chatStore.setLoopEnabled(ref.hostId, true)
@@ -435,7 +444,12 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       const count = board.cards.filter((card) => card.columnId === column.id).length
       chatStore.setLoopMax(ref.hostId, Math.max(1, count))
     }
-    draftMap.set(ref.hostId, t('Kanban. Take a task from the {name} column and complete it', { name: column.name }))
+    draftMap.set(
+      ref.hostId,
+      multiBoard
+        ? t('Kanban. Take a task from the {name} column on the {board} board and complete it', { name: column.name, board: board.name })
+        : t('Kanban. Take a task from the {name} column and complete it', { name: column.name }),
+    )
     useTabsStore.getState().setActiveProject(parentTabKey(tab.project))
     useTabsStore.getState().activateSession(tab.project)
     useSessionsStore.getState().setActive(ref.hostId)
