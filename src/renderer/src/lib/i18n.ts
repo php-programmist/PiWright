@@ -39,6 +39,7 @@ const RU: Record<string, string> = {
   'no commits': 'нет коммитов',
   'changed files ({count})': 'изменённые файлы ({count})',
   'no files in commit': 'в коммите нет файлов',
+  'commit not found in loaded history': 'коммит не найден в загруженной истории',
   'loading…': 'загрузка…',
   'no past sessions': 'нет прошлых сессий',
   'Show less': 'Свернуть',

@@ -142,7 +142,16 @@ export function GitLogPanel(): React.JSX.Element {
 
   const rows = useMemo(() => computeLanes(entries), [entries])
   const maxLanes = useMemo(() => rows.reduce((max, r) => Math.max(max, r.nextLanes.length), 3), [rows])
-  const selected = useMemo(() => entries.find((e) => e.hash === selectedHash) ?? null, [entries, selectedHash])
+  // selectedHash приходит из канбан-чипов коротким (7 символов) — матчим и по префиксу.
+  const selected = useMemo(
+    () =>
+      selectedHash === null
+        ? null
+        : (entries.find((e) => e.hash === selectedHash) ??
+          entries.find((e) => e.hash.startsWith(selectedHash)) ??
+          null),
+    [entries, selectedHash]
+  )
   const hasMore = useGitLogStore((s) => s.hasMore)
   const loadingMore = useGitLogStore((s) => s.loadingMore)
 
@@ -233,7 +242,9 @@ export function GitLogPanel(): React.JSX.Element {
         {selectedHash !== null && (
           <div className="gitlog-details">
             {selected === null ? (
-              <div className="panel-hint">{t('loading…')}</div>
+              <div className="panel-hint">
+                {loading || entries.length === 0 ? t('loading…') : t('commit not found in loaded history')}
+              </div>
             ) : (
               <>
                 <div className="gitlog-commit-head">
