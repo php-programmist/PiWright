@@ -427,6 +427,40 @@ button.primary, #send { background: var(--accent); border-color: var(--accent); 
 button.ghost { background: transparent; }
 button:disabled { opacity: .5; }
 
+.md-code-wrap {
+  position: relative;
+}
+
+.md-code-wrap pre.md-code {
+  padding-right: 40px;
+}
+
+.md-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel2);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.md-copy-btn:hover {
+  color: var(--text);
+}
+
+.md-copy-btn .check { display: none; }
+.md-copy-btn.copied .check { display: block; }
+.md-copy-btn.copied svg:not(.check) { display: none; }
+.md-copy-btn.copied { color: var(--green, #46c46e); }
+
 pre.md-code {
   background: var(--panel2);
   border: 1px solid var(--line);

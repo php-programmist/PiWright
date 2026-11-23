@@ -1665,7 +1665,7 @@ function markdown(text) {
   if (!text) return "";
   const blocks = [];
   let prepared = text.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
-    blocks.push(`<pre class="md-code">${escapeHtml(code.replace(/\n$/, ""))}</pre>`);
+    blocks.push(`<div class="md-code-wrap"><pre class="md-code">${escapeHtml(code.replace(/\n$/, ""))}</pre><button type="button" class="md-copy-btn" title="Copy"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4.5A1.5 1.5 0 0 0 3 3.5v5A1.5 1.5 0 0 0 4.5 10h1"/></svg><svg class="check" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5 6.5 12 13 4.5"/></svg></button></div>`);
     return `\u0000BLOCK${blocks.length - 1}\u0000`;
   });
   prepared = extractTables(prepared, blocks);
@@ -1688,3 +1688,14 @@ function markdown(text) {
 
 connect();
 applyToolsHidden();
+
+stream.addEventListener("click", (event) => {
+  const btn = event.target.closest(".md-copy-btn");
+  if (!btn) return;
+  const pre = btn.parentElement && btn.parentElement.querySelector("pre.md-code");
+  if (!pre) return;
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.classList.add("copied");
+    setTimeout(() => btn.classList.remove("copied"), 1500);
+  });
+});

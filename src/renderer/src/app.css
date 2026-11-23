@@ -1297,10 +1297,42 @@ body {
   cursor: default;
 }
 
+.code-block-wrap {
+  position: relative;
+}
+
 .code-block {
   border-radius: 6px;
   overflow-x: auto;
   font-size: 0.9em;
+}
+
+.code-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--input-bg);
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.code-block-wrap:hover .code-copy-btn,
+.code-copy-btn:focus-visible {
+  opacity: 1;
+}
+
+.code-copy-btn:hover {
+  color: var(--text);
 }
 
 .code-block pre {

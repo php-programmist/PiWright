@@ -348,6 +348,7 @@ const RU: Record<string, string> = {
   'Target provider': 'Целевой провайдер',
   '— Pick provider —': '— Выберите провайдера —',
   'Copy': 'Копировать',
+  'Copied': 'Скопировано',
   'API key set': 'API-ключ задан',
   'API key is empty': 'API-ключ пуст',
   'Edit': 'Изменить',

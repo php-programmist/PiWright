@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
 import { shikiLanguage } from '../lib/tool-blocks'
 import { useSessionsStore } from '../stores/sessions'
+import { useT } from '../lib/i18n'
 
 interface CodeElementProps {
   className?: string
@@ -19,9 +20,35 @@ function extractCode(children: unknown): { code: string; language: string | null
   return { code, language }
 }
 
+function CopyIcon(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+      <path d="M10.5 5.5v-2a1.5 1.5 0 0 0-1.5-1.5H4.5A1.5 1.5 0 0 0 3 3.5v5A1.5 1.5 0 0 0 4.5 10h1" />
+    </svg>
+  )
+}
+
+function CheckIcon(): React.JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M3 8.5 6.5 12 13 4.5" />
+    </svg>
+  )
+}
+
 function CodeBlock({ code, language }: { code: string; language: string | null }): React.JSX.Element {
   const theme = useSessionsStore((s) => s.settings?.theme ?? 'dark')
+  const t = useT()
   const [html, setHtml] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(code).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -34,13 +61,32 @@ function CodeBlock({ code, language }: { code: string; language: string | null }
     }
   }, [code, language, theme])
 
+  const button = (
+    <button
+      type="button"
+      className="code-copy-btn"
+      title={copied ? t('Copied') : t('Copy')}
+      onClick={copy}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+    </button>
+  )
+
   if (html !== null) {
-    return <div className="code-block" dangerouslySetInnerHTML={{ __html: html }} />
+    return (
+      <div className="code-block-wrap">
+        <div className="code-block" dangerouslySetInnerHTML={{ __html: html }} />
+        {button}
+      </div>
+    )
   }
   return (
-    <pre className="code-block plain">
-      <code>{code}</code>
-    </pre>
+    <div className="code-block-wrap">
+      <pre className="code-block plain">
+        <code>{code}</code>
+      </pre>
+      {button}
+    </div>
   )
 }
 
