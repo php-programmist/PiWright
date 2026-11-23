@@ -400,6 +400,11 @@ export interface KanbanCardMoveInput {
   index?: number
 }
 
+export interface KanbanColumnCardsMoveInput {
+  id: string
+  targetColumnId: string
+}
+
 /** Правка своего комментария: только author === 'user'. */
 export interface KanbanCommentUpdateInput {
   cardId: string
@@ -683,6 +688,8 @@ export interface PiWrightApi {
   kanbanColumnRename(project: ProjectEntry, boardId: string, columnId: string, name: string): Promise<KanbanMutationResult>
   kanbanColumnDelete(project: ProjectEntry, boardId: string, columnId: string): Promise<KanbanMutationResult>
   kanbanColumnMove(project: ProjectEntry, boardId: string, columnId: string, index: number): Promise<KanbanMutationResult>
+  kanbanColumnClear(project: ProjectEntry, boardId: string, columnId: string): Promise<KanbanMutationResult>
+  kanbanColumnCardsMove(project: ProjectEntry, boardId: string, input: KanbanColumnCardsMoveInput): Promise<KanbanMutationResult>
   kanbanWorkflowSet(project: ProjectEntry, boardId: string, text: string): Promise<KanbanMutationResult>
   kanbanAttachmentPut(project: ProjectEntry, name: string, base64: string): Promise<KanbanAttachmentResult>
   kanbanAttachmentGet(project: ProjectEntry, path: string): Promise<KanbanAttachmentGetResult>
@@ -805,6 +812,8 @@ export const KANBAN_COLUMN_CREATE_CHANNEL = 'kanban:column-create'
 export const KANBAN_COLUMN_RENAME_CHANNEL = 'kanban:column-rename'
 export const KANBAN_COLUMN_DELETE_CHANNEL = 'kanban:column-delete'
 export const KANBAN_COLUMN_MOVE_CHANNEL = 'kanban:column-move'
+export const KANBAN_COLUMN_CLEAR_CHANNEL = 'kanban:column-clear'
+export const KANBAN_COLUMN_CARDS_MOVE_CHANNEL = 'kanban:column-cards-move'
 export const KANBAN_WORKFLOW_SET_CHANNEL = 'kanban:workflow-set'
 export const KANBAN_ATTACHMENT_PUT_CHANNEL = 'kanban:attachment-put'
 export const KANBAN_ATTACHMENT_GET_CHANNEL = 'kanban:attachment-get'

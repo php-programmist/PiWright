@@ -6,6 +6,8 @@ import {
   applyCardMove,
   applyCardUpdate,
   applyColumnCreate,
+  applyColumnCardsMove,
+  applyColumnClear,
   applyColumnDelete,
   applyColumnMove,
   applyColumnRename,
@@ -210,6 +212,28 @@ describe('чистые мутации', () => {
     const backlog = columnName(board, 'Backlog')
     expect(cardsIn(board, backlog)).toEqual(['c-00000001', 'c-00000002', 'c-00000004'])
     expect(() => applyColumnDelete({ ...board, columns: board.columns.slice(0, 1) }, board.columns[0].id)).toThrow('Cannot delete the last column')
+  })
+
+  it('column clear: удаляет карточки колонки, остальные не трогает', () => {
+    const board = applyColumnClear(boardWithCards(), 'col-00000001')
+    expect(cardsIn(board, 'col-00000001')).toEqual([])
+    expect(cardsIn(board, 'col-00000002')).toEqual(['c-00000003'])
+    expect(board.columns.map((column) => column.name)).toContain('Backlog')
+    expect(() => applyColumnClear(boardWithCards(), 'col-nope')).toThrow('Column not found')
+  })
+
+  it('column cards move: все карточки в конец целевой, порядок сохранён', () => {
+    const board = applyColumnCardsMove(boardWithCards(), { id: 'col-00000001', targetColumnId: 'col-00000004', now: NOW })
+    expect(cardsIn(board, 'col-00000001')).toEqual([])
+    expect(cardsIn(board, 'col-00000004')).toEqual(['c-00000001', 'c-00000002'])
+    const moved = board.cards.find((item) => item.id === 'c-00000001')!
+    expect(moved.updatedAt).toBe(NOW)
+    expect(() => applyColumnCardsMove(boardWithCards(), { id: 'col-00000001', targetColumnId: 'col-nope' })).toThrow('Column not found')
+  })
+
+  it('column cards move: в ту же колонку — доска без изменений', () => {
+    const board = boardWithCards()
+    expect(applyColumnCardsMove(board, { id: 'col-00000001', targetColumnId: 'col-00000001' })).toBe(board)
   })
 
   it('workflow set и board rename', () => {

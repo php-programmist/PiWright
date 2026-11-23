@@ -43,6 +43,8 @@ import {
   KANBAN_COMMENT_DELETE_CHANNEL,
   KANBAN_COMMENT_UPDATE_CHANNEL,
   KANBAN_COLUMN_CREATE_CHANNEL,
+  KANBAN_COLUMN_CARDS_MOVE_CHANNEL,
+  KANBAN_COLUMN_CLEAR_CHANNEL,
   KANBAN_COLUMN_DELETE_CHANNEL,
   KANBAN_COLUMN_MOVE_CHANNEL,
   KANBAN_COLUMN_RENAME_CHANNEL,
@@ -112,7 +114,7 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -823,6 +825,20 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request', board: null }
     }
     return kanban.columnMove(project, boardId, columnId, index)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_CLEAR_CHANNEL, async (_event, project: unknown, boardId: unknown, columnId: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || typeof columnId !== 'string') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnClear(project, boardId, columnId)
+  })
+
+  ipcMain.handle(KANBAN_COLUMN_CARDS_MOVE_CHANNEL, async (_event, project: unknown, boardId: unknown, input: unknown) => {
+    if (!isProjectEntry(project) || typeof boardId !== 'string' || input === null || typeof input !== 'object') {
+      return { ok: false, error: 'Invalid request', board: null }
+    }
+    return kanban.columnCardsMove(project, boardId, input as KanbanColumnCardsMoveInput)
   })
 
   ipcMain.handle(KANBAN_WORKFLOW_SET_CHANNEL, async (_event, project: unknown, boardId: unknown, text: unknown) => {

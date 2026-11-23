@@ -174,6 +174,8 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
   const [columnMenu, setColumnMenu] = useState<{ columnId: string; x: number; y: number } | null>(null)
   const columnMenuRef = useRef<HTMLDivElement | null>(null)
+  const [moveCardsFrom, setMoveCardsFrom] = useState<string | null>(null)
+  const [moveCardsTarget, setMoveCardsTarget] = useState('')
   const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(null)
   const cardMenuRef = useRef<HTMLDivElement | null>(null)
   const boardId = tab.boardId
@@ -227,6 +229,15 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       document.removeEventListener('keydown', onKey)
     }
   }, [cardMenu])
+
+  useEffect(() => {
+    if (moveCardsFrom === null) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMoveCardsFrom(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [moveCardsFrom])
 
   const reload = (): void => {
     void window.piwright.kanbanBoardGet(tab.project, boardId ?? '').then((result) => {
@@ -331,6 +342,30 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     void window.piwright.kanbanColumnDelete(tab.project, boardId ?? '', columnId).then(apply)
   }
 
+  const clearColumn = async (columnId: string, name: string): Promise<void> => {
+    const count = board.cards.filter((card) => card.columnId === columnId).length
+    const ok = await confirmDialog({
+      message: t('Clear column "{name}"? {count} tasks will be deleted.', { name, count }),
+      confirmLabel: t('Clear'),
+      danger: true,
+    })
+    if (!ok) return
+    apply(await window.piwright.kanbanColumnClear(tab.project, board.id, columnId))
+  }
+
+  const openMoveCards = (columnId: string): void => {
+    const firstOther = board.columns.find((column) => column.id !== columnId)
+    setMoveCardsTarget(firstOther === undefined ? '' : firstOther.id)
+    setMoveCardsFrom(columnId)
+  }
+
+  const submitMoveCards = (): void => {
+    const from = moveCardsFrom
+    setMoveCardsFrom(null)
+    if (from === null || moveCardsTarget.length === 0) return
+    void window.piwright.kanbanColumnCardsMove(tab.project, board.id, { id: from, targetColumnId: moveCardsTarget }).then(apply)
+  }
+
   const submitNewColumn = (): void => {
     const name = newColumnName.trim()
     setAddingColumn(false)
@@ -348,7 +383,7 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   }
 
   const openColumnMenu = (columnId: string, x: number, y: number): void => {
-    setColumnMenu({ columnId, x: Math.min(x, window.innerWidth - 210), y: Math.min(y, window.innerHeight - 320) })
+    setColumnMenu({ columnId, x: Math.min(x, window.innerWidth - 210), y: Math.min(y, window.innerHeight - 400) })
   }
 
   const openCardMenu = (cardId: string, x: number, y: number): void => {
@@ -626,6 +661,26 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
               >
                 {t('Move right')}
               </button>
+              <button
+                className="project-menu-item"
+                disabled={board.columns.length < 2}
+                onClick={() => {
+                  setColumnMenu(null)
+                  openMoveCards(column.id)
+                }}
+              >
+                {t('Move tasks to...')}
+              </button>
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item danger"
+                onClick={() => {
+                  setColumnMenu(null)
+                  void clearColumn(column.id, column.name)
+                }}
+              >
+                {t('Clear column')}
+              </button>
               <div className="project-menu-sep" />
               <button
                 className="project-menu-item danger"
@@ -698,6 +753,44 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
         />
       )}
       {workflowOpen && <WorkflowModal tab={tab} board={board} apply={apply} onClose={() => setWorkflowOpen(false)} />}
+      {moveCardsFrom !== null && (
+        <div
+          className="board-modal-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setMoveCardsFrom(null)
+          }}
+        >
+          <div className="board-modal board-move-cards-modal">
+            <header className="board-modal-head">
+              <span className="board-modal-heading">{t('Move tasks to')}</span>
+              <button className="settings-close" title={t('Close')} onClick={() => setMoveCardsFrom(null)}>
+                ×
+              </button>
+            </header>
+            <div className="board-modal-body">
+              <select
+                className="board-column-select"
+                value={moveCardsTarget}
+                onChange={(e) => setMoveCardsTarget(e.target.value)}
+              >
+                {board.columns
+                  .filter((column) => column.id !== moveCardsFrom)
+                  .map((column) => (
+                    <option key={column.id} value={column.id}>
+                      {column.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <footer className="board-modal-foot">
+              <button className="board-primary" disabled={moveCardsTarget.length === 0} onClick={submitMoveCards}>
+                {t('Move')}
+              </button>
+              <button onClick={() => setMoveCardsFrom(null)}>{t('Cancel')}</button>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

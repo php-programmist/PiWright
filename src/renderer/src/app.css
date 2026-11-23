@@ -4443,6 +4443,15 @@ pre.code-block {
   gap: 8px;
 }
 
+.board-move-cards-modal {
+  width: 360px;
+  height: auto;
+}
+
+.board-move-cards-modal .board-modal-body {
+  padding: 14px;
+}
+
 .board-column-select {
   background: var(--input-bg);
   color: var(--text);

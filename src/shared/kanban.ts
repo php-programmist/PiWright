@@ -455,6 +455,35 @@ export function applyColumnDelete(board: KanbanBoard, columnId: string): KanbanB
   }
 }
 
+/** Очистка колонки: все её карточки удаляются. */
+export function applyColumnClear(board: KanbanBoard, columnId: string): KanbanBoard {
+  columnIndex(board, columnId)
+  return { ...board, cards: board.cards.filter((card) => card.columnId !== columnId) }
+}
+
+export interface ColumnCardsMoveInput {
+  id: string
+  targetColumnId: string
+  now?: string
+}
+
+/** Все карточки колонки переезжают в целевую (в конец, относительный порядок сохраняется). */
+export function applyColumnCardsMove(board: KanbanBoard, input: ColumnCardsMoveInput): KanbanBoard {
+  columnIndex(board, input.id)
+  columnIndex(board, input.targetColumnId)
+  if (input.id === input.targetColumnId) return board
+  const now = input.now ?? new Date().toISOString()
+  const moved = board.cards
+    .filter((card) => card.columnId === input.id)
+    .sort((a, b) => a.order - b.order)
+    .map((card) => ({ ...card, columnId: input.targetColumnId, updatedAt: now }))
+  const targetCount = board.cards.filter((card) => card.columnId === input.targetColumnId).length
+  moved.forEach((card, index) => {
+    card.order = targetCount + index
+  })
+  return { ...board, cards: [...board.cards.filter((card) => card.columnId !== input.id), ...moved] }
+}
+
 export function applyColumnMove(board: KanbanBoard, input: { id: string; index: number }): KanbanBoard {
   columnIndex(board, input.id)
   const index = Math.max(0, Math.min(input.index, board.columns.length - 1))

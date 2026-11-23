@@ -33,6 +33,8 @@ import {
   KANBAN_COMMENT_DELETE_CHANNEL,
   KANBAN_COMMENT_UPDATE_CHANNEL,
   KANBAN_COLUMN_CREATE_CHANNEL,
+  KANBAN_COLUMN_CARDS_MOVE_CHANNEL,
+  KANBAN_COLUMN_CLEAR_CHANNEL,
   KANBAN_COLUMN_DELETE_CHANNEL,
   KANBAN_COLUMN_MOVE_CHANNEL,
   KANBAN_COLUMN_RENAME_CHANNEL,
@@ -221,6 +223,10 @@ const api: PiWrightApi = {
   kanbanColumnDelete: (project, boardId, columnId) => ipcRenderer.invoke(KANBAN_COLUMN_DELETE_CHANNEL, project, boardId, columnId),
   kanbanColumnMove: (project, boardId, columnId, index) =>
     ipcRenderer.invoke(KANBAN_COLUMN_MOVE_CHANNEL, project, boardId, columnId, index),
+  kanbanColumnClear: (project, boardId, columnId) =>
+    ipcRenderer.invoke(KANBAN_COLUMN_CLEAR_CHANNEL, project, boardId, columnId),
+  kanbanColumnCardsMove: (project, boardId, input) =>
+    ipcRenderer.invoke(KANBAN_COLUMN_CARDS_MOVE_CHANNEL, project, boardId, input),
   kanbanWorkflowSet: (project, boardId, text) => ipcRenderer.invoke(KANBAN_WORKFLOW_SET_CHANNEL, project, boardId, text),
   kanbanAttachmentPut: (project, name, base64) => ipcRenderer.invoke(KANBAN_ATTACHMENT_PUT_CHANNEL, project, name, base64),
   kanbanAttachmentGet: (project, path) => ipcRenderer.invoke(KANBAN_ATTACHMENT_GET_CHANNEL, project, path),

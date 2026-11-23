@@ -29,6 +29,8 @@ import {
   applyCommentDelete,
   applyCommentUpdate,
   applyColumnCreate,
+  applyColumnCardsMove,
+  applyColumnClear,
   applyColumnDelete,
   applyColumnMove,
   applyColumnRename,
@@ -474,6 +476,18 @@ export class KanbanService {
   async columnMove(project: ProjectEntry, boardId: string, columnId: string, index: number): Promise<KanbanMutationResult> {
     if (typeof index !== 'number' || !Number.isInteger(index)) return failBoard('Invalid column index')
     return this.mutate(project, boardId, (board) => applyColumnMove(board, { id: columnId, index }))
+  }
+
+  async columnClear(project: ProjectEntry, boardId: string, columnId: string): Promise<KanbanMutationResult> {
+    return this.mutate(project, boardId, (board) => applyColumnClear(board, columnId))
+  }
+
+  async columnCardsMove(
+    project: ProjectEntry,
+    boardId: string,
+    input: { id: string; targetColumnId: string }
+  ): Promise<KanbanMutationResult> {
+    return this.mutate(project, boardId, (board) => applyColumnCardsMove(board, input))
   }
 
   async workflowSet(project: ProjectEntry, boardId: string, text: string): Promise<KanbanMutationResult> {
