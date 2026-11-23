@@ -184,6 +184,21 @@ describe('RemoteAuth', () => {
     expect(auth.groupedPin).toBe('123 456')
   })
 
+  it('setStaticPin applies static pin, falls back to random once when cleared', () => {
+    const auth = new RemoteAuth('111111')
+    auth.setStaticPin('654321')
+    expect(auth.pin).toBe('654321')
+    expect(auth.checkPin('654321')).toBe(true)
+    auth.setStaticPin('654321')
+    expect(auth.pin).toBe('654321')
+    auth.setStaticPin(null)
+    expect(auth.pin).toMatch(/^\d{6}$/)
+    expect(auth.pin).not.toBe('654321')
+    const next = auth.pin
+    auth.setStaticPin(null)
+    expect(auth.pin).toBe(next)
+  })
+
   it('browser sessions authorize, lockout after 5 failures', () => {
     const auth = new RemoteAuth('123456')
     const token = auth.newBrowserSession()

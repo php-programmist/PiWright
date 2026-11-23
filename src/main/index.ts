@@ -13,7 +13,7 @@ import { SettingsService } from './settings/settings'
 import { loadWindowState, saveWindowState } from './window-state'
 import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
-import { RemoteAuth, generatePin } from './remote/auth'
+import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
 import type { PiStatus } from '../shared/ipc-contracts'
 
@@ -112,7 +112,8 @@ app.whenReady().then(() => {
     const createdStatus = piHost?.get(createdHostId)?.lastStatus()
     if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
   })
-  const auth = new RemoteAuth(generatePin())
+  const staticPin = settings.get().notifications.remote.staticPin
+  const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)
   bridge.applySettings(settings.get())
   hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)

@@ -18,6 +18,10 @@ export function generatePin(): string {
   return pin
 }
 
+export function isValidStaticPin(pin: string): boolean {
+  return /^\d{6}$/.test(pin)
+}
+
 function generateToken(): string {
   const alphabet = '0123456789abcdef'
   let token = ''
@@ -34,7 +38,23 @@ export class RemoteAuth {
   private readonly browserSessions = new Set<string>()
   private readonly failures = new Map<string, Failure>()
 
-  constructor(readonly pin: string) {}
+  private fromStatic = false
+  pin: string
+
+  constructor(pin: string) {
+    this.pin = pin
+  }
+
+  /** Статичный пин из настроек: задан — применяется; снят — возврат к случайному (один раз). */
+  setStaticPin(pin: string | null): void {
+    if (pin !== null) {
+      this.pin = pin
+      this.fromStatic = true
+    } else if (this.fromStatic) {
+      this.pin = generatePin()
+      this.fromStatic = false
+    }
+  }
 
   /** PIN с пробелами для показа: «123 456». */
   get groupedPin(): string {

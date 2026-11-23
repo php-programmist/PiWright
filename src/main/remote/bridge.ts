@@ -13,6 +13,7 @@ import type { LoopInfo } from '../../shared/agent-events'
 import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from '../pi/extension-ui'
 import { sessionStatus } from '../pi/session-status'
 import type { RemoteAuth } from './auth'
+import { isValidStaticPin } from './auth'
 import { RemoteWebServer, lanCandidates } from './server'
 import {
   attachedFrame,
@@ -150,6 +151,7 @@ export class RemoteBridge {
   /** Включить/выключить сервер по настройкам; вызывается на старте и из settings:set. */
   applySettings(settings: Settings): void {
     const remote = settings.notifications.remote
+    this.auth.setStaticPin(isValidStaticPin(remote.staticPin) ? remote.staticPin : null)
     if (!remote.enabled) {
       this.server?.stop()
       this.server = null

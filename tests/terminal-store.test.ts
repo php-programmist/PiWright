@@ -34,7 +34,7 @@ const baseSettings: Settings = {
   notifications: {
     sounds: { completion: '', await: '', error: '' },
     telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
-    remote: { enabled: false, port: 7690 }
+    remote: { enabled: false, port: 7690, staticPin: '' }
   },
   projects: []
 }

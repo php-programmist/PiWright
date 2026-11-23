@@ -165,6 +165,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   {t('Enable remote bridge (sessions are shared on the LAN)')}
                 </label>
                 {draft.notifications.remote.enabled && <RemotePortField draft={draft} update={update} />}
+                {draft.notifications.remote.enabled && <RemoteStaticPinField draft={draft} update={update} />}
                 <RemoteStatus draft={draft} />
               </section>
               <section className="settings-section">
@@ -327,6 +328,35 @@ function RemotePortField({
 function updateRemotePort(update: (patch: Partial<Settings>) => void, draft: Settings, port: number): void {
   if (!Number.isFinite(port)) return
   update({ notifications: { ...draft.notifications, remote: { ...draft.notifications.remote, port } } })
+}
+
+/** Статичный пин remote: 6 цифр, пусто — случайный пин на процесс. */
+function RemoteStaticPinField({
+  draft,
+  update
+}: {
+  draft: Settings
+  update: (patch: Partial<Settings>) => void
+}): React.JSX.Element {
+  const remotePrefs = draft.notifications.remote
+  const t = useT()
+  const incomplete = remotePrefs.staticPin.length > 0 && remotePrefs.staticPin.length < 6
+  return (
+    <label>
+      {t('Static PIN code')}
+      <input
+        value={remotePrefs.staticPin}
+        placeholder={t('6 digits (empty = random PIN)')}
+        inputMode="numeric"
+        maxLength={6}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/\D/g, '').slice(0, 6)
+          update({ notifications: { ...draft.notifications, remote: { ...remotePrefs, staticPin: digits } } })
+        }}
+      />
+      {incomplete && <div className="settings-error">{t('PIN must be exactly 6 digits')}</div>}
+    </label>
+  )
 }
 
 /** Статус remote-моста: адрес+PIN, ошибка занятого порта. */

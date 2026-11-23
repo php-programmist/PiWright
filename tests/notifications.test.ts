@@ -26,7 +26,15 @@ describe('mergeNotifications', () => {
     expect(merged.sounds.await).toBe(DEFAULT_SETTINGS.notifications.sounds.await)
     expect(merged.sounds.error).toBe(DEFAULT_SETTINGS.notifications.sounds.error)
     expect(merged.telegram).toEqual({ chatId: '42', events: { turnEnd: false, permission: true, question: true, error: true, loopEnd: false } })
-    expect(merged.remote).toEqual({ enabled: true, port: 65535 })
+    expect(merged.remote).toEqual({ enabled: true, port: 65535, staticPin: '' })
+  })
+
+  it('staticPin kept only when exactly 6 digits', () => {
+    expect(mergeNotifications({ remote: { staticPin: '123456' } }).remote.staticPin).toBe('123456')
+    expect(mergeNotifications({ remote: { staticPin: '12345' } }).remote.staticPin).toBe('')
+    expect(mergeNotifications({ remote: { staticPin: '1234567' } }).remote.staticPin).toBe('')
+    expect(mergeNotifications({ remote: { staticPin: '12a456' } }).remote.staticPin).toBe('')
+    expect(mergeNotifications({ remote: { staticPin: 123456 } }).remote.staticPin).toBe('')
   })
 
   it('settings file with partial notifications merges over defaults', () => {

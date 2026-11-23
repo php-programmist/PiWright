@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFil
 import { dirname } from 'node:path'
 import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { mergeProjectTabs } from '../../shared/project-tabs'
+import { isValidStaticPin } from '../remote/auth'
 
 /** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -14,7 +15,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     error: 'C:\\Windows\\Media\\Windows Exclamation.wav'
   },
   telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
-  remote: { enabled: false, port: 7690 }
+  remote: { enabled: false, port: 7690, staticPin: '' }
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -76,6 +77,9 @@ export function mergeNotifications(value: unknown): NotificationSettings {
     if (typeof remote['enabled'] === 'boolean') out.remote.enabled = remote['enabled']
     if (typeof remote['port'] === 'number' && Number.isFinite(remote['port'])) {
       out.remote.port = Math.min(65535, Math.max(1, Math.round(remote['port'])))
+    }
+    if (typeof remote['staticPin'] === 'string' && isValidStaticPin(remote['staticPin'])) {
+      out.remote.staticPin = remote['staticPin']
     }
   }
   return out

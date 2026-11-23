@@ -79,7 +79,7 @@ export interface NotificationSettings {
     chatId: string
     events: { turnEnd: boolean; permission: boolean; question: boolean; error: boolean; loopEnd: boolean }
   }
-  remote: { enabled: boolean; port: number }
+  remote: { enabled: boolean; port: number; staticPin: string }
 }
 
 export interface PanelPrefs {
