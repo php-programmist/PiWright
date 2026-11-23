@@ -1401,7 +1401,8 @@ body {
   color: var(--text);
 }
 
-.code-block pre {
+.code-block pre,
+pre.code-block {
   margin: 0;
   padding: 10px 12px;
 }
