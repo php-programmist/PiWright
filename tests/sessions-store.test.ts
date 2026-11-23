@@ -55,7 +55,7 @@ describe('sessions store refreshHistory', () => {
   })
 
   it('ключ проекта стабильный', () => {
-    expect(projectKey(project)).toBe(`native\u0000D:\\tmp\\proj`)
+    expect(projectKey(project)).toBe(`native\u0000D:/tmp/proj`)
   })
 
   it('applyStatus: флаг из статуса побеждает локальный (петля копирует флаги в main)', () => {

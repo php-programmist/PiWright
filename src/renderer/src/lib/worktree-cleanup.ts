@@ -17,6 +17,7 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
   await window.piwright.closeSession(hostId)
   useChatStore.getState().removeHost(hostId)
   useSessionsStore.getState().forgetHost(hostId)
+  if (row !== undefined) void useSessionsStore.getState().refreshHistory(row.project)
   if (row === undefined || wt === null || !askCleanup) return
   const stillOpen = useSessionsStore.getState().active.some((r) => {
     const w = splitWorktreeHostDir(r.project.dir)

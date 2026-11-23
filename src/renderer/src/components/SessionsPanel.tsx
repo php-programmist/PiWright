@@ -217,7 +217,6 @@ function ProjectRow({ row, query }: { row: import('../stores/sessions').ProjectR
 
   const closeSession = async (hostId: string): Promise<void> => {
     await closeSessionAndSweepWorktree(hostId)
-    void refreshHistory(row.project)
   }
 
   const deleteHistory = async (summary: SessionSummary): Promise<void> => {

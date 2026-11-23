@@ -192,10 +192,7 @@ export function App(): React.JSX.Element {
         // Чекбокс «Закрывать сессию после завершения цикла»: родительская вкладка закрывается.
         if (st.settings?.loopCloseSession === true) {
           const prev = message.event.previousHostId
-          const closed = st.active.find((r) => r.hostId === prev)?.project ?? null
-          void closeSessionAndSweepWorktree(prev, false).then(() => {
-            if (closed !== null) void useSessionsStore.getState().refreshHistory(closed)
-          })
+          void closeSessionAndSweepWorktree(prev, false)
         }
       }
       if (message.event.type !== 'turn_end') return
