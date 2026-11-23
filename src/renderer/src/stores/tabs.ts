@@ -54,6 +54,25 @@ export interface ProjectTabs {
   activeId: string | null
 }
 
+/** Запись MRU-истории вкладок: сессия (hostId) или вкладка проекта (tabId). */
+export type MruEntry =
+  | { kind: 'session'; hostId: string; key: string }
+  | { kind: 'tab'; key: string; id: string }
+
+export const MRU_LIMIT = 10
+
+export function mruIdent(entry: MruEntry): string {
+  return entry.kind === 'session' ? `s:${entry.hostId}` : `t:${entry.key}:${entry.id}`
+}
+
+/** Жива ли запись MRU: сессия ещё открыта / вкладка ещё существует. */
+export function mruAlive(entry: MruEntry): boolean {
+  if (entry.kind === 'session') {
+    return useSessionsStore.getState().active.some((r) => r.hostId === entry.hostId)
+  }
+  return useTabsStore.getState().byProject[entry.key]?.tabs.some((t) => tabId(t) === entry.id) ?? false
+}
+
 export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId'>): string {
   if (tab.path === undefined) {
     return tab.boardId === undefined ? tab.kind : `${tab.kind}\u0000${tab.boardId}`
@@ -114,6 +133,16 @@ function firstSessionHost(key: string): string | null {
 interface TabsState {
   activeProjectKey: string | null
   byProject: Record<string, ProjectTabs>
+  /** MRU открытых вкладок (сессии + вкладки проектов, все проекты, до MRU_LIMIT). В памяти. */
+  mru: MruEntry[]
+  /** Запомнить активацию сессии (hostId должен быть в sessions.active). */
+  touchSession: (hostId: string) => void
+  /** Запомнить активацию вкладки проекта. */
+  touchTab: (project: ProjectEntry, id: string) => void
+  /** Убрать из MRU мёртвые записи (закрытые сессии/вкладки). */
+  pruneMru: () => void
+  /** Активировать запись MRU (переключить проект + вкладку/сессию); false — запись мертва. */
+  activateMru: (entry: MruEntry) => boolean
   /** Переключение набора вкладок проекта; снимок из settings гидратируется лениво. */
   setActiveProject: (key: string | null) => void
   /** Первый проект при старте: сохранённый lastProjectKey иначе проект активной сессии/первый в списке. */
@@ -137,6 +166,40 @@ interface TabsState {
 export const useTabsStore = create<TabsState>((set, get) => ({
   activeProjectKey: null,
   byProject: {},
+  mru: [],
+
+  touchSession: (hostId) => {
+    const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
+    if (row === undefined) return
+    const entry: MruEntry = { kind: 'session', hostId, key: parentTabKey(row.project) }
+    set((state) => ({ mru: [entry, ...state.mru.filter((e) => mruIdent(e) !== mruIdent(entry))].slice(0, MRU_LIMIT) }))
+  },
+
+  touchTab: (project, id) => {
+    const entry: MruEntry = { kind: 'tab', key: parentTabKey(project), id }
+    set((state) => ({ mru: [entry, ...state.mru.filter((e) => mruIdent(e) !== mruIdent(entry))].slice(0, MRU_LIMIT) }))
+  },
+
+  pruneMru: () => {
+    set((state) => ({ mru: state.mru.filter(mruAlive) }))
+  },
+
+  activateMru: (entry) => {
+    if (entry.kind === 'session') {
+      const sessions = useSessionsStore.getState()
+      const row = sessions.active.find((r) => r.hostId === entry.hostId)
+      if (row === undefined) return false
+      get().setActiveProject(entry.key)
+      get().activateSession(row.project)
+      sessions.setActive(entry.hostId)
+      return true
+    }
+    const tab = get().byProject[entry.key]?.tabs.find((t) => tabId(t) === entry.id)
+    if (tab === undefined) return false
+    get().setActiveProject(entry.key)
+    get().setActive(tab.project, entry.id)
+    return true
+  },
 
   setActiveProject: (key) => {
     if (get().activeProjectKey === key) return
@@ -167,6 +230,9 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       activeProjectKey: key,
       byProject: key === null ? state.byProject : { ...state.byProject, [key]: entry }
     }))
+    if (key !== null && entry.activeId !== null && entry.tabs.some((t) => tabId(t) === entry.activeId)) {
+      get().touchTab(projectForKey(key), entry.activeId)
+    }
     void persistLastProject(key)
     if (key !== null && (entry.activeId === null || entry.tabs.every((t) => tabId(t) !== entry.activeId))) {
       const hostId = firstSessionHost(key)
@@ -201,6 +267,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       return { activeProjectKey: key, byProject: { ...state.byProject, [key]: { tabs, activeId: id } } }
     })
     persist(key, tabs!, id)
+    get().touchTab(project, id)
   },
 
   openTranscript: (project, summary) => {
@@ -223,13 +290,26 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     if (index < 0) return
     const tabs = entry.tabs.filter((t) => tabId(t) !== id)
     let activeId = entry.activeId
+    let mruSessionHost: string | null = null
     if (activeId === id) {
-      const next = tabs[Math.min(index, tabs.length - 1)]
-      activeId = next !== undefined ? tabId(next) : null
+      // Предыдущая активная вкладка этого же проекта из MRU; иначе сосед справа (старое поведение).
+      const prev = get().mru.find((e) => e.key === key && !(e.kind === 'tab' && e.id === id) && mruAlive(e))
+      if (prev !== undefined && prev.kind === 'tab') {
+        activeId = prev.id
+      } else if (prev !== undefined) {
+        activeId = null
+        mruSessionHost = prev.hostId
+      } else {
+        const next = tabs[Math.min(index, tabs.length - 1)]
+        activeId = next !== undefined ? tabId(next) : null
+      }
     }
     set((state) => ({ byProject: { ...state.byProject, [key]: { tabs, activeId } } }))
     persist(key, tabs, activeId)
-    if (activeId === null) {
+    get().pruneMru()
+    if (activeId !== null && mruSessionHost === null && entry.activeId === id) get().touchTab(projectForKey(key), activeId)
+    if (mruSessionHost !== null) useSessionsStore.getState().setActive(mruSessionHost)
+    if (activeId === null && mruSessionHost === null) {
       const hostId = firstSessionHost(key)
       if (hostId !== null) useSessionsStore.getState().setActive(hostId)
     }
@@ -241,6 +321,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     if (entry === undefined || entry.tabs.every((t) => tabId(t) !== id)) return
     set((state) => ({ byProject: { ...state.byProject, [key]: { ...entry, activeId: id } } }))
     persist(key, entry.tabs, id)
+    get().touchTab(project, id)
   },
 
   closeOthers: (project, id) => {

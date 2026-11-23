@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ProjectEntry, SessionSummary, SessionDot, Settings } from '../../../shared/ipc-contracts'
 import { normalizeDir } from '../../../shared/worktree'
+import { mruAlive, parentTabKey, tabId, useTabsStore } from './tabs'
 
 /** Активная сессия панели: статус с main + флаг открытой вкладки. */
 export interface SessionRow {
@@ -129,13 +130,40 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   forgetHost: (hostId) => {
+    const closedRow = get().active.find((r) => r.hostId === hostId)
+    const wasActive = get().activeHostId === hostId
     set((state) => {
       const active = state.active.filter((r) => r.hostId !== hostId)
-      return { active, activeHostId: state.activeHostId === hostId ? (active[0]?.hostId ?? null) : state.activeHostId }
+      return { active, activeHostId: wasActive ? null : state.activeHostId }
     })
+    useTabsStore.getState().pruneMru()
+    if (!wasActive || closedRow === undefined) return
+    // Предыдущая активная вкладка этого же проекта из MRU (сессия или вкладка).
+    const key = parentTabKey(closedRow.project)
+    const tabsStore = useTabsStore.getState()
+    const prev = tabsStore.mru.find(
+      (e) => e.key === key && !(e.kind === 'session' && e.hostId === hostId) && mruAlive(e)
+    )
+    if (prev !== undefined && tabsStore.activateMru(prev)) return
+    // Fallback: первая оставшаяся сессия проекта, затем первая вкладка проекта, иначе старое поведение.
+    const host = get().active.find((r) => parentTabKey(r.project) === key)?.hostId
+    if (host !== undefined) {
+      get().setActive(host)
+      return
+    }
+    const tab = tabsStore.byProject[key]?.tabs[0]
+    if (tab !== undefined) {
+      tabsStore.setActiveProject(key)
+      tabsStore.setActive(tab.project, tabId(tab))
+      return
+    }
+    set({ activeHostId: get().active[0]?.hostId ?? null })
   },
 
-  setActive: (hostId) => set({ activeHostId: hostId }),
+  setActive: (hostId) => {
+    set({ activeHostId: hostId })
+    if (hostId !== null) useTabsStore.getState().touchSession(hostId)
+  },
 
   toggleTelegram: (hostId) => {
     const row = get().active.find((r) => r.hostId === hostId)

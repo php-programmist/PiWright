@@ -17,6 +17,7 @@ import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
 import { ConfirmDialogHost } from './components/ConfirmDialog'
 import { RenameDialogHost } from './components/RenameDialog'
+import { TabSwitcherHost } from './components/TabSwitcher'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
@@ -230,6 +231,7 @@ export function App(): React.JSX.Element {
     <div className="app">
       <ConfirmDialogHost />
       <RenameDialogHost />
+      <TabSwitcherHost />
       {settingsOpen && <SettingsView />}
       {(
         <div className="layout">

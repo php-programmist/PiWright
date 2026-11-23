@@ -41,7 +41,7 @@ const NEW_SESSION_ICON = (
   </svg>
 )
 
-const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
+export const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
   file: (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 1.5h6L13 5v9.5h-9.5Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
