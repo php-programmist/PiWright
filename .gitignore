@@ -42,3 +42,5 @@ AGENTS.md
 .pi
 .pi/attachments/
 .pi/kanban/attachments/
+
+tests/manual/out-*.png

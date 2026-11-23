@@ -18,6 +18,7 @@ import { SettingsView } from './views/settings/SettingsView'
 import { ConfirmDialogHost } from './components/ConfirmDialog'
 import { RenameDialogHost } from './components/RenameDialog'
 import { TabSwitcherHost } from './components/TabSwitcher'
+import { SearchEverywhereHost } from './components/SearchEverywhere'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
@@ -245,6 +246,7 @@ export function App(): React.JSX.Element {
       <ConfirmDialogHost />
       <RenameDialogHost />
       <TabSwitcherHost />
+      <SearchEverywhereHost />
       {settingsOpen && <SettingsView />}
       {(
         <div className="layout">

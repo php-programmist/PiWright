@@ -353,6 +353,13 @@ export interface FileWriteResult {
   error: string | null
 }
 
+/** Плоский список файлов проекта для поиска (относительные пути, слэши вперёд, без тяжёлых каталогов). */
+export interface FilesSearchResult {
+  ok: boolean
+  error: string | null
+  files: string[]
+}
+
 export interface FileRenameResult {
   ok: boolean
   error: string | null
@@ -661,6 +668,7 @@ export interface PiWrightApi {
   /** `git worktree remove [--force]`; ветку не трогает. closeHostIds — перед удалением закрыть эти сессии и дождаться выхода процессов. */
   worktreeRemove(project: ProjectEntry, name: string, force: boolean, closeHostIds?: string[]): Promise<WorktreeRemoveResult>
   filesList(project: ProjectEntry, dir: string): Promise<FileListResult>
+  filesSearch(project: ProjectEntry): Promise<FilesSearchResult>
   filesRead(project: ProjectEntry, path: string): Promise<FileReadResult>
   filesReadImage(project: ProjectEntry, path: string): Promise<FileReadImageResult>
   filesWrite(project: ProjectEntry, path: string, content: string): Promise<FileWriteResult>
@@ -785,6 +793,7 @@ export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const WORKTREE_CREATE_CHANNEL = 'worktree:create'
 export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'
 export const FILES_LIST_CHANNEL = 'files:list'
+export const FILES_SEARCH_CHANNEL = 'files:search'
 export const FILES_READ_CHANNEL = 'files:read'
 export const FILES_READ_IMAGE_CHANNEL = 'files:read-image'
 export const FILES_WRITE_CHANNEL = 'files:write'

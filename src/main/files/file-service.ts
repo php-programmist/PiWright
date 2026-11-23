@@ -5,13 +5,15 @@ import { promises as fs } from 'node:fs'
 import { win32 } from 'node:path'
 import * as chokidar from 'chokidar'
 import { imageMimeTypeForExtension } from '../../shared/attachments'
-import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
+import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FilesSearchResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
 const BINARY_PLACEHOLDER = '(binary file)'
 const LARGE_PLACEHOLDER = '(file too large to display)'
 const WSL_POLL_INTERVAL_MS = 1500
+const SEARCH_SKIP_DIRS = new Set(['node_modules', 'dist', 'out', 'build', 'coverage', 'venv', '.venv', '__pycache__'])
+const MAX_SEARCH_FILES = 3000
 
 /** relPath (`a/b/c`, слэши вперёд) → хост-путь внутри root; null — путь наружу корня. */
 export function resolveWithinRoot(root: string, relPath: string): string | null {
@@ -50,6 +52,35 @@ export class FileService {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), entries: [] }
     }
+  }
+
+  /** Плоский обход проекта для «поиска везде»: файлы, скрытые и тяжёлые каталоги пропускаются. */
+  async searchFiles(project: ProjectEntry): Promise<FilesSearchResult> {
+    const root = win32.normalize(project.dir)
+    const files: string[] = []
+    const walk = async (rel: string): Promise<void> => {
+      if (files.length >= MAX_SEARCH_FILES) return
+      const abs = rel === '' ? root : `${root}\\${rel.replace(/\//g, '\\')}`
+      let dirents
+      try {
+        dirents = await fs.readdir(abs, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const d of dirents) {
+        if (d.isDirectory()) {
+          if (d.name.startsWith('.') || SEARCH_SKIP_DIRS.has(d.name)) continue
+          await walk(rel === '' ? d.name : `${rel}/${d.name}`)
+          if (files.length >= MAX_SEARCH_FILES) return
+        } else if (d.isFile()) {
+          files.push(rel === '' ? d.name : `${rel}/${d.name}`)
+          if (files.length >= MAX_SEARCH_FILES) return
+        }
+      }
+    }
+    await walk('')
+    files.sort((a, b) => a.localeCompare(b))
+    return { ok: true, error: null, files }
   }
 
   async read(project: ProjectEntry, relPath: string): Promise<FileReadResult> {

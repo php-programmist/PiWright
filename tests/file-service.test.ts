@@ -33,6 +33,19 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
+describe('FileService.searchFiles', () => {
+  it('walks recursively, skips dot-dirs and heavy dirs, forward slashes', async () => {
+    mkdirSync(join(dir, 'node_modules'))
+    writeFileSync(join(dir, 'node_modules', 'pkg.js'), '{}')
+    writeFileSync(join(dir, '.hidden'), 'x')
+    const result = await service.searchFiles(project)
+    rmSync(join(dir, 'node_modules'), { recursive: true, force: true })
+    unlinkSync(join(dir, '.hidden'))
+    expect(result.ok).toBe(true)
+    expect(result.files).toEqual(['.hidden', 'a.txt', 'big.txt', 'binary.bin', 'pic.png', 'pic.txt', 'sub/b.txt', 'sub/deep/c.txt'])
+  })
+})
+
 describe('FileService.listDir', () => {
   it('lists dirs first, hides .git, sorts by name', async () => {
     const result = await service.listDir(project, '')

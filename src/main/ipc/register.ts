@@ -8,6 +8,7 @@ import {
   ATTACHMENTS_CHOOSE_CHANNEL,
   ATTACHMENTS_PUT_CHANNEL,
   FILES_LIST_CHANNEL,
+ FILES_SEARCH_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_READ_IMAGE_CHANNEL,
   FILES_RENAME_CHANNEL,
@@ -690,7 +691,12 @@ export function registerIpc(
     return files.mkdir(project, path)
   })
 
-  ipcMain.handle(FILES_WATCH_CHANNEL, (_event, project: unknown, paths: unknown) => {
+  ipcMain.handle(FILES_SEARCH_CHANNEL, async (_event, project: unknown) => {
+   if (!isProjectEntry(project)) return { ok: false, error: 'Invalid request', files: [] }
+   return files.searchFiles(project)
+ })
+
+ ipcMain.handle(FILES_WATCH_CHANNEL, (_event, project: unknown, paths: unknown) => {
     if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
     files.setWatched(project, paths)
     return { ok: true, error: null }
