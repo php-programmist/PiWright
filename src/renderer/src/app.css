@@ -1451,6 +1451,23 @@ body {
   margin-bottom: 6px;
 }
 
+.tool-diff-btn {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 10px;
+  font-size: 0.85em;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tool-diff-btn:hover {
+  color: var(--text);
+  border-color: var(--text-2);
+}
+
 .tool-patch {
   color: var(--patch);
 }

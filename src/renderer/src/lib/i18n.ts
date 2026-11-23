@@ -198,6 +198,7 @@ const RU: Record<string, string> = {
   'Close diff (back to chat)': 'Закрыть дифф (вернуться к чату)',
   'Unified': 'Единый',
   'Split': 'Две колонки',
+  'View diff': 'Показать дифф',
 
   // Терминал
   'Pick a project to open a terminal': 'Выберите проект, чтобы открыть терминал',
