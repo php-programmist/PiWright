@@ -11,20 +11,21 @@ const NATIVE: ProjectEntry = { kind: 'native', dir: 'C:\\Projects\\demo' }
 const WSL: ProjectEntry = { kind: 'wsl', dir: '\\\\wsl.localhost\\Ubuntu\\home\\u\\demo' }
 
 describe('availableProfiles', () => {
-  it('lists all three when everything is available', () => {
+  it('lists all four when everything is available', () => {
     expect(availableProfiles(FULL)).toEqual([
       { id: 'powershell', label: 'PowerShell' },
+      { id: 'cmd', label: 'cmd' },
       { id: 'gitbash', label: 'Git Bash' },
       { id: 'wsl', label: 'Ubuntu' }
     ])
   })
 
   it('hides git bash when not found', () => {
-    expect(availableProfiles(NO_GITBASH).map((p) => p.id)).toEqual(['powershell', 'wsl'])
+    expect(availableProfiles(NO_GITBASH).map((p) => p.id)).toEqual(['powershell', 'cmd', 'wsl'])
   })
 
   it('hides wsl when no distro', () => {
-    expect(availableProfiles(NO_WSL).map((p) => p.id)).toEqual(['powershell', 'gitbash'])
+    expect(availableProfiles(NO_WSL).map((p) => p.id)).toEqual(['powershell', 'cmd', 'gitbash'])
   })
 })
 
@@ -47,6 +48,14 @@ describe('resolveSpawn', () => {
     expect(await resolveSpawn(NATIVE, 'powershell', FULL)).toEqual({
       file: 'powershell.exe',
       args: ['-NoLogo'],
+      cwd: 'C:\\Projects\\demo'
+    })
+  })
+
+  it('spawns cmd in the project dir', async () => {
+    expect(await resolveSpawn(NATIVE, 'cmd', FULL)).toEqual({
+      file: 'cmd.exe',
+      args: [],
       cwd: 'C:\\Projects\\demo'
     })
   })

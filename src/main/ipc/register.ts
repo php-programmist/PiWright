@@ -157,7 +157,7 @@ function isPathList(value: unknown): value is string[] {
 }
 
 function isProfileId(value: unknown): value is TerminalProfileId {
-  return value === 'powershell' || value === 'gitbash' || value === 'wsl'
+  return value === 'powershell' || value === 'cmd' || value === 'gitbash' || value === 'wsl'
 }
 
 export interface NotificationServices {

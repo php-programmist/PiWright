@@ -66,6 +66,10 @@ export function ensureEntry(id: string): Entry {
   term.open(host)
   term.onData((data) => window.piwright.termInput(id, data))
   term.onResize(({ cols, rows }) => window.piwright.termResize(id, cols, rows))
+  term.onSelectionChange(() => {
+    const selection = term.getSelection()
+    if (selection.trim().length > 0) void navigator.clipboard.writeText(selection).catch(() => {})
+  })
   const entry: Entry = { term, fit, host }
   entries.set(id, entry)
   flushPending(id, entry)

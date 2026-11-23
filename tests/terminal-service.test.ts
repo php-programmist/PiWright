@@ -69,7 +69,7 @@ describe('TerminalService', () => {
     const { service } = harness()
     const result = service.profiles(NATIVE, AVAIL)
     expect(result.defaultProfileId).toBe('powershell')
-    expect(result.profiles.map((p) => p.id)).toEqual(['powershell', 'gitbash', 'wsl'])
+    expect(result.profiles.map((p) => p.id)).toEqual(['powershell', 'cmd', 'gitbash', 'wsl'])
   })
 
   it('creates a terminal with default profile and pipes data', async () => {

@@ -420,9 +420,9 @@ export interface PendingDialog {
   dialog: ExtensionDialog
 }
 
-export type TerminalProfileId = 'powershell' | 'gitbash' | 'wsl'
+export type TerminalProfileId = 'powershell' | 'cmd' | 'gitbash' | 'wsl'
 
-export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'gitbash', 'wsl']
+export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'cmd', 'gitbash', 'wsl']
 
 export interface TerminalProfile {
   id: TerminalProfileId

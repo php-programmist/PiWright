@@ -1,4 +1,4 @@
-/** Профили терминала: PowerShell, Git Bash, WSL-дистрибутив. cwd — каталог проекта;
+/** Профили терминала: PowerShell, cmd, Git Bash, WSL-дистрибутив. cwd — каталог проекта;
  *  для WSL — путь внутри дистрибутива (`wslPathFor`). Доступность: powershell всегда,
  *  git bash — по найденному bash.exe, wsl — по дистрибутиву. */
 import { existsSync } from 'node:fs'
@@ -43,7 +43,7 @@ export async function profileAvailability(settings: Settings): Promise<ProfileAv
 }
 
 export function availableProfiles(avail: ProfileAvailability): TerminalProfile[] {
-  const profiles: TerminalProfile[] = [{ id: 'powershell', label: 'PowerShell' }]
+  const profiles: TerminalProfile[] = [{ id: 'powershell', label: 'PowerShell' }, { id: 'cmd', label: 'cmd' }]
   if (avail.gitBashPath !== null) profiles.push({ id: 'gitbash', label: 'Git Bash' })
   if (avail.wslDistro !== null) profiles.push({ id: 'wsl', label: avail.wslDistro })
   return profiles
@@ -62,6 +62,9 @@ export async function resolveSpawn(
 ): Promise<ResolvedSpawn | null> {
   if (profileId === 'powershell') {
     return { file: 'powershell.exe', args: ['-NoLogo'], cwd: project.dir }
+  }
+  if (profileId === 'cmd') {
+    return { file: 'cmd.exe', args: [], cwd: project.dir }
   }
   if (profileId === 'gitbash') {
     if (avail.gitBashPath === null) return null
