@@ -199,6 +199,26 @@ describe('KanbanThemeService', () => {
     dialogs.savePath = join(dir, 'none.json')
     expect((await new KanbanThemeService(file).exportWithDialog('nope')).ok).toBe(false)
   })
+
+  it('экспорт дефолтной темы из кода, когда файл пуст', async () => {
+    dialogs.savePath = join(dir, 'ocean.json')
+    const result = await new KanbanThemeService(file).exportWithDialog('ocean')
+    expect(result.ok).toBe(true)
+    const doc = JSON.parse(await readFile(result.path, 'utf8'))
+    expect(doc.themes).toHaveLength(1)
+    expect(doc.themes[0].id).toBe('ocean')
+    expect(doc.themes[0].accents).toEqual(KANBAN_BUILTIN_THEMES[1].accents)
+  })
+
+  it('импорт смеси дефолтных и своих тем: дефолтные пропускаются', async () => {
+    const source = join(dir, 'mix.json')
+    await writeFile(source, JSON.stringify([rawTheme({ id: 'ocean' }), rawTheme({ id: 'aa' })]), 'utf8')
+    dialogs.openPath = source
+    const result = await new KanbanThemeService(file).importWithDialog()
+    expect(result.ok && result.imported).toBe(1)
+    expect(readKanbanThemes(file).map((t) => t.id)).toEqual(['aa'])
+    expect(new KanbanThemeService(file).remove('ocean').ok).toBe(false)
+  })
 })
 
 describe('настройки', () => {

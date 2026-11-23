@@ -5,7 +5,7 @@ import { dialog } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname } from 'node:path'
 import type { KanbanThemeExportResult, KanbanThemeImportResult, KanbanThemeListResult } from '../../shared/ipc-contracts'
-import { isBuiltinKanbanThemeId, parseKanbanThemeDoc, serializeKanbanThemeDoc } from '../../shared/kanban-theme'
+import { findKanbanTheme, isBuiltinKanbanThemeId, parseKanbanThemeDoc, serializeKanbanThemeDoc } from '../../shared/kanban-theme'
 import type { KanbanTheme } from '../../shared/kanban-theme'
 
 const MAX_THEME_FILE_BYTES = 512 * 1024
@@ -99,11 +99,15 @@ export class KanbanThemeService {
     }
   }
 
-  /** Диалог «Сохранить» → экспорт одной темы (`*` — все пользовательские). */
+  /** Диалог «Сохранить» → экспорт одной темы (`*` — все пользовательские). Дефолтные темы берутся из кода. */
   async exportWithDialog(id: string): Promise<KanbanThemeExportResult> {
     const failed: KanbanThemeExportResult = { ok: false, error: null, path: '' }
     const themes = readKanbanThemes(this.filePath)
     const payload = id === '*' ? themes : themes.filter((theme) => theme.id === id)
+    if (payload.length === 0) {
+      const builtin = findKanbanTheme(id)
+      if (builtin !== undefined) payload.push(builtin)
+    }
     if (payload.length === 0) return { ...failed, error: 'Theme not found' }
     const suggested = id === '*' ? 'kanban-themes.json' : `${id}.json`
     const result = await dialog.showSaveDialog({
