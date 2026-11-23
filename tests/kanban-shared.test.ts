@@ -107,7 +107,7 @@ describe('createDefaultBoard и parseKanbanBoard', () => {
     expect(board.rev).toBe(0)
     expect(board.name).toBe('Default')
     expect(board.columns.map((column) => column.name)).toEqual(['Backlog', 'Todo', 'In Progress', 'Review', 'Done'])
-    expect(board.workflow).toContain('kanban_pick_task')
+    expect(board.workflow).toContain('kanban_move to Review')
     expect(board.cards).toEqual([])
   })
 

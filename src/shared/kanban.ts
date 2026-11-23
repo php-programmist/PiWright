@@ -51,11 +51,11 @@ export interface KanbanBoard {
 export const KANBAN_DEFAULT_COLUMNS = ['Backlog', 'Todo', 'In Progress', 'Review', 'Done'] as const
 
 export const KANBAN_DEFAULT_WORKFLOW = [
-  '1. Call kanban_pick_task to take a card from Todo (fallback: Backlog); the card moves to In Progress.',
-  '2. Rename the current session to match the task (2-3 words; if the card title is 3 words or fewer, use it as is).',
+  '1. Rename the current session to match the task (2-3 words; if the card title is 3 words or fewer, use it as is).',
+  '2. Add link to this session (sessionName) as a comment.',
   '3. Implement the task.',
-  '4. When done, call kanban_move to Review and add two comments to the card:',
-  '   a) a link to this session (sessionName) and the hashes of your commits;',
+  '4. When done, call kanban_move to Review and add comment to the card:',
+  '   a) the hashes of your commits;',
   '   b) a short completion report.',
   '5. Never move a card to Done yourself — the user does that after review.',
 ].join('\n')

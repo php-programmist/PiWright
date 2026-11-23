@@ -246,9 +246,7 @@ export async function kanbanPickTask(env: KanbanToolEnv, args: { board?: string 
     return {
       text:
         `Picked card ${card.id} "${card.title}" → In Progress.${description}${comments.text}\n\n` +
-        `Board workflow:\n${ctx.board.workflow}\n\n` +
-        `Next: rename the session to match the task (rename_session), implement it, then ` +
-        `kanban_move the card to Review with two comments — session link + commit hashes, and a completion report.`,
+        `Board workflow:\n${ctx.board.workflow}`,
       details: { picked: true, cardId: card.id, title: card.title },
       images: comments.images
     }

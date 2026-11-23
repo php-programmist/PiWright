@@ -48,7 +48,7 @@ describe('ensureDefaultBoard', () => {
     expect(board.name).toBe('Default')
     expect(board.rev).toBe(0)
     expect(board.columns.map((c) => c.name)).toEqual(['Backlog', 'Todo', 'In Progress', 'Review', 'Done'])
-    expect(board.workflow).toContain('kanban_pick_task')
+    expect(board.workflow).toContain('kanban_move to Review')
     const stored = await readBoard(join(root, '.pi', 'kanban'), board.id)
     expect(stored).not.toBeNull()
     expect(stored?.id).toBe(board.id)
