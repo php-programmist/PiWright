@@ -8,10 +8,14 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 - Streaming chat with pi over RPC, markdown rendering with syntax highlighting
 - Collapsible tool-call blocks (optional single-line mode), nested subagent tool calls as a tree
 - **Steer** and queued messages: send follow-ups mid-turn or queue them for the next turn
+- **Prompt editing with fork**: edit a sent prompt and fork the session from that point, after any agent reply
+- **Built-in `/loop`**: run the agent in iterations with an exit condition, `loop_stop` tool, loop flags in session names and icons
 - Interactive question cards (ask_question) with options, free-text answers and multi-select
 - Todo widget pinned above the chat, live context-usage indicator with color grading and cache stats
 - Paste images and attach files (copied to `.pi/attachments`, referenced with `@`)
-- Session history with subagent sessions nested under their parent, unread dots and busy badges per project
+- Session history with subagent sessions nested under their parent, unread dots and busy badges per project; the agent can rename its own session (`rename_session`)
+
+![Chat with todo widget and tool calls](docs/screenshots/chat.png)
 
 ### Projects and backends
 - Multiple projects in a sidebar, each with its own sessions, git repo and settings
@@ -20,16 +24,23 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 
 ### Git panel
 - Status with color-coded files (modified / staged / untracked / deleted) grouped into a folder tree
+- **Git Log dock**: PHPStorm-style branch graph with paginated history
 - Stage / unstage / commit, unified and split diffs
 - Branch popup in IDE style: search, create, checkout, rename, delete
+
+![Git Log dock with branch graph](docs/screenshots/git-log-dock.png)
 
 ### Files and editor
 - File browser with Monaco editor, soft wrap toggle
 - Markdown files: Obsidian-style live preview — click a block to edit the source, everything else renders
 
+![Markdown live preview in the file tab](docs/screenshots/files-markdown.png)
+
 ### Terminal
 - Docked terminal at the bottom (node-pty / ConPTY, native and WSL)
 - Multiple tabs, renameable, restored after restart
+
+![Terminal dock](docs/screenshots/terminal.png)
 
 ### Models, MCP and skills
 - Manage pi providers and models (`models.json`) for both backends: add, edit, copy between backends
@@ -42,6 +53,7 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 - Remote control from a phone: built-in WebSocket bridge with PIN auth serves the web UI — session list, chat with images, abort, dialog answers, session creation
 
 ### Interface
+- Project tabs: sessions, files, diffs, MCP and skills open as tabs in a single window
 - Dark and light themes, adjustable chat font size
 - English and Russian UI
 - Configurable send key (Enter / Ctrl+Enter), model/thinking selector placement
