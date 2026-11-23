@@ -319,9 +319,10 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     case 'turn_end': {
       const flushed = withFlushed(hostId, host)
       ownEchoes.set(hostId, 0)
-      // turnStartedAt не сбрасываем: agent_end приходит раньше agent_settled, поэтому
-      // turn_end часто опережает turn_result, которому таймстамп ещё нужен.
-      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false, streamTps: null }
+      // turnStartedAt и streamTps не сбрасываем: agent_end приходит раньше agent_settled, поэтому
+      // turn_end часто опережает turn_result, которому таймстамп ещё нужен; последний замер TPS
+      // остаётся до следующего хода (turn_start).
+      return { ...flushed, entries: closeOpenBlocks(flushed.entries), streaming: false }
     }
     case 'subagents_activity':
       return host
@@ -375,19 +376,15 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
     case 'context_usage':
       return { ...host, contextUsage: { used: event.used, size: event.size } }
     case 'stream_speed': {
-      if (event.tps === null) {
-        const entries =
-          event.kind === 'thinking'
-            ? host.entries.map((e) => (e.kind === 'thinking' && e.open && e.tps !== null ? { ...e, tps: null } : e))
-            : host.entries
-        return { ...host, streamTps: null, entries }
-      }
-      const last = host.entries[host.entries.length - 1]
+      // null (конец серии/смена kind) игнорируем: последнее значение живёт до следующего замера.
+      if (event.tps === null) return host
+      const flushed = withFlushed(hostId, host)
+      const last = flushed.entries[flushed.entries.length - 1]
       const entries =
         event.kind === 'thinking' && last !== undefined && last.kind === 'thinking' && last.open
-          ? [...host.entries.slice(0, -1), { ...last, tps: event.tps }]
-          : host.entries
-      return { ...host, streamTps: event.tps, entries }
+          ? [...flushed.entries.slice(0, -1), { ...last, tps: event.tps }]
+          : flushed.entries
+      return { ...flushed, streamTps: event.tps, entries }
     }
     case 'session_stats':
       return { ...host, usageTotals: event.tokens }

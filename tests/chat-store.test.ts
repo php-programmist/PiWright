@@ -75,7 +75,7 @@ describe('chat store transcript', () => {
     expect(useChatStore.getState().hosts[HOST]?.streaming).toBe(false)
   })
 
-  it('stream speed feeds the timer and the open thinking entry, kind-aware', () => {
+  it('stream speed feeds the timer and thinking entries, last value sticks', () => {
     const store = useChatStore.getState()
     store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
     store.applyEvent({ hostId: HOST, event: { type: 'thought_delta', text: 'hmm' } })
@@ -83,14 +83,30 @@ describe('chat store transcript', () => {
     store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: 42.4 } })
     expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(42.4)
     expect(entries()[0]).toMatchObject({ kind: 'thinking', open: true, tps: 42.4 })
+    // конец серии (null) ничего не сбрасывает — последнее значение живёт до следующего замера
     store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: null } })
-    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBeNull()
-    expect(entries()[0]).toMatchObject({ tps: null })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(42.4)
+    expect(entries()[0]).toMatchObject({ tps: 42.4 })
     store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'text', tps: 30 } })
     expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(30)
-    expect(entries()[0]).toMatchObject({ tps: null })
+    expect(entries()[0]).toMatchObject({ tps: 42.4 })
     store.applyEvent({ hostId: HOST, event: { type: 'turn_end' } })
-    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBeNull()
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(30)
+  })
+
+  it('each thinking block keeps its own last measured tps', () => {
+    const store = useChatStore.getState()
+    store.applyEvent({ hostId: HOST, event: { type: 'turn_start' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'thought_delta', text: 'one' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: 40 } })
+    store.applyEvent({ hostId: HOST, event: { type: 'tool_start', call: { id: 'c1', name: 'bash', args: {}, parentToolCallId: null } } })
+    store.applyEvent({ hostId: HOST, event: { type: 'thought_delta', text: 'two' } })
+    store.applyEvent({ hostId: HOST, event: { type: 'stream_speed', kind: 'thinking', tps: 55 } })
+    const list = entries()
+    expect(list[0]).toMatchObject({ kind: 'thinking', open: false, tps: 40 })
+    expect(list[1]).toMatchObject({ kind: 'tool', call: { id: 'c1' } })
+    expect(list[2]).toMatchObject({ kind: 'thinking', open: true, tps: 55 })
+    expect(useChatStore.getState().hosts[HOST]?.streamTps).toBe(55)
   })
 
   it('non-delta events flush pending deltas first', () => {

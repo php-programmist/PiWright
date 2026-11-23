@@ -55,7 +55,7 @@ function EntryViewBase({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAn
     case 'thinking':
       return (
         <details className="thinking">
-          <ChatThinkingSummary tps={entry.open ? entry.tps : null} />
+          <ChatThinkingSummary tps={entry.tps} />
           <pre>{entry.text}</pre>
         </details>
       )
