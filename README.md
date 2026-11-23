@@ -72,6 +72,10 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 - English and Russian UI
 - Configurable send key (Enter / Ctrl+Enter), model/thinking selector placement
 
+![Kanban board as a project tab](docs/screenshots/kanban-board.png)
+
+![Kanban card details](docs/screenshots/kanban-card.png)
+
 ## Requirements
 
 - Windows 10/11
