@@ -83,6 +83,7 @@ import {
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_COMMANDS_CHANNEL,
+  SESSION_CONTEXT_BREAKDOWN_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
@@ -498,6 +499,12 @@ export function registerIpc(
     const h = host(piHost, hostId)
     if (h === null) return { ok: false, error: 'Session not found', commands: [] }
     return h.commands().then((commands) => ({ ok: true, error: null, commands }))
+  })
+
+  ipcMain.handle(SESSION_CONTEXT_BREAKDOWN_CHANNEL, async (_event, hostId: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found', breakdown: null }
+    return h.contextBreakdown()
   })
 
   ipcMain.handle(SESSION_SET_MODEL_CHANNEL, (_event, hostId: unknown, key: unknown) => {

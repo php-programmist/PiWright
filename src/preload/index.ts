@@ -92,6 +92,7 @@ import {
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_COMMANDS_CHANNEL,
+  SESSION_CONTEXT_BREAKDOWN_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   APP_VERSION_CHANNEL,
   SETTINGS_GET_CHANNEL,
@@ -162,6 +163,7 @@ const api: PiWrightApi = {
   queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>
     ipcRenderer.invoke(SESSION_QUEUE_REMOVE_CHANNEL, hostId, kind, index),
   sessionCommands: (hostId: string) => ipcRenderer.invoke(SESSION_COMMANDS_CHANNEL, hostId),
+  contextBreakdown: (hostId: string) => ipcRenderer.invoke(SESSION_CONTEXT_BREAKDOWN_CHANNEL, hostId),
   setModel: (hostId: string, key: string) => ipcRenderer.invoke(SESSION_SET_MODEL_CHANNEL, hostId, key),
   setThinkingLevel: (hostId: string, level: string) => ipcRenderer.invoke(SESSION_SET_THINKING_CHANNEL, hostId, level),
   respondDialog: (hostId: string, id: string, answer: DialogAnswer) =>

@@ -3,7 +3,7 @@
  *  Порт жизненного цикла `PiSession`. Реестр хостов — `PiHost`. */
 import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
-import type { DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
+import type { ContextBreakdownResult, DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject, PiSlashCommand } from '../../shared/protocol-types'
 import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
@@ -24,6 +24,7 @@ import { runHandshake, decodeSessionTokens, decodeCommands, dataObject } from '.
 import { generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
+import { estimateContextBreakdown } from './context-breakdown'
 
 export interface SessionHostListener {
   onStatus(status: PiStatus): void
@@ -700,6 +701,22 @@ export class SessionHost {
       return decodeCommands(dataObject(await conn.request('get_commands')))
     } catch {
       return this.handshake?.commands ?? []
+    }
+  }
+
+  /** Разбивка токенов контекста: оценка по `get_messages` + остаток (системный промпт и инструменты).
+   *  Процесс не поднят — breakdown null (контекста ещё нет). */
+  async contextBreakdown(): Promise<ContextBreakdownResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return { ok: true, error: null, breakdown: null }
+    try {
+      const response = await conn.request('get_messages')
+      if (!response.success) return { ok: false, error: response.error ?? 'get_messages failed', breakdown: null }
+      const data = dataObject(response)
+      const messages = Array.isArray(data['messages']) ? (data['messages'] as unknown[]) : []
+      return { ok: true, error: null, breakdown: estimateContextBreakdown(messages) }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), breakdown: null }
     }
   }
 

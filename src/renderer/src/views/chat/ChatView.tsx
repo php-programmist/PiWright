@@ -6,11 +6,12 @@ import { QueuePanel } from '../../components/QueuePanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
 import { ThinkingLevelControl } from '../../components/ThinkingLevelControl'
+import { ContextBreakdownControl } from '../../components/ContextBreakdownControl'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 import { useTabsStore, parentTabKey } from '../../stores/tabs'
-import { cacheHitOf, percentColor } from '../../../../shared/agent-events'
+import { cacheHitOf } from '../../../../shared/agent-events'
 import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
@@ -678,11 +679,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <span className={`dot ${status.state}`} />
         <span className="state">{t(STATUS_LABEL[status.state] ?? status.state)}</span>
         {placement === 'top' && controls}
-        {ctxPercent !== null && (
-          <span className="ctx-usage" style={{ color: percentColor(ctxPercent) }} title={ctxTitle()}>
-            {ctxPercent}%
-          </span>
-        )}
+        <ContextBreakdownControl hostId={activeHostId} percent={ctxPercent} title={ctxTitle()} />
         {Object.entries(extensionStatuses).map(([key, text]) => (
           <span key={key} className="ext-status" title={key}>
             {text}

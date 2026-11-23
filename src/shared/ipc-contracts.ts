@@ -155,6 +155,25 @@ export interface ForkSessionResult {
   hostId?: string
 }
 
+/** Разбивка токенов контекста сессии (оценка chars/4 по сообщениям; остаток — системный промпт и инструменты). */
+export interface ContextBreakdownData {
+  /** Токены контекста из последнего usage ассистента (totalTokens); null — ходов ещё не было. */
+  contextTokens: number | null
+  userMessages: number
+  assistantText: number
+  assistantToolCalls: number
+  toolResults: number
+  other: number
+  /** Остаток: системный промпт, схемы инструментов, MCP, навыки. 0 — если contextTokens null. */
+  systemAndTools: number
+}
+
+export interface ContextBreakdownResult {
+  ok: boolean
+  error: string | null
+  breakdown: ContextBreakdownData | null
+}
+
 export interface SessionCommandsResult {
   ok: boolean
   error: string | null
@@ -586,6 +605,8 @@ export interface PiWrightApi {
   queueRemove(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
   /** Живой список slash-команд агента (`get_commands`, включая навыки) для автодополнения; фолбэк — команды хендшейка. */
   sessionCommands(hostId: string): Promise<SessionCommandsResult>
+  /** Разбивка токенов контекста активной сессии (ленивая оценка по get_messages). */
+  contextBreakdown(hostId: string): Promise<ContextBreakdownResult>
   setModel(hostId: string, key: string): Promise<PromptResult>
   setThinkingLevel(hostId: string, level: string): Promise<PromptResult>
   respondDialog(hostId: string, id: string, answer: DialogAnswer): Promise<DialogResult>
@@ -706,6 +727,7 @@ export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
 export const SESSION_SET_MODEL_CHANNEL = 'session:set-model'
 export const SESSION_COMMANDS_CHANNEL = 'session:commands'
+export const SESSION_CONTEXT_BREAKDOWN_CHANNEL = 'session:context-breakdown'
 export const SESSION_SET_THINKING_CHANNEL = 'session:set-thinking'
 export const SESSION_RESPOND_DIALOG_CHANNEL = 'session:respond-dialog'
 export const SESSION_PENDING_DIALOGS_CHANNEL = 'session:pending-dialogs'

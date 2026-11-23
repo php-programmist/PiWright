@@ -109,6 +109,16 @@ const RU: Record<string, string> = {
   'Read from cache: {read} ({hit}%)': 'Из кэша: {read} ({hit}%)',
   'Fresh: {in} · Written to cache: {write}': 'Свежие: {in} · Записано в кэш: {write}',
 
+  // Разбивка контекста
+  'System prompt and tools': 'Системный промпт и инструменты',
+  'User messages': 'Сообщения пользователя',
+  'Agent text and thinking': 'Текст и размышления агента',
+  'Tool calls': 'Вызовы инструментов',
+  'Tool results': 'Результаты инструментов',
+  'Other': 'Прочее',
+  'Total context': 'Всего в контексте',
+  'No context usage yet': 'Токенов ещё нет — сделайте первый запрос',
+
   // Тул-блоки
   'running…': 'выполняется…',
   'done': 'готово',
