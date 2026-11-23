@@ -17,9 +17,9 @@ export interface ToolResult {
   patch: string | null
 }
 
-/** Скорость модели за ход: ttfb — среднее по assistant-сообщениям до первой дельты (null в реплее — из истории невосстановим). */
+/** Скорость модели за ход: ttft — среднее по assistant-сообщениям до первой дельты (null в реплее — из истории невосстановим). */
 export interface TurnSpeed {
-  ttfbMs: number | null
+  ttftMs: number | null
   tokensPerSecond: number | null
 }
 

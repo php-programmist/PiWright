@@ -86,8 +86,8 @@ interface TurnAccumulator {
   reasoning: number | null
   lastContextTokens: number | null
   error: string | null
-  ttfbTotalNanos: number
-  ttfbCount: number
+  ttftTotalNanos: number
+  ttftCount: number
   generationNanos: number
   generationOutput: number
 }
@@ -101,8 +101,8 @@ function freshTurn(): TurnAccumulator {
     reasoning: null,
     lastContextTokens: null,
     error: null,
-    ttfbTotalNanos: 0,
-    ttfbCount: 0,
+    ttftTotalNanos: 0,
+    ttftCount: 0,
     generationNanos: 0,
     generationOutput: 0
   }
@@ -233,8 +233,8 @@ export class PiEventTranslator {
     if (this.messageStartNanos === null || this.firstDeltaNanos !== null) return
     const now = this.nanoTime()
     this.firstDeltaNanos = now
-    this.turn.ttfbTotalNanos += now - this.messageStartNanos
-    this.turn.ttfbCount++
+    this.turn.ttftTotalNanos += now - this.messageStartNanos
+    this.turn.ttftCount++
   }
 
   private turnSpeed(): TurnSpeed | null {
@@ -243,9 +243,9 @@ export class PiEventTranslator {
       turn.generationNanos > 0 && turn.generationOutput > 0
         ? (turn.generationOutput * 1e9) / turn.generationNanos
         : null
-    if (turn.ttfbCount === 0 && tps === null) return null
-    const ttfbMs = turn.ttfbCount > 0 ? turn.ttfbTotalNanos / turn.ttfbCount / 1e6 : null
-    return { ttfbMs, tokensPerSecond: tps }
+    if (turn.ttftCount === 0 && tps === null) return null
+    const ttftMs = turn.ttftCount > 0 ? turn.ttftTotalNanos / turn.ttftCount / 1e6 : null
+    return { ttftMs, tokensPerSecond: tps }
   }
 
   private onMessageEnd(message: PiJsonObject): void {
@@ -349,7 +349,7 @@ export class PiEventTranslator {
           cacheWriteTokens: cacheWrite,
           reasoningTokens: reasoning,
           contextTokens: lastContextTokens,
-          speed: tps !== null ? { ttfbMs: null, tokensPerSecond: tps } : null,
+          speed: tps !== null ? { ttftMs: null, tokensPerSecond: tps } : null,
           durationMs
         })
       }

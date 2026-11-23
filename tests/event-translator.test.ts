@@ -119,7 +119,7 @@ describe('PiEventTranslator', () => {
     expect(recorder.results[1].patch).toBe('--- a.txt\n+++ a.txt\n@@ -1,2 +1,2 @@\n hello\n-world\n+there\n')
   })
 
-  it('speed averages ttfb over messages and divides output by generation windows', () => {
+  it('speed averages ttft over messages and divides output by generation windows', () => {
     const recorder = new Recorder()
     const clock = [0, 100, 1_100, 2_000, 2_300, 3_300].map((ms) => ms * 1e6)
     let index = 0
@@ -137,7 +137,7 @@ describe('PiEventTranslator', () => {
       '{"type":"message_end","message":{"role":"assistant","usage":{"output":30}}}',
       '{"type":"agent_settled"}'
     ])
-    expect(recorder.speeds).toEqual([{ ttfbMs: 200, tokensPerSecond: 20 }])
+    expect(recorder.speeds).toEqual([{ ttftMs: 200, tokensPerSecond: 20 }])
   })
 
   it('turn without deltas has no speed', () => {
@@ -369,8 +369,8 @@ describe('PiEventTranslator', () => {
     // Ход 2: 10000 → 11000+500
     expect(results[1]).toBe('result:10/5/20/0+0/null')
     expect(recorder.speeds).toEqual([
-      { ttfbMs: null, tokensPerSecond: 100 / 3.5 },
-      { ttfbMs: null, tokensPerSecond: 10 }
+      { ttftMs: null, tokensPerSecond: 100 / 3.5 },
+      { ttftMs: null, tokensPerSecond: 10 }
     ])
     expect(recorder.durations).toEqual([5000, 1500])
   })

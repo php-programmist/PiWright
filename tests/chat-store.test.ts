@@ -279,7 +279,7 @@ describe('chat store transcript', () => {
               cacheWriteTokens: 0,
               reasoningTokens: null,
               contextTokens: 20,
-              speed: { ttfbMs: null, tokensPerSecond: 4 },
+              speed: { ttftMs: null, tokensPerSecond: 4 },
               durationMs: 4200
             }
           }

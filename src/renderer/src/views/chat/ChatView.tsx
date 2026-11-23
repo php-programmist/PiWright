@@ -72,14 +72,14 @@ export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; o
     case 'result': {
       const u = entry.usage
       const speed = u.speed
-      const ttfb =
-        speed?.ttfbMs != null ? (speed.ttfbMs < 1000 ? `${Math.round(speed.ttfbMs)}ms` : `${(speed.ttfbMs / 1000).toFixed(1)}s`) : null
+      const ttft =
+        speed?.ttftMs != null ? (speed.ttftMs < 1000 ? `${Math.round(speed.ttftMs)}ms` : `${(speed.ttftMs / 1000).toFixed(1)}s`) : null
       const parts = [
         entry.durationMs !== null ? `⏱ ${formatCompactDuration(entry.durationMs)}` : null,
         `in ${u.inputTokens.toLocaleString('en-US')}`,
         `out ${u.outputTokens.toLocaleString('en-US')}`,
         u.contextTokens !== null ? `ctx ${u.contextTokens.toLocaleString('en-US')}` : null,
-        ttfb !== null ? `TTFB ${ttfb}` : null,
+        ttft !== null ? `TTFT ${ttft}` : null,
         speed?.tokensPerSecond != null ? `${Math.round(speed.tokensPerSecond)} tok/s` : null
       ].filter((p): p is string => p !== null)
       return <div className="turn-result">{parts.join(' · ')}</div>
