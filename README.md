@@ -52,6 +52,10 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 - Telegram bot notifications with per-event checkboxes and per-session toggle
 - Remote control from a phone: built-in WebSocket bridge with PIN auth serves the web UI — session list, chat with images, abort, dialog answers, session creation
 
+![Remote sign-in from a phone](docs/screenshots/remote-login.png)
+
+![Chat over the remote web UI](docs/screenshots/remote-chat.png)
+
 ### Interface
 - Project tabs: sessions, files, diffs, MCP and skills open as tabs in a single window
 - Dark and light themes, adjustable chat font size
