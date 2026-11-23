@@ -3923,6 +3923,11 @@ body {
   cursor: default;
 }
 
+.board-head .board-column-btn {
+  font-size: 24px;
+  padding: 2px 6px;
+}
+
 .board-head-refresh,
 .board-head-add {
   margin-left: auto;
