@@ -12,6 +12,7 @@ import { useT } from '../lib/i18n'
 import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { splitWorktreeHostDir } from '../../../shared/worktree'
 import { WORKTREE_ICON } from './SessionsPanel'
+import { renameDialog } from './RenameDialog'
 import { baseName } from '../views/git/GitPanel'
 
 const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle' }
@@ -118,8 +119,6 @@ export function TabBar(): React.JSX.Element | null {
   const chatHosts = useChatStore((s) => s.hosts)
   const entry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
   const [menu, setMenu] = useState<MenuState | null>(null)
-  const [renamingHostId, setRenamingHostId] = useState<string | null>(null)
-  const [renameText, setRenameText] = useState('')
   const [wtCreating, setWtCreating] = useState(false)
   const [wtName, setWtName] = useState('')
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -185,17 +184,10 @@ export function TabBar(): React.JSX.Element | null {
     useSessionsStore.getState().setActive(ref.hostId)
   }
 
-  const startRename = (hostId: string, title: string): void => {
-    setRenameText(title)
-    setRenamingHostId(hostId)
+  const startRename = async (hostId: string, title: string): Promise<void> => {
     setMenu(null)
-  }
-
-  const submitRename = async (hostId: string): Promise<void> => {
-    setRenamingHostId(null)
-    const name = renameText.trim()
-    setRenameText('')
-    if (name.length === 0) return
+    const name = await renameDialog({ title: t('Rename session'), initial: title })
+    if (name === null) return
     const result = await window.piwright.renameSession(hostId, name)
     if (!result.ok && result.error !== null) window.alert(result.error)
   }
@@ -262,22 +254,6 @@ export function TabBar(): React.JSX.Element | null {
         const unread = chatHosts[r.hostId]?.unread ?? false
         const cls = DOT_CLASS[r.dot] ?? 'idle'
         const off = r.dot === 'idle' && !unread
-        if (renamingHostId === r.hostId) {
-          return (
-            <div key={r.hostId} className="tab session active renaming">
-              <input
-                autoFocus
-                value={renameText}
-                onChange={(e) => setRenameText(e.target.value)}
-                onBlur={() => void submitRename(r.hostId)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void submitRename(r.hostId)
-                  if (e.key === 'Escape') setRenamingHostId(null)
-                }}
-              />
-            </div>
-          )
-        }
         return (
           <div
             key={r.hostId}
@@ -365,7 +341,7 @@ export function TabBar(): React.JSX.Element | null {
           {menu.isSession && (
             <button
               className="tab-menu-item"
-              onClick={() => startRename(menu.id, sessionRows.find((r) => r.hostId === menu.id)?.title ?? '')}
+              onClick={() => void startRename(menu.id, sessionRows.find((r) => r.hostId === menu.id)?.title ?? '')}
             >
               {t('Rename')}
             </button>

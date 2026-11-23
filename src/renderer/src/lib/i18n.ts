@@ -25,6 +25,7 @@ const RU: Record<string, string> = {
   'Remove project': 'Удалить проект',
   'Project menu': 'Меню проекта',
   'Rename': 'Переименовать',
+  'Rename session': 'Переименовать сессию',
   'Show in folder': 'Показать в папке',
   'Remove project "{name}" from the list?\n\nThe folder and its sessions stay on disk. You can add it back anytime.':
     'Удалить проект «{name}» из списка?\n\nПапка и сессии на диске не трогаются. Проект можно добавить обратно в любой момент.',

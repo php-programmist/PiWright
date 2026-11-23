@@ -16,6 +16,7 @@ import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
 import { ConfirmDialogHost } from './components/ConfirmDialog'
+import { RenameDialogHost } from './components/RenameDialog'
 import { useChatStore, atBottomMap } from './stores/chat'
 import { useFilesStore } from './stores/files'
 import { useGitStore } from './stores/git'
@@ -231,6 +232,7 @@ export function App(): React.JSX.Element {
   return (
     <div className="app">
       <ConfirmDialogHost />
+      <RenameDialogHost />
       {settingsOpen && <SettingsView />}
       {(
         <div className="layout">

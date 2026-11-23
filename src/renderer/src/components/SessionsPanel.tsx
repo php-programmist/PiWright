@@ -6,6 +6,7 @@ import { useLang, useT } from '../lib/i18n'
 import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
+import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 
@@ -177,8 +178,6 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
   const setShowAll = useSessionsStore((s) => s.setShowAll)
   const t = useT()
-  const [renamingHostId, setRenamingHostId] = useState<string | null>(null)
-  const [renameText, setRenameText] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [projRenaming, setProjRenaming] = useState(false)
   const [projRenameText, setProjRenameText] = useState('')
@@ -233,23 +232,11 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     void refreshHistory(row.project)
   }
 
-  const startSessionRename = (hostId: string, title: string): void => {
-    setRenameText(title)
-    setRenamingHostId(hostId)
-  }
-
-  const submitSessionRename = async (hostId: string): Promise<void> => {
-    setRenamingHostId(null)
-    const name = renameText.trim()
-    setRenameText('')
-    if (name.length === 0) return
+  const startSessionRename = async (hostId: string, title: string): Promise<void> => {
+    const name = await renameDialog({ title: t('Rename session'), initial: title })
+    if (name === null) return
     const result = await window.piwright.renameSession(hostId, name)
     if (!result.ok && result.error !== null) window.alert(result.error)
-  }
-
-  const cancelSessionRename = (): void => {
-    setRenamingHostId(null)
-    setRenameText('')
   }
 
   const toggleSub = (path: string): void => {
@@ -449,23 +436,10 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                   ) : (
                     <span className="sub-toggle" />
                   )}
-                  {renamingHostId === s.hostId ? (
-                    <input
-                      autoFocus
-                      value={renameText}
-                      onChange={(e) => setRenameText(e.target.value)}
-                      onBlur={() => void submitSessionRename(s.hostId)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void submitSessionRename(s.hostId)
-                        if (e.key === 'Escape') cancelSessionRename()
-                      }}
-                    />
-                  ) : (
-                    <span className="session-title" onDoubleClick={() => startSessionRename(s.hostId, s.title)}>{s.title}</span>
-                  )}
+                  <span className="session-title" onDoubleClick={() => void startSessionRename(s.hostId, s.title)}>{s.title}</span>
                   {wt !== null && <span className="kind-badge" title={s.project.dir}>{wt.name}</span>}
                   <span className="spacer" />
-                  <button className="icon" title={t('Rename (or double-click title)')} onClick={() => startSessionRename(s.hostId, s.title)}>✎</button>
+                  <button className="icon" title={t('Rename (or double-click title)')} onClick={() => void startSessionRename(s.hostId, s.title)}>✎</button>
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
