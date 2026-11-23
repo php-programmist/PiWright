@@ -451,7 +451,9 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       )
     } else {
       const count = board.cards.filter((card) => card.columnId === column.id).length
-      chatStore.setLoopMax(ref.hostId, Math.max(1, count))
+      // remaining тратится на спавны после первого хода, итераций выходит max + 1 —
+      // лимит на единицу меньше числа задач даёт ровно по итерации на задачу.
+      chatStore.setLoopMax(ref.hostId, Math.max(1, count - 1))
     }
     draftMap.set(
       ref.hostId,
