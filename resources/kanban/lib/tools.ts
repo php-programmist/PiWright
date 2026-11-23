@@ -1,6 +1,6 @@
 /** Логика тулов карточек канбана (spec/kanban-plan.md §2, §5). Не зависит от pi —
  *  регистрация в index.ts, тесты гоняют функции напрямую с tmp-каталогами. */
-import { access, copyFile, mkdir, stat } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, stat } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
 import {
   applyCardComment,
@@ -14,6 +14,7 @@ import {
   applyWorkflowSet,
   casMutate,
   isValidKanbanId,
+  isValidKanbanImagePath,
   KANBAN_COMMENT_MAX,
   KANBAN_WORKFLOW_MAX,
   newKanbanId,
@@ -37,6 +38,7 @@ export interface KanbanToolEnv {
 export interface KanbanToolResult {
   text: string
   details?: Record<string, unknown>
+  images?: { data: string; mimeType: string }[]
 }
 
 interface BoardContext {
@@ -118,6 +120,81 @@ async function copyAttachments(
   return { copied, failed }
 }
 
+const IMAGE_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp'
+}
+
+const MAX_INLINE_IMAGES = 10
+
+/** Картинки вложений (пути `attachments/<name>` внутри boardsDir) → base64-блоки для модели. */
+async function loadInlineImages(
+  root: string,
+  paths: string[]
+): Promise<{ images: { data: string; mimeType: string }[]; missing: string[] }> {
+  const images: { data: string; mimeType: string }[] = []
+  const missing: string[] = []
+  const dir = boardsDir(root)
+  for (const path of paths) {
+    if (images.length >= MAX_INLINE_IMAGES) {
+      missing.push(`${path} (inline image limit ${MAX_INLINE_IMAGES} reached)`)
+      continue
+    }
+    if (!isValidKanbanImagePath(path)) {
+      missing.push(path)
+      continue
+    }
+    const mimeType = IMAGE_MIME[extname(path).slice(1).toLowerCase()]
+    if (mimeType === undefined) {
+      missing.push(path)
+      continue
+    }
+    try {
+      const bytes = await readFile(join(dir, path))
+      images.push({ data: bytes.toString('base64'), mimeType })
+    } catch {
+      missing.push(path)
+    }
+  }
+  return { images, missing }
+}
+
+function commentImages(comment: KanbanComment): string[] {
+  return comment.images
+}
+
+function renderComment(comment: KanbanComment): string {
+  const refs: string[] = []
+  if (comment.session !== undefined) refs.push(`session: ${comment.session.title} (${comment.session.id})`)
+  if (comment.commits !== undefined) refs.push(`commits: ${comment.commits.map((commit) => commit.hash).join(', ')}`)
+  if (comment.images.length > 0) refs.push(`images: ${comment.images.join(', ')}`)
+  return `- [${comment.author} ${comment.at}] ${comment.text}${refs.length > 0 ? `\n  ${refs.join(' · ')}` : ''}`
+}
+
+/** Комментарии карточки текстом + все картинки (карточка и комментарии) inline-блоками. */
+async function commentsSection(
+  root: string,
+  card: KanbanCard
+): Promise<{ text: string; images: { data: string; mimeType: string }[] }> {
+  const paths = [...card.images, ...card.comments.flatMap(commentImages)]
+  const { images, missing } = await loadInlineImages(root, paths)
+  let text = ''
+  if (card.comments.length > 0) {
+    text = `\n\nComments (${card.comments.length}):\n${card.comments.map(renderComment).join('\n')}`
+  }
+  if (images.length > 0) {
+    text += `\n\nAttached images (in order): ${images.map((_, i) => `#${i + 1}`).join(', ')}`
+  }
+  if (missing.length > 0) {
+    text += `\nImages not loaded: ${missing.join(', ')}`
+  }
+  return { text, images }
+}
+
 interface CommentRefs {
   sessionName?: string
   commits?: { hash: string; message?: string }[]
@@ -165,13 +242,15 @@ export async function kanbanPickTask(env: KanbanToolEnv, args: { board?: string 
       }
     }
     const description = card.description.length > 0 ? `\n\nDescription:\n${card.description}` : ''
+    const comments = await commentsSection(ctx.root, card)
     return {
       text:
-        `Picked card ${card.id} "${card.title}" → In Progress.${description}\n\n` +
+        `Picked card ${card.id} "${card.title}" → In Progress.${description}${comments.text}\n\n` +
         `Board workflow:\n${ctx.board.workflow}\n\n` +
         `Next: rename the session to match the task (rename_session), implement it, then ` +
         `kanban_move the card to Review with two comments — session link + commit hashes, and a completion report.`,
-      details: { picked: true, cardId: card.id, title: card.title }
+      details: { picked: true, cardId: card.id, title: card.title },
+      images: comments.images
     }
   } catch (err) {
     return { text: errorText(err) }
@@ -273,15 +352,12 @@ export async function kanbanGetCard(env: KanbanToolEnv, args: { board?: string; 
   parts.push(`Description:\n${card.description.length > 0 ? card.description : '(empty)'}`)
   if (card.images.length > 0) parts.push(`Images (${card.images.length}):\n${card.images.map((path) => `- ${path}`).join('\n')}`)
   if (card.comments.length > 0) {
-    const comments = card.comments.map((comment) => {
-      const refs: string[] = []
-      if (comment.session !== undefined) refs.push(`session: ${comment.session.title} (${comment.session.id})`)
-      if (comment.commits !== undefined) refs.push(`commits: ${comment.commits.map((commit) => commit.hash).join(', ')}`)
-      return `- [${comment.author} ${comment.at}] ${comment.text}${refs.length > 0 ? `\n  ${refs.join(' · ')}` : ''}`
-    })
-    parts.push(`Comments (${card.comments.length}):\n${comments.join('\n')}`)
+    parts.push(`Comments (${card.comments.length}):\n${card.comments.map(renderComment).join('\n')}`)
   }
-  return { text: parts.join('\n\n'), details: { cardId } }
+  const { images, missing } = await loadInlineImages(ctx.root, [...card.images, ...card.comments.flatMap(commentImages)])
+  if (images.length > 0) parts.push(`Attached images (in order): ${images.map((_, i) => `#${i + 1}`).join(', ')}`)
+  if (missing.length > 0) parts.push(`Images not loaded: ${missing.join(', ')}`)
+  return { text: parts.join('\n\n'), details: { cardId }, images }
 }
 
 export async function kanbanCreateCard(

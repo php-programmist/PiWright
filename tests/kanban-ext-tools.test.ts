@@ -72,6 +72,23 @@ describe('kanban_pick_task', () => {
     const result = await kanbanPickTask(env(dir), { board: 'b-00000000' })
     expect(result.text).toContain('Board not found: b-00000000')
   })
+
+  it('returns comments with inline images of the picked card', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const imagePath = join(dir, 'shot.png')
+    writeFileSync(imagePath, 'png-bytes', 'utf8')
+    await kanbanCreateCard(env(dir), { title: 'Task with shots', description: 'Look at screens' })
+    const id = await cardIdByTitle(dir, 'Task with shots')
+    await kanbanComment(env(dir), { id, text: 'Screenshot attached', images: [imagePath] })
+    const result = await kanbanPickTask(env(dir), {})
+    expect(result.text).toContain('Task with shots')
+    expect(result.text).toContain('Comments (1):')
+    expect(result.text).toContain('Screenshot attached')
+    expect(result.text).toContain('images: attachments/shot.png')
+    expect(result.images).toHaveLength(1)
+    expect(result.images![0].mimeType).toBe('image/png')
+    expect(result.images![0].data).toBe(Buffer.from('png-bytes', 'utf8').toString('base64'))
+  })
 })
 
 describe('kanban_list_cards', () => {
@@ -121,6 +138,24 @@ describe('kanban_get_card', () => {
     expect(missing.text).toContain('Card not found: c-00000000')
     const bad = await kanbanGetCard(env(dir), { id: 'nope' })
     expect(bad.text).toContain('Invalid card id')
+  })
+
+  it('returns card and comment images as inline blocks, notes missing files', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    const imagePath = join(dir, 'pic.png')
+    writeFileSync(imagePath, 'png-bytes', 'utf8')
+    const gonePath = join(dir, 'gone.png')
+    writeFileSync(gonePath, 'gone-bytes', 'utf8')
+    await kanbanCreateCard(env(dir), { title: 'Task' })
+    const id = await cardIdByTitle(dir, 'Task')
+    await kanbanComment(env(dir), { id, text: 'with picture', images: [imagePath, gonePath] })
+    rmSync(join(dir, '.pi', 'kanban', 'attachments', 'gone.png'))
+    const result = await kanbanGetCard(env(dir), { id })
+    expect(result.text).toContain('with picture')
+    expect(result.text).toContain('images: attachments/pic.png')
+    expect(result.text).toContain('Images not loaded: attachments/gone.png')
+    expect(result.images).toHaveLength(1)
+    expect(result.images![0].mimeType).toBe('image/png')
   })
 })
 

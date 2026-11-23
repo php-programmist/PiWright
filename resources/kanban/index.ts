@@ -31,7 +31,14 @@ function env(ctx: { cwd: string; sessionManager: { getSessionId(): string; getSe
 
 function run(result: Promise<KanbanToolResult>) {
   return result.then((resolved) => ({
-    content: [{ type: 'text' as const, text: resolved.text }],
+    content: [
+      { type: 'text' as const, text: resolved.text },
+      ...(resolved.images ?? []).map((image) => ({
+        type: 'image' as const,
+        data: image.data,
+        mimeType: image.mimeType
+      }))
+    ],
     details: resolved.details
   }))
 }
