@@ -31,6 +31,7 @@
     "src/renderer/src/stores/tabs.ts",
     "src/renderer/src/lib/git-file-class.ts",
     "src/renderer/src/lib/duration.ts",
+    "src/renderer/src/lib/virtual-feed.ts",
     "src/renderer/src/views/git/git-log-model.ts",
     "src/renderer/src/views/terminal/term-registry.ts",
     "src/renderer/src/global.d.ts",

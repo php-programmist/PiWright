@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
@@ -9,6 +9,7 @@ import { ThinkingLevelControl } from '../../components/ThinkingLevelControl'
 import { ContextBreakdownControl } from '../../components/ContextBreakdownControl'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
+import { useVirtualFeed } from './useVirtualFeed'
 import { useSessionsStore } from '../../stores/sessions'
 import { useTabsStore, parentTabKey } from '../../stores/tabs'
 import { cacheHitOf } from '../../../../shared/agent-events'
@@ -33,10 +34,6 @@ const STATUS_LABEL: Record<string, string> = {
   error: 'error'
 }
 
-/** Окно восстановленной ленты: сначала показываем последние N записей, старые докладываем чанками. */
-const RESTORE_WINDOW = 40
-const RESTORE_CHUNK = 40
-
 export interface UserEntry {
   kind: 'user'
   id: number
@@ -49,7 +46,7 @@ export interface TextEntry {
   text: string
 }
 
-export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
+function EntryViewBase({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
       return <UserMessage entry={entry} onEdit={onEdit} />
@@ -87,6 +84,12 @@ export function EntryView({ entry, onAnswer, onEdit, onFork }: { entry: Entry; o
     }
   }
 }
+
+/** Ре-рендер записи только при смене её объекта или колбэков: стриминг меняет лишь открытую запись. */
+export const EntryView = memo(
+  EntryViewBase,
+  (a, b) => a.entry === b.entry && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork
+)
 
 export function ChatThinkingSummary(): React.JSX.Element {
   const t = useT()
@@ -201,7 +204,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const t = useT()
   const status = chat?.status ?? null
   const entries = useMemo(() => chat?.entries ?? [], [chat])
-  const restored = chat?.restored ?? false
   const streaming = chat?.streaming ?? false
   const turnStartedAt = chat?.turnStartedAt ?? null
   const queue = chat?.queue ?? { steering: [], followUp: [] }
@@ -244,6 +246,90 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
+  const toolsHidden = chat?.toolsHidden ?? false
+  const feedItems = useMemo(
+    () => (toolsHidden ? entries.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking') : entries),
+    [entries, toolsHidden]
+  )
+  const handleFeedScroll = useCallback((atBottom: boolean) => {
+    if (activeHostId === null) return
+    autoScrollRef.current = atBottom
+    atBottomMap.set(activeHostId, atBottom)
+    if (atBottom) useChatStore.getState().markRead(activeHostId)
+  }, [activeHostId])
+  const feed = useVirtualFeed(feedItems, transcriptRef, { pinRef: autoScrollRef, onScroll: handleFeedScroll })
+  const { jumpToBottom } = feed
+
+  /** Редактирование промпта: fork сессии на момент сообщения + новый prompt; лента обрезается. */
+  const submitEdit = async (entry: UserEntry, newText: string): Promise<void> => {
+    if (activeHostId === null || streaming) return
+    const index = entries.findIndex((e) => e.id === entry.id)
+    if (index < 0) return
+    const occurrence = entries.slice(index + 1).filter((e) => e.kind === 'user' && e.text === entry.text).length
+    const result = await window.piwright.editPrompt(activeHostId, entry.text, occurrence, newText)
+    if (!result.ok && result.error !== null) {
+      applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      return
+    }
+    useChatStore.getState().truncateFrom(activeHostId, entry.id)
+    addUserMessage(activeHostId, newText)
+  }
+
+  /** Форк сессии после ответа агента в новую сессию (родитель не трогается): точка — следующий
+   *  за ответом промпт; после последнего ответа — клон всей сессии. Новая сессия открывается активной. */
+  const forkFrom = async (entry: TextEntry): Promise<void> => {
+    if (activeHostId === null || streaming) return
+    const index = entries.findIndex((e) => e.id === entry.id)
+    if (index < 0) return
+    const nextUser = entries.slice(index + 1).find((e): e is UserEntry => e.kind === 'user')
+    let userText: string | null = null
+    let occurrence = 0
+    if (nextUser !== undefined) {
+      userText = nextUser.text
+      const userIndex = entries.findIndex((e) => e.id === nextUser.id)
+      occurrence = entries.slice(userIndex + 1).filter((e) => e.kind === 'user' && e.text === nextUser.text).length
+    }
+    const result = await window.piwright.forkSession(activeHostId, userText, occurrence)
+    if (!result.ok || result.hostId === undefined) {
+      if (result.error !== null) {
+        applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      }
+      return
+    }
+    const row = useSessionsStore.getState().active.find((r) => r.hostId === activeHostId)
+    if (row !== undefined) {
+      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
+      useTabsStore.getState().activateSession(row.project)
+    }
+    useSessionsStore.getState().setActive(result.hostId)
+  }
+
+  const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
+    if (activeHostId === null) return
+    setDialogReceipt(activeHostId, dialogId, answer.kind === 'cancelled' ? 'cancelled' : 'answered')
+    const result = await window.piwright.respondDialog(activeHostId, dialogId, answer)
+    if (!result.ok) {
+      setDialogReceipt(activeHostId, dialogId, 'expired')
+    }
+  }
+
+  // Стабильные колбэки для memo(EntryView): свежие версии функций добираются через ref.
+  const actionsRef = useRef<{ answerDialog: typeof answerDialog; submitEdit: typeof submitEdit; forkFrom: typeof forkFrom } | null>(null)
+  useEffect(() => {
+    actionsRef.current = { answerDialog, submitEdit, forkFrom }
+  })
+  const stableAnswer = useCallback((dialogId: string, answer: DialogAnswer) => {
+    const actions = actionsRef.current
+    if (actions !== null) void actions.answerDialog(dialogId, answer)
+  }, [])
+  const stableEdit = useCallback((e: UserEntry, text: string) => {
+    const actions = actionsRef.current
+    if (actions !== null) void actions.submitEdit(e, text)
+  }, [])
+  const stableFork = useCallback((e: TextEntry) => {
+    const actions = actionsRef.current
+    if (actions !== null) void actions.forkFrom(e)
+  }, [])
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const worktree = project !== null ? splitWorktreeHostDir(project.dir) : null
 
@@ -342,55 +428,18 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     autoScrollRef.current = true
   }, [activeHostId])
 
-  // ——— Окно восстановленной ленты: реплей приходит пачкой, показываем хвост, старое докладываем вверх ———
-  // Длину реплейной ленты замораживаем приложением state в render — до первого commit виден только хвост.
-  const [frozenLen, setFrozenLen] = useState<number | null>(null)
-  if (restored && frozenLen === null) setFrozenLen(entries.length)
-  const [prepended, setPrepended] = useState(0)
-  const anchorRef = useRef<{ height: number; top: number } | null>(null)
-  const baseStart = frozenLen === null ? 0 : Math.max(0, frozenLen - RESTORE_WINDOW)
-  const windowStart = Math.max(0, baseStart - prepended)
-  // Контент над вьюпортом поменялся — сохраняем визуальную позицию.
-  useLayoutEffect(() => {
-    const el = transcriptRef.current
-    const anchor = anchorRef.current
-    if (el === null || anchor === null) return
-    anchorRef.current = null
-    el.scrollTop = anchor.top + (el.scrollHeight - anchor.height)
-  }, [windowStart])
-  // «Экран + ещё экран вверх»: если хвост не заполнил два экрана, раскрываем окно дальше.
+  // Прибитый к низу скролл: окно от хвоста и прыжок на дно. Реплей истории приходит одной
+  // пачкой — прыгаем без smooth-анимации через всю ленту.
+  const prevLenRef = useRef(entries.length)
   useEffect(() => {
-    if (windowStart === 0) return
-    const raf = requestAnimationFrame(() => {
-      const el = transcriptRef.current
-      if (el === null || el.scrollHeight >= el.clientHeight * 2) return
-      anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
-      setPrepended((p) => p + RESTORE_CHUNK)
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [windowStart, entries.length])
-
-  // Только что применённый реплей: прыжок на дно без smooth-анимации.
-  const restoreFresh = restored && frozenLen !== null && frozenLen === entries.length
-  useEffect(() => {
+    const batch = entries.length - prevLenRef.current > 5
+    prevLenRef.current = entries.length
     if (!autoScrollRef.current || activeHostId === null) return
     atBottomMap.set(activeHostId, true)
     useChatStore.getState().markRead(activeHostId)
-    bottomRef.current?.scrollIntoView({ behavior: streaming || restoreFresh ? 'auto' : 'smooth' })
-  }, [entries, streaming, activeHostId, restoreFresh])
-
-  const handleScroll = (): void => {
-    const el = transcriptRef.current
-    if (el === null || activeHostId === null) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
-    autoScrollRef.current = atBottom
-    atBottomMap.set(activeHostId, atBottom)
-    if (atBottom) useChatStore.getState().markRead(activeHostId)
-    if (windowStart > 0 && el.scrollTop < 60) {
-      anchorRef.current = { height: el.scrollHeight, top: el.scrollTop }
-      setPrepended((p) => p + RESTORE_CHUNK)
-    }
-  }
+    jumpToBottom()
+    bottomRef.current?.scrollIntoView({ behavior: streaming || batch ? 'auto' : 'smooth' })
+  }, [entries, streaming, activeHostId, jumpToBottom])
 
   if (activeHostId === null || status === null) {
     return (
@@ -507,58 +556,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     }
   }
 
-  /** Редактирование промпта: fork сессии на момент сообщения + новый prompt; лента обрезается. */
-  const submitEdit = async (entry: UserEntry, newText: string): Promise<void> => {
-    if (activeHostId === null || streaming) return
-    const index = entries.findIndex((e) => e.id === entry.id)
-    if (index < 0) return
-    const occurrence = entries.slice(index + 1).filter((e) => e.kind === 'user' && e.text === entry.text).length
-    const result = await window.piwright.editPrompt(activeHostId, entry.text, occurrence, newText)
-    if (!result.ok && result.error !== null) {
-      applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
-      return
-    }
-    useChatStore.getState().truncateFrom(activeHostId, entry.id)
-    addUserMessage(activeHostId, newText)
-  }
-
-  /** Форк сессии после ответа агента в новую сессию (родитель не трогается): точка — следующий
-   *  за ответом промпт; после последнего ответа — клон всей сессии. Новая сессия открывается активной. */
-  const forkFrom = async (entry: TextEntry): Promise<void> => {
-    if (activeHostId === null || streaming) return
-    const index = entries.findIndex((e) => e.id === entry.id)
-    if (index < 0) return
-    const nextUser = entries.slice(index + 1).find((e): e is UserEntry => e.kind === 'user')
-    let userText: string | null = null
-    let occurrence = 0
-    if (nextUser !== undefined) {
-      userText = nextUser.text
-      const userIndex = entries.findIndex((e) => e.id === nextUser.id)
-      occurrence = entries.slice(userIndex + 1).filter((e) => e.kind === 'user' && e.text === nextUser.text).length
-    }
-    const result = await window.piwright.forkSession(activeHostId, userText, occurrence)
-    if (!result.ok || result.hostId === undefined) {
-      if (result.error !== null) {
-        applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
-      }
-      return
-    }
-    const row = useSessionsStore.getState().active.find((r) => r.hostId === activeHostId)
-    if (row !== undefined) {
-      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
-      useTabsStore.getState().activateSession(row.project)
-    }
-    useSessionsStore.getState().setActive(result.hostId)
-  }
-
-  const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
-    setDialogReceipt(activeHostId, dialogId, answer.kind === 'cancelled' ? 'cancelled' : 'answered')
-    const result = await window.piwright.respondDialog(activeHostId, dialogId, answer)
-    if (!result.ok) {
-      setDialogReceipt(activeHostId, dialogId, 'expired')
-    }
-  }
-
   const queuedCount = queue.steering.length + queue.followUp.length
   const turnTicker = streaming && turnStartedAt !== null ? <TurnTimer startedAt={turnStartedAt} /> : null
   const loopReasonText = (reason: string): string =>
@@ -590,12 +587,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const modelKey = status.model
   const selectedModel = status.models.find((m) => `${m.provider}/${m.id}` === modelKey)
   const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
-  const toolsHidden = chat?.toolsHidden ?? false
   const muted = chat?.muted ?? false
-  const windowed = windowStart > 0 && windowStart < entries.length ? entries.slice(windowStart) : entries
-  const visibleEntries = toolsHidden
-    ? windowed.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking')
-    : windowed
   const ctxPercent =
     contextUsage !== null && contextUsage.size > 0 ? Math.min(100, Math.max(0, Math.round((contextUsage.used / contextUsage.size) * 100))) : null
   const fmtTokens = (n: number): string => n.toLocaleString('en-US')
@@ -809,16 +801,19 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       {status.error !== null && <div className="error">{status.error}</div>}
       {queuedCount > 0 && <QueuePanel queue={queue} onRemove={(kind, index) => void removeQueued(kind, index)} onClearAll={() => void clearQueue()} />}
       {todoItems.length > 0 && <TodoPanel items={todoItems} />}
-      <main className="transcript" ref={transcriptRef} onScroll={handleScroll}>
-        {visibleEntries.map((entry) => (
-          <EntryView
-            key={entry.id}
-            entry={entry}
-            onAnswer={(id, answer) => void answerDialog(id, answer)}
-            onEdit={streaming ? undefined : (e, text) => void submitEdit(e, text)}
-            onFork={streaming ? undefined : (e) => void forkFrom(e)}
-          />
+      <main className="transcript" ref={transcriptRef} onScroll={feed.handleScroll}>
+        {feed.topSpacer > 0 && <div className="feed-spacer" style={{ height: feed.topSpacer }} aria-hidden="true" />}
+        {feedItems.slice(feed.range.start, feed.range.end).map((entry) => (
+          <div key={entry.id} className="entry-slot" data-entry-id={entry.id}>
+            <EntryView
+              entry={entry}
+              onAnswer={stableAnswer}
+              onEdit={streaming ? undefined : stableEdit}
+              onFork={streaming ? undefined : stableFork}
+            />
+          </div>
         ))}
+        {feed.bottomSpacer > 0 && <div className="feed-spacer" style={{ height: feed.bottomSpacer }} aria-hidden="true" />}
         {streaming && <div className="cursor">▍</div>}
         <div ref={bottomRef} />
       </main>
