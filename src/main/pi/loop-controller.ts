@@ -426,7 +426,12 @@ export class LoopController {
     state.iteration += 1
     state.spawnTimes.push(Date.now())
     if (state.spawnTimes.length > SHORT_CIRCUIT_CALLS) state.spawnTimes.shift()
-    const created = this.piHost.create(state.project)
+    const parent = this.piHost.get(previousHostId)
+    const parentStatus = parent?.lastStatus()
+    const created = this.piHost.create(state.project, undefined, {
+      model: parentStatus?.model ?? null,
+      thinkingLevel: parentStatus?.thinkingLevel ?? null
+    })
     this.states.delete(previousHostId)
     this.states.set(created.id, state)
     this.onSpawned?.(previousHostId, created.id)

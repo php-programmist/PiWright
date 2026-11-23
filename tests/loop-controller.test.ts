@@ -19,10 +19,12 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
   created: CreatedSession[]
   checks: string[]
   setStatus: (state: string) => void
+  spawnOverrides: ({ model: string | null; thinkingLevel: string | null } | undefined)[]
 } {
   let status = statusState
   const created: CreatedSession[] = []
   const checks: string[] = []
+  const spawnOverrides: ({ model: string | null; thinkingLevel: string | null } | undefined)[] = []
   let n = 0
   const piHost = {
     get: (hostId: string) => {
@@ -32,7 +34,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
           project,
           displayTitle: 'base',
           getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
-          lastStatus: () => ({ state: status }),
+          lastStatus: () => ({ state: status, model: 'anthropic/claude-opus-4', thinkingLevel: 'high' }),
           markCheckTurn: () => {},
           prompt: (text: string) => {
             checks.push(text)
@@ -47,6 +49,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
           project,
           displayTitle: 'base',
           getPendingDialogs: () => [],
+          lastStatus: () => null,
           markCheckTurn: () => {},
           prompt: (text: string) => {
             made.prompts.push(text)
@@ -54,9 +57,10 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
           }
         }
       }
-      return { id: hostId, project, displayTitle: 'base', getPendingDialogs: () => [] }
+      return { id: hostId, project, displayTitle: 'base', getPendingDialogs: () => [], lastStatus: () => null }
     },
-    create: () => {
+    create: (_project: unknown, _sessionFile: unknown, overrides?: { model: string | null; thinkingLevel: string | null }) => {
+      spawnOverrides.push(overrides)
       n += 1
       const session: CreatedSession = { id: `host-${n + 1}`, prompts: [], renames: [] }
       created.push(session)
@@ -77,7 +81,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
       } as unknown as SessionHost
     }
   } as unknown as PiHost
-  return { piHost, created, checks, setStatus: (next) => { status = next } }
+  return { piHost, created, checks, setStatus: (next) => { status = next }, spawnOverrides }
 }
 
 function collector(): { events: Map<string, UiEvent[]>; emit: (hostId: string, event: UiEvent) => void } {
@@ -144,6 +148,16 @@ describe('LoopController (auto-continue with check turn)', () => {
     expect(created).toHaveLength(1)
     expect(created[0].prompts).toEqual(['do the task'])
     expect(loopState(controller, 'host-2')).toMatchObject({ active: true, remaining: 4 })
+  })
+
+  it('spawn copies the parent session model and thinking level', async () => {
+    const { piHost, spawnOverrides } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'do the task', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(spawnOverrides[0]).toEqual({ model: 'anthropic/claude-opus-4', thinkingLevel: 'high' })
   })
 
   it('empty exit condition still honors loop_stop in a work turn', async () => {

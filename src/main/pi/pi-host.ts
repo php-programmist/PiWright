@@ -24,7 +24,8 @@ export class PiHost {
     private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
   ) {}
 
-  create(project: ProjectEntry, sessionFile?: string | null): SessionHost {
+  /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
+  create(project: ProjectEntry, sessionFile?: string | null, overrides?: { model?: string | null; thinkingLevel?: string | null }): SessionHost {
     const seed = this.catalogs.get(project.kind)
     const settings = this.getSettings()
     const listener: SessionHostListener = {
@@ -41,8 +42,8 @@ export class PiHost {
       seedModels: seed?.models,
       seedThinkingLevels: seed?.thinkingLevels,
       // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
-      initialModel: sessionFile == null ? settings.lastModel : null,
-      initialThinkingLevel: sessionFile == null ? settings.lastThinkingLevel : null
+      initialModel: sessionFile == null ? overrides?.model ?? settings.lastModel : null,
+      initialThinkingLevel: sessionFile == null ? overrides?.thinkingLevel ?? settings.lastThinkingLevel : null
     })
     this.hosts.set(host.id, host)
     return host
