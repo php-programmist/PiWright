@@ -132,6 +132,18 @@ describe('terminal store rename + persist', () => {
     vi.unstubAllGlobals()
   })
 
+  it('spawn при reject IPC показывает ошибку и не создаёт вкладку', async () => {
+    const termCreate = vi.fn().mockRejectedValue(new Error('spawn ENOENT'))
+    vi.stubGlobal('window', { piwright: { termCreate, setSettings: vi.fn().mockResolvedValue(baseSettings) } })
+    seedState(baseSettings)
+
+    const id = await useTerminalStore.getState().spawn(project)
+    expect(id).toBeNull()
+    expect(useTerminalStore.getState().error).toBe('spawn ENOENT')
+    expect(useTerminalStore.getState().projects[key]).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+
   it('close убирает вкладку из снимка, пустой проект — ключ удаляется', async () => {
     const termClose = vi.fn().mockResolvedValue({ ok: true, error: null })
     const savedTabs = { [key]: { tabs: [{ profileId: 'powershell' as const }], activeIndex: 0 } }

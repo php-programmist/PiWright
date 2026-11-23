@@ -13,6 +13,7 @@ import { splitWorktreeHostDir } from '../../../shared/worktree'
 export function useCenterProject(): ProjectEntry | null {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const active = useSessionsStore((s) => s.active)
+  const projects = useSessionsStore((s) => s.projects)
   const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
   const entry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
   const sessionRow = active.find((r) => r.hostId === activeHostId) ?? null
@@ -21,7 +22,14 @@ export function useCenterProject(): ProjectEntry | null {
   const tab = entry !== undefined ? entry.tabs.find((t) => tabId(t) === entry.activeId) : undefined
   // Fallback — только проект активного набора вкладок: чужая активная сессия (другого
   // проекта) сюда попадать не должна, иначе панели центра показывают не тот проект.
-  return tab?.project ?? (activeProjectKey !== null ? projectForKey(activeProjectKey) : null)
+  // Реальный entry из списка проектов — у него исходный dir (UNC для WSL); projectForKey
+  // восстанавливает нормализованный dir (POSIX), с которым падает спавн процессов.
+  if (activeProjectKey === null) return null
+  const real =
+    projects.find((p) => projectKey(p.project) === activeProjectKey)?.project ??
+    active.find((r) => parentTabKey(r.project) === activeProjectKey)?.project ??
+    null
+  return tab?.project ?? real ?? projectForKey(activeProjectKey)
 }
 
 export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'transcript'

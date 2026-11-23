@@ -92,7 +92,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set({ height: Math.min(Math.max(height, TERMINAL_DOCK_MIN), window.innerHeight - TERMINAL_DOCK_MAX_RESERVE) }),
 
   spawn: async (project, profileId, opts) => {
-    const result = await window.piwright.termCreate(project, profileId ?? null)
+    let result: Awaited<ReturnType<typeof window.piwright.termCreate>>
+    try {
+      result = await window.piwright.termCreate(project, profileId ?? null)
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) })
+      return null
+    }
     if (!result.ok || result.terminal === null) {
       set({ error: result.error })
       return null
