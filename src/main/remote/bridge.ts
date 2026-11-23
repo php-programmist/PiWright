@@ -44,6 +44,10 @@ import type { RemoteSocket } from './ws'
 const SNAPSHOT_ATTEMPTS = 5
 const SNAPSHOT_RETRY_MS = 700
 const EXPIRY_GRACE_MS = 250
+/** Старт по «Порт занят» повторяется с экспоненциальным backoff (dev-инстанс рядом с
+ *  установленным PiWright, который держит remote.port). */
+const START_RETRY_BASE_MS = 1000
+const START_RETRY_MAX_MS = 30_000
 
 interface PendingUi {
   remote: RemoteSession
@@ -92,6 +96,10 @@ export class RemoteBridge {
   private readonly pendingUi = new Map<string, PendingUi>()
   /** Состояние страницы телефона по сокету: видимость и «на дне ленты». */
   private readonly socketView = new Map<number, { visible: boolean; atBottom: boolean }>()
+  /** Код последней неудачи старта (EADDRINUSE, EACCES) — показывается в настройках. */
+  private startError: string | null = null
+  private retryTimer: NodeJS.Timeout | null = null
+  private retryDelayMs = 0
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -153,14 +161,34 @@ export class RemoteBridge {
     const remote = settings.notifications.remote
     this.auth.setStaticPin(isValidStaticPin(remote.staticPin) ? remote.staticPin : null)
     if (!remote.enabled) {
-      this.server?.stop()
-      this.server = null
+      this.stopServer()
       return
     }
     if (this.server !== null && this.server.port === remote.port) return
+    this.stopServer()
+    void this.startServer(remote.port)
+  }
+
+  /** Немедленная повторная попытка старта (кнопка «Повторить» в настройках): сбрасывает backoff.
+   *  false — remote выключен или сервер уже слушает нужный порт. */
+  retryNow(): boolean {
+    const remote = this.getSettings().notifications.remote
+    if (!remote.enabled) return false
+    if (this.server !== null && this.server.port === remote.port) return false
+    this.stopServer()
+    void this.startServer(remote.port)
+    return true
+  }
+
+  private stopServer(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer)
+      this.retryTimer = null
+    }
+    this.startError = null
+    this.retryDelayMs = 0
     this.server?.stop()
     this.server = null
-    void this.startServer(remote.port)
   }
 
   private async startServer(port: number): Promise<void> {
@@ -169,12 +197,38 @@ export class RemoteBridge {
       onText: (socket, text) => this.onText(socket, text),
       onClose: (socket) => this.onClose(socket)
     })
-    if (!(await created.start())) return
+    const result = await created.start()
+    const live = this.getSettings().notifications.remote
+    if (!live.enabled || live.port !== port) {
+      // настройки передёрнули, пока мы биндились, — не возвращать сервер к жизни
+      created.stop()
+      return
+    }
+    if (!result.ok) {
+      this.startError = result.error
+      this.scheduleStartRetry(port)
+      return
+    }
+    this.startError = null
+    this.retryDelayMs = 0
     this.server = created
   }
 
+  private scheduleStartRetry(port: number): void {
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer)
+    const delay =
+      this.retryDelayMs === 0 ? START_RETRY_BASE_MS : Math.min(this.retryDelayMs * 2, START_RETRY_MAX_MS)
+    this.retryDelayMs = delay
+    const timer = setTimeout(() => {
+      this.retryTimer = null
+      void this.startServer(port)
+    }, delay)
+    timer.unref()
+    this.retryTimer = timer
+  }
+
   /** Адрес, порт и PIN для показа в настройках. */
-  connectionInfo(): { running: boolean; port: number; pin: string; lanAddresses: string[] } {
+  connectionInfo(): { running: boolean; port: number; pin: string; lanAddresses: string[]; error: string | null } {
     const best = pickLanAddress(lanCandidates())
     const all = lanCandidates().map(([, address]) => address)
     const ordered = best !== null ? [best, ...all.filter((a) => a !== best)] : all
@@ -182,7 +236,8 @@ export class RemoteBridge {
       running: this.server !== null,
       port: this.server?.port ?? this.getSettings().notifications.remote.port,
       pin: this.auth.groupedPin,
-      lanAddresses: ordered
+      lanAddresses: ordered,
+      error: this.server === null ? this.startError : null
     }
   }
 

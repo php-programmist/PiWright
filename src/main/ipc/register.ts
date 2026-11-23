@@ -57,6 +57,7 @@ import {
   MODELS_REVEAL_CHANNEL,
   MODELS_SAVE_CHANNEL,
   REMOTE_CHECK_PORT_CHANNEL,
+  REMOTE_RETRY_CHANNEL,
   REMOTE_SHARE_SESSION_CHANNEL,
   REMOTE_STATUS_CHANNEL,
   SESSION_ABORT_CHANNEL,
@@ -867,7 +868,12 @@ export function registerIpc(
     return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
   })
 
-  ipcMain.handle(REMOTE_STATUS_CHANNEL, () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [] })
+  ipcMain.handle(
+    REMOTE_STATUS_CHANNEL,
+    () => notifications?.bridge.connectionInfo() ?? { running: false, port: 0, pin: '', lanAddresses: [], error: null }
+  )
+
+  ipcMain.handle(REMOTE_RETRY_CHANNEL, () => notifications?.bridge.retryNow() ?? false)
 
   ipcMain.handle(REMOTE_CHECK_PORT_CHANNEL, async (_event, port: unknown) => {
     const p = typeof port === 'number' && Number.isFinite(port) ? Math.round(port) : NaN

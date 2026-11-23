@@ -522,6 +522,8 @@ export interface RemoteStatus {
   port: number
   pin: string
   lanAddresses: string[]
+  /** Код последней неудачи старта (EADDRINUSE, EACCES), null — сервер слушает или попыток не было. */
+  error: string | null
 }
 
 /** Скоуп mcp.json: юзерский каталог агента бэкенда или `.pi/mcp.json` проекта. */
@@ -679,6 +681,8 @@ export interface PiWrightApi {
   remoteStatus(): Promise<RemoteStatus>
   /** Занят ли TCP-порт на 0.0.0.0 (как его биндит remote-мост). */
   remoteCheckPort(port: number): Promise<{ busy: boolean }>
+  /** Немедленная повторная попытка поднять remote-сервер (кнопка «Повторить»); false — нечего повторять. */
+  remoteRetry(): Promise<boolean>
   modelsList(backend: BackendMode): Promise<ModelsListResult>
   modelsSave(backend: BackendMode, doc: unknown): Promise<ModelsOpResult>
   modelsReveal(backend: BackendMode): Promise<ModelsOpResult>
@@ -786,6 +790,7 @@ export const TELEGRAM_TEST_CHANNEL = 'telegram:test'
 export const TELEGRAM_TOGGLE_SESSION_CHANNEL = 'telegram:toggle-session'
 export const REMOTE_STATUS_CHANNEL = 'remote:status'
 export const REMOTE_CHECK_PORT_CHANNEL = 'remote:check-port'
+export const REMOTE_RETRY_CHANNEL = 'remote:retry'
 export const REMOTE_SHARE_SESSION_CHANNEL = 'remote:share-session'
 export const MODELS_LIST_CHANNEL = 'models:list'
 export const MODELS_SAVE_CHANNEL = 'models:save'

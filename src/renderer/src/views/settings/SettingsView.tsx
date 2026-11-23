@@ -2,9 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { ModelsTab } from './ModelsTab'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
+import type { TFunc } from '../../lib/i18n'
 import type { NotificationSounds, Settings, Theme, UiLanguage } from '../../../../shared/ipc-contracts'
 
 const AUTOSAVE_DEBOUNCE_MS = 500
+
+/** Опрос статуса remote-моста: первый — после автосейва, дальше — пока сервер не поднялся. */
+const REMOTE_STATUS_FIRST_MS = 1200
+const REMOTE_STATUS_POLL_MS = 3000
+const REMOTE_STATUS_RETRY_MS = 300
 
 const CHAT_FONT_SIZES = [12, 13, 14, 16, 18]
 
@@ -359,28 +365,38 @@ function RemoteStaticPinField({
   )
 }
 
-/** Статус remote-моста: адрес+PIN, ошибка занятого порта. */
+/** Статус remote-моста: адрес+PIN, ошибка старта с кнопкой «Повторить». */
 function RemoteStatus({ draft }: { draft: Settings }): React.JSX.Element {
   const remotePrefs = draft.notifications.remote
   const [remote, setRemote] = useState<Awaited<ReturnType<typeof window.piwright.remoteStatus>> | null>(null)
-  const [portBusy, setPortBusy] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   const t = useT()
 
-  // Статус моста и ошибка занятого порта — после автосейва (500 мс) и попытки старта сервера.
+  // Первый опрос — после автосейва (500 мс) и попытки старта сервера; пока сервер не поднялся,
+  // опрашиваем дальше: авто-ретрай старта с backoff поднимает его сам, без ре-тумблера.
   useEffect(() => {
     if (!remotePrefs.enabled) return
-    const timer = setTimeout(async () => {
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const poll = async (): Promise<void> => {
       const status = await window.piwright.remoteStatus()
+      if (cancelled) return
       setRemote(status)
-      if (!status.running) {
-        const probe = await window.piwright.remoteCheckPort(remotePrefs.port)
-        setPortBusy(probe.busy)
-      } else {
-        setPortBusy(false)
-      }
-    }, 1200)
-    return () => clearTimeout(timer)
-  }, [remotePrefs.enabled, remotePrefs.port])
+      if (!status.running) timer = setTimeout(() => void poll(), REMOTE_STATUS_POLL_MS)
+    }
+    timer = setTimeout(() => void poll(), attempt === 0 ? REMOTE_STATUS_FIRST_MS : REMOTE_STATUS_RETRY_MS)
+    return () => {
+      cancelled = true
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [remotePrefs.enabled, remotePrefs.port, attempt])
+
+  const retry = async (): Promise<void> => {
+    await window.piwright.remoteRetry()
+    setAttempt((value) => value + 1)
+  }
+
+  const startError = remotePrefs.enabled && remote !== null && !remote.running ? remote.error : null
 
   return (
     <>
@@ -390,11 +406,22 @@ function RemoteStatus({ draft }: { draft: Settings }): React.JSX.Element {
           {remote.pin}
         </div>
       )}
-      {remotePrefs.enabled && !remote?.running && portBusy && (
-        <div className="settings-error">{t('Port {port} is busy — pick a free one', { port: remotePrefs.port })}</div>
+      {startError !== null && (
+        <div className="settings-error">
+          {remoteStartErrorText(startError, remotePrefs.port, t)}
+          <button className="ghost" onClick={() => void retry()}>
+            {t('Retry')}
+          </button>
+        </div>
       )}
     </>
   )
+}
+
+function remoteStartErrorText(code: string, port: number, t: TFunc): string {
+  if (code === 'EADDRINUSE') return t('Port {port} is busy — retrying automatically', { port })
+  if (code === 'EACCES') return t('No permission to listen on port {port}', { port })
+  return t('Remote server did not start on port {port}: {error}', { port, error: code })
 }
 
 function NotificationsTab({

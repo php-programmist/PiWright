@@ -31,6 +31,12 @@ export interface LanCandidate {
   address: string
 }
 
+/** Результат попытки поднять сервер: код ошибки node (EADDRINUSE, EACCES) либо её текст. */
+export interface RemoteStartResult {
+  ok: boolean
+  error: string | null
+}
+
 /** IPv4 site-local адреса хоста — кандидаты URL для телефона. */
 export function lanCandidates(): [string, string][] {
   const result: [string, string][] = []
@@ -154,7 +160,7 @@ export class RemoteWebServer {
     private readonly listener: RemoteWebServerListener
   ) {}
 
-  async start(): Promise<boolean> {
+  async start(): Promise<RemoteStartResult> {
     const server = createServer((req, res) => {
       void this.handleRequest(req, res).catch(() => {
         try {
@@ -166,11 +172,11 @@ export class RemoteWebServer {
     })
     server.on('upgrade', (req, socket) => this.handleUpgrade(req, socket as NetSocket))
     server.on('clientError', (_err, socket) => socket.destroy())
-    return await new Promise<boolean>((resolve) => {
+    return await new Promise<RemoteStartResult>((resolve) => {
       const once = (error: unknown): void => {
         server.removeListener('error', once)
-        resolve(false)
-        void error
+        const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined
+        resolve({ ok: false, error: code ?? String(error) })
       }
       server.once('error', once)
       server.listen(this.requestedPort, '0.0.0.0', () => {
@@ -179,7 +185,7 @@ export class RemoteWebServer {
         this.port = address.port
         this.server = server
         this.stopped = false
-        resolve(true)
+        resolve({ ok: true, error: null })
       })
     })
   }
