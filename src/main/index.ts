@@ -118,6 +118,7 @@ app.whenReady().then(() => {
       }
     }
   )
+  const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
     if (event.type === 'loop_state') {
@@ -131,7 +132,7 @@ app.whenReady().then(() => {
     if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
     const createdStatus = piHost?.get(createdHostId)?.lastStatus()
     if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
-  })
+  }, undefined, undefined, (project) => git.worktreeMergeBase(project))
   const staticPin = settings.get().notifications.remote.staticPin
   const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)

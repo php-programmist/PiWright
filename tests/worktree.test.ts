@@ -1,7 +1,7 @@
 /** Чистые функции worktree (shared/worktree) + GitService.worktreeCreate/worktreeRemove
  *  против реального временного репозитория. */
 import { execSync } from 'node:child_process'
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -139,5 +139,36 @@ describe('GitService worktrees against a real repository', () => {
     expect(created.ok).toBe(true)
     const clean = await git.worktreeRemove(project, 'feat', false)
     expect(clean.ok).toBe(true)
+  })
+
+  it('mergeBase merges the root checkout branch into the worktree branch', async () => {
+    const created = await git.worktreeCreate(project, 'feat')
+    expect(created.ok).toBe(true)
+    writeFileSync(join(dir, 'base.txt'), 'base')
+    execSync('git add .', { cwd: dir, stdio: 'pipe' })
+    execSync('git commit -q -m base-change', { cwd: dir, stdio: 'pipe' })
+    const synced = await git.worktreeMergeBase({ kind: 'native', dir: created.dir! })
+    expect(synced).toEqual({ ok: true, error: null })
+    expect(existsSync(join(dir, '.pi', 'worktrees', 'feat', 'base.txt'))).toBe(true)
+  })
+
+  it('mergeBase is a no-op ok for a non-worktree project', async () => {
+    const synced = await git.worktreeMergeBase(project)
+    expect(synced).toEqual({ ok: true, error: null })
+  })
+
+  it('mergeBase aborts on conflict and leaves the worktree clean', async () => {
+    const wtDir = join(dir, '.pi', 'worktrees', 'feat')
+    writeFileSync(join(wtDir, 'conflict.txt'), 'from worktree')
+    execSync('git add .', { cwd: wtDir, stdio: 'pipe' })
+    execSync('git commit -q -m wt-change', { cwd: wtDir, stdio: 'pipe' })
+    writeFileSync(join(dir, 'conflict.txt'), 'from base')
+    execSync('git add .', { cwd: dir, stdio: 'pipe' })
+    execSync('git commit -q -m base-change-2', { cwd: dir, stdio: 'pipe' })
+    const synced = await git.worktreeMergeBase({ kind: 'native', dir: wtDir })
+    expect(synced.ok).toBe(false)
+    expect(synced.error).toBeTruthy()
+    expect(readFileSync(join(wtDir, 'conflict.txt'), 'utf8')).toBe('from worktree')
+    expect(execSync('git status --porcelain', { cwd: wtDir, stdio: 'pipe' }).toString().trim()).toBe('')
   })
 })

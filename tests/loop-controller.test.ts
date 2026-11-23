@@ -14,24 +14,27 @@ interface CreatedSession {
 }
 
 /** Р¤РµР№РєРѕРІС‹Р№ PiHost: create() РІС‹РґР°С‘С‚ СЃРµСЃСЃРёРё host-2, host-3вЂ¦; host-1 СѓРјРµРµС‚ РїСЂРёРЅРёРјР°С‚СЊ check-РїСЂРѕРјРїС‚С‹. */
-function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
+function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle', projectOverride?: ProjectEntry): {
   piHost: PiHost
   created: CreatedSession[]
   checks: string[]
   setStatus: (state: string) => void
   spawnOverrides: ({ model: string | null; thinkingLevel: string | null } | undefined)[]
+  createProjects: unknown[]
 } {
   let status = statusState
   const created: CreatedSession[] = []
   const checks: string[] = []
   const spawnOverrides: ({ model: string | null; thinkingLevel: string | null } | undefined)[] = []
+  const createProjects: unknown[] = []
+  const proj = projectOverride ?? project
   let n = 0
   const piHost = {
     get: (hostId: string) => {
       if (hostId === 'host-1') {
         return {
           id: hostId,
-          project,
+          project: proj,
           displayTitle: 'base',
           getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
           lastStatus: () => ({ state: status, model: 'anthropic/claude-opus-4', thinkingLevel: 'high' }),
@@ -46,7 +49,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
       if (made !== undefined) {
         return {
           id: hostId,
-          project,
+          project: proj,
           displayTitle: 'base',
           getPendingDialogs: () => [],
           lastStatus: () => null,
@@ -57,16 +60,17 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
           }
         }
       }
-      return { id: hostId, project, displayTitle: 'base', getPendingDialogs: () => [], lastStatus: () => null }
+      return { id: hostId, project: proj, displayTitle: 'base', getPendingDialogs: () => [], lastStatus: () => null }
     },
     create: (_project: unknown, _sessionFile: unknown, overrides?: { model: string | null; thinkingLevel: string | null }) => {
+      createProjects.push(_project)
       spawnOverrides.push(overrides)
       n += 1
       const session: CreatedSession = { id: `host-${n + 1}`, prompts: [], renames: [] }
       created.push(session)
       return {
         id: session.id,
-        project,
+        project: proj,
         displayTitle: 'base',
         getPendingDialogs: () => [],
         markCheckTurn: () => {},
@@ -81,7 +85,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle'): {
       } as unknown as SessionHost
     }
   } as unknown as PiHost
-  return { piHost, created, checks, setStatus: (next) => { status = next }, spawnOverrides }
+  return { piHost, created, checks, setStatus: (next) => { status = next }, spawnOverrides, createProjects }
 }
 
 function collector(): { events: Map<string, UiEvent[]>; emit: (hostId: string, event: UiEvent) => void } {
@@ -516,5 +520,84 @@ describe('LoopController (auto-continue with check turn)', () => {
     expect(loopState(controller, 'host-9')).toMatchObject({ active: false, reason: 'user' })
     const host1States = events.get('host-1')?.filter((e) => e.type === 'loop_state') ?? []
     expect(host1States.at(-1)).toMatchObject({ info: { active: false, reason: 'user' } })
+  })
+})
+
+describe('LoopController worktree sessions (branch sync + prompt notice)', () => {
+  const wtProject: ProjectEntry = { kind: 'native', dir: 'D:\\Work\\api\\.pi\\worktrees\\glm' }
+
+  it('spawn in a worktree session syncs the branch and prefixes the prompt with the worktree notice', async () => {
+    const { piHost, created, createProjects } = fakePiHost([], 'idle', wtProject)
+    const syncs: unknown[] = []
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, async (p) => {
+      syncs.push(p)
+      return { ok: true, error: null }
+    })
+    controller.start('host-1', 'do the task', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(syncs).toEqual([wtProject])
+    expect(createProjects).toEqual([wtProject])
+    expect(created).toHaveLength(1)
+    const prompt = created[0].prompts[0]
+    expect(prompt).toContain('worktree «glm»')
+    expect(prompt).toContain('worktree-glm')
+    expect(prompt.endsWith('do the task')).toBe(true)
+    expect(prompt.indexOf('worktree')).toBeLessThan(prompt.indexOf('do the task'))
+  })
+
+  it('non-worktree session spawns without sync and without the notice', async () => {
+    const { piHost, created } = fakePiHost()
+    let syncCalls = 0
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, async () => {
+      syncCalls += 1
+      return { ok: true, error: null }
+    })
+    controller.start('host-1', 'do the task', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(syncCalls).toBe(0)
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts).toEqual(['do the task'])
+  })
+
+  it('failed sync still spawns the iteration and emits a notify event', async () => {
+    const { piHost, created } = fakePiHost([], 'idle', wtProject)
+    const { events, emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, async () => ({
+      ok: false,
+      error: 'conflict'
+    }))
+    controller.start('host-1', 'do the task', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts[0].endsWith('do the task')).toBe(true)
+    const notifies = (events.get('host-2') ?? []).filter((e) => e.type === 'notify')
+    expect(notifies).toHaveLength(1)
+    expect((notifies[0] as { message: string }).message).toContain('sync failed')
+    expect(loopState(controller, 'host-2')).toMatchObject({ active: true })
+  })
+
+  it('stop during the sync cancels the spawn', async () => {
+    const { piHost, created } = fakePiHost([], 'idle', wtProject)
+    const { emit } = collector()
+    const holder: { release: (() => void) | null } = { release: null }
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, () => {
+      return new Promise((resolve) => {
+        holder.release = () => resolve({ ok: true, error: null })
+      })
+    })
+    controller.start('host-1', 'p', 5, '')
+    for (const m of turnWithTool('host-1')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(0)
+    controller.stop('host-1')
+    holder.release?.()
+    await flush()
+    expect(created).toHaveLength(0)
+    expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'user' })
   })
 })

@@ -58,6 +58,12 @@ function errorOf(result: ExecResult, args: string[]): string {
 
 const OK: GitOpResult = { ok: true, error: null }
 
+/** Результат синка worktree-ветки с базовой (worktreeMergeBase). */
+export interface WorktreeSyncResult {
+  ok: boolean
+  error: string | null
+}
+
 export class GitService {
   constructor(private readonly getSettings: () => Settings) {}
 
@@ -403,6 +409,24 @@ export class GitService {
     if (out.code === 0) return { ok: true, error: null, uncommitted: false }
     const message = out.stderr.trim() || out.stdout.trim() || `git worktree remove failed (exit ${out.code})`
     return { ok: false, error: message, uncommitted: isUncommittedChangesError(message) }
+  }
+
+  /** Синк worktree-ветки с базовой перед новой итерацией петли: merge ветки, которая checkout
+   *  в корневом репо, в worktree-<name>. Без синка агент итерации видит устаревший код и может
+   *  выйти из worktree (создать свой). Конфликт/отказ → merge --abort, ok:false — вызыватель
+   *  спавнит итерацию как есть и показывает уведомление. */
+  async worktreeMergeBase(project: ProjectEntry): Promise<WorktreeSyncResult> {
+    const wt = splitWorktreeHostDir(project.dir)
+    if (wt === null) return { ok: true, error: null }
+    const baseOut = await this.run(project, ['branch', '--show-current'], GIT_TIMEOUT_MS, wt.root)
+    const base = baseOut.stdout.trim()
+    if (baseOut.code !== 0) return { ok: false, error: errorOf(baseOut, ['branch']) }
+    if (base.length === 0) return { ok: false, error: 'Base branch not found (detached HEAD in the root checkout?)' }
+    const merge = await this.run(project, ['merge', '--no-edit', base])
+    if (merge.code === 0) return { ok: true, error: null }
+    // Конфликт оставляет merge в процессе — откатываем, чтобы не оставить поломанное дерево.
+    await this.run(project, ['merge', '--abort'])
+    return { ok: false, error: errorOf(merge, ['merge']) }
   }
 
   /** Сообщение коммита: `git diff --staged` всех репо со staged-файлами → промпт → одноразовый pi

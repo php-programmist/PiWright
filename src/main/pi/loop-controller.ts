@@ -5,14 +5,21 @@
  *  не отправляется, рабочая итерация сразу продолжается спавном новой сессии. Рабочий ход
  *  без инструментов = стоп. Ход с ожидающим
  *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
+ *  Спавн в worktree-сессии: перед create ветка worktree синкается merge'ем с базовой (ветка
+ *  корневого checkout'а), а промпт итерации получает префикс «ты в worktree …» — без этого
+ *  агент с чистым контекстом видит устаревший код и создаёт свой worktree.
  *  SessionHost откладывает turn_end рабочего хода при живых субагентах — первым turn_end после
  *  них приходит ход-нудж субагента, он и разрешает рабочий ход.
  *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие,
  *  watchdog на ход, который не разрешился ни по одному из путей. */
 import type { LoopInfo, LoopStopReason, UiEvent } from '../../shared/agent-events'
 import type { PiEventMessage, ProjectEntry } from '../../shared/ipc-contracts'
+import { splitWorktreeHostDir, worktreeBranchFor } from '../../shared/worktree'
 import type { PiHost } from './pi-host'
 import { LOOP_STOP_TOOL_NAME } from './loop-stop-extension'
+
+/** Синк worktree-ветки с базовой перед спавном итерации (GitService.worktreeMergeBase). */
+export type LoopWorktreeSync = (project: ProjectEntry) => Promise<{ ok: boolean; error: string | null }>
 
 const SHORT_CIRCUIT_CALLS = 3
 const SHORT_CIRCUIT_GAP_MS = 10_000
@@ -74,7 +81,9 @@ export class LoopController {
     /** Грейс-пауза перед check-промптом (переопределяется в тестах). */
     private readonly graceMs: number = SUBAGENT_GRACE_MS,
     /** Пауза watchdog перед форс-разрешением хода (переопределяется в тестах). */
-    private readonly resolveWatchdogMs: number = TURN_RESOLVE_WATCHDOG_MS
+    private readonly resolveWatchdogMs: number = TURN_RESOLVE_WATCHDOG_MS,
+    /** Синк worktree-ветки перед спавном итерации; undefined — спавн без синка. */
+    private readonly syncWorktree?: LoopWorktreeSync
   ) {}
 
   start(hostId: string, prompt: string, maxIterations: number, exitCondition: string): LoopInfo | null {
@@ -426,6 +435,25 @@ export class LoopController {
     state.iteration += 1
     state.spawnTimes.push(Date.now())
     if (state.spawnTimes.length > SHORT_CIRCUIT_CALLS) state.spawnTimes.shift()
+    this.emit(previousHostId, {
+      type: 'loop_state',
+      info: { active: false, remaining: state.remaining, reason: null },
+      previousHostId: null
+    })
+    void this.spawnCreated(previousHostId, state)
+  }
+
+  /** Спавн итерации: в worktree-сессии перед create синк ветки с базовой (merge) — иначе агент
+   *  итерации видит устаревший код и выходит из worktree. Стоп/закрытие во время синка —
+   *  спавн отменяется. Не-удавшийся синк не блокирует итерацию: спавн как есть + уведомление. */
+  private async spawnCreated(previousHostId: string, state: LoopState): Promise<void> {
+    const wt = splitWorktreeHostDir(state.project.dir)
+    let syncError: string | null = null
+    if (wt !== null && this.syncWorktree !== undefined) {
+      const synced = await this.syncWorktree(state.project)
+      if (!synced.ok) syncError = synced.error
+    }
+    if (this.states.get(previousHostId) !== state || !state.active) return
     const parent = this.piHost.get(previousHostId)
     const parentStatus = parent?.lastStatus()
     const created = this.piHost.create(state.project, undefined, {
@@ -435,16 +463,19 @@ export class LoopController {
     this.states.delete(previousHostId)
     this.states.set(created.id, state)
     this.onSpawned?.(previousHostId, created.id)
-    this.emit(previousHostId, {
-      type: 'loop_state',
-      info: { active: false, remaining: state.remaining, reason: null },
-      previousHostId: null
-    })
     this.emitState(created.id, state, previousHostId)
+    if (syncError !== null) {
+      this.emit(created.id, {
+        type: 'notify',
+        message: `loop: worktree branch sync failed: ${syncError}`,
+        isError: true
+      })
+    }
+    const promptText = wt !== null ? worktreePromptNotice(wt.name) + state.prompt : state.prompt
     void created
       .rename(`${state.baseName} (${state.iteration})`)
       .catch(() => {})
-      .then(() => created.prompt(state.prompt))
+      .then(() => created.prompt(promptText))
       .then((result) => {
         if (!result.ok) {
           this.states.delete(created.id)
@@ -471,6 +502,12 @@ export class LoopController {
 /** Check-промпт: агент только что закончил рабочий ход — контекст у него есть. */
 function checkPrompt(exitCondition: string): string {
   return `Проверь условие выхода из петли: «${exitCondition}». Если оно ВЫПОЛНЕНО — вызови инструмент loop_stop и заверши ход. Если НЕ выполнено — ответь одним коротким предложением, что условие пока не выполнено, БЕЗ вызова каких-либо инструментов.`
+}
+
+/** Префикс промпта итерации в worktree-сессии: агент стартует с чистым контекстом и не знает,
+ *  что cwd — управляемый PiWright worktree; без подсказки он может создать свой. */
+function worktreePromptNotice(name: string): string {
+  return `Ты в git worktree «${name}» (ветка ${worktreeBranchFor(name)}) — его создала PiWright для этой серии сессий. Работай в нём: изменения и коммиты — в эту ветку; новые worktree не создавай, ветки не переключай.\n\n`
 }
 
 function clampIterations(value: number): number {
