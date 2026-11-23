@@ -3907,15 +3907,41 @@ body {
 }
 
 .board-card {
+  position: relative;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
 }
 
+.board-card-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.board-card:hover .board-card-btn {
+  opacity: 1;
+}
+
+.board-card-btn:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
 .board-card-title {
   color: var(--text);
   word-break: break-word;
+  padding-right: 18px;
 }
 
 .board-card-badges {

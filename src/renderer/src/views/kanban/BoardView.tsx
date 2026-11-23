@@ -161,6 +161,8 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
   const [columnMenu, setColumnMenu] = useState<{ columnId: string; x: number; y: number } | null>(null)
   const columnMenuRef = useRef<HTMLDivElement | null>(null)
+  const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(null)
+  const cardMenuRef = useRef<HTMLDivElement | null>(null)
   const boardId = tab.boardId
 
   useEffect(() => {
@@ -193,6 +195,25 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       document.removeEventListener('keydown', onKey)
     }
   }, [columnMenu])
+
+  useEffect(() => {
+    if (cardMenu === null) return
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement
+      if (cardMenuRef.current !== null && !cardMenuRef.current.contains(target) && target.closest('.board-card-btn') === null) {
+        setCardMenu(null)
+      }
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setCardMenu(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [cardMenu])
 
   const reload = (): void => {
     void window.piwright.kanbanBoardGet(tab.project, boardId ?? '').then((result) => {
@@ -317,6 +338,35 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     setColumnMenu({ columnId, x: Math.min(x, window.innerWidth - 210), y: Math.min(y, window.innerHeight - 320) })
   }
 
+  const openCardMenu = (cardId: string, x: number, y: number): void => {
+    setCardMenu({ cardId, x: Math.min(x, window.innerWidth - 210), y: Math.min(y, window.innerHeight - 320) })
+  }
+
+  const moveCardToEdge = (card: KanbanCard, index: number | undefined): void => {
+    setCardMenu(null)
+    setBoard(applyCardMove(board, { id: card.id, columnId: card.columnId, index }))
+    void window.piwright.kanbanCardMove(tab.project, boardId ?? '', { id: card.id, columnId: card.columnId, index }).then(apply)
+  }
+
+  const deleteCard = async (card: KanbanCard): Promise<void> => {
+    const ok = await confirmDialog({
+      message: t('Delete card "{title}"?', { title: card.title }),
+      confirmLabel: t('Delete'),
+      danger: true,
+    })
+    if (!ok) return
+    apply(await window.piwright.kanbanCardDelete(tab.project, board.id, card.id))
+  }
+
+  const startCardSession = async (card: KanbanCard): Promise<void> => {
+    setCardMenu(null)
+    const ref = await window.piwright.newSession(tab.project)
+    draftMap.set(ref.hostId, t('Kanban. Take the task with ID {id} on the {board} board and complete it', { id: card.id, board: board.name }))
+    useTabsStore.getState().setActiveProject(parentTabKey(tab.project))
+    useTabsStore.getState().activateSession(tab.project)
+    useSessionsStore.getState().setActive(ref.hostId)
+  }
+
   const startLoopSession = async (column: KanbanColumn, mode: 'while' | 'count'): Promise<void> => {
     setColumnMenu(null)
     const ref = await window.piwright.newSession(tab.project)
@@ -348,7 +398,27 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
           onDragStart={(e) => cardDragStart(e, card)}
           onDragEnd={cardDragEnd}
           onDoubleClick={() => setModalCardId(card.id)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            openCardMenu(card.id, e.clientX, e.clientY)
+          }}
         >
+          <button
+            className="board-card-btn"
+            title={t('Card menu')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              if (cardMenu?.cardId === card.id) {
+                setCardMenu(null)
+                return
+              }
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              openCardMenu(card.id, rect.right, rect.bottom + 2)
+            }}
+          >
+            ⋯
+          </button>
           <div className="board-card-title">{card.title}</div>
           {(card.comments.length > 0 || card.images.length > 0) && (
             <div className="board-card-badges">
@@ -548,6 +618,54 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
                 onClick={() => {
                   setColumnMenu(null)
                   void deleteColumn(column.id, column.name)
+                }}
+              >
+                {t('Delete')}
+              </button>
+            </div>
+          )
+        })()}
+      {cardMenu !== null &&
+        (() => {
+          const card = cardById(cardMenu.cardId)
+          if (card === undefined) return null
+          const inColumn = board.cards.filter((item) => item.columnId === card.columnId).sort((a, b) => a.order - b.order)
+          const position = inColumn.findIndex((item) => item.id === card.id)
+          return (
+            <div className="files-menu" style={{ left: cardMenu.x, top: cardMenu.y }} ref={cardMenuRef}>
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setCardMenu(null)
+                  setModalCardId(card.id)
+                }}
+              >
+                {t('Edit')}
+              </button>
+              <button className="project-menu-item" onClick={() => void startCardSession(card)}>
+                {t('Run in new session')}
+              </button>
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item"
+                disabled={position === 0}
+                onClick={() => moveCardToEdge(card, 0)}
+              >
+                {t('Move to top')}
+              </button>
+              <button
+                className="project-menu-item"
+                disabled={position === inColumn.length - 1}
+                onClick={() => moveCardToEdge(card, undefined)}
+              >
+                {t('Move to bottom')}
+              </button>
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item danger"
+                onClick={() => {
+                  setCardMenu(null)
+                  void deleteCard(card)
                 }}
               >
                 {t('Delete')}
