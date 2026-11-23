@@ -596,6 +596,15 @@ export class KanbanConflictError extends Error {
   }
 }
 
+/** UI прислал устаревший rev снимка: мутация с полными заменами полей (описание, картинки)
+ *  затёрла бы правки агента. Не ретраится — доску нужно перечитать. */
+export class KanbanStaleRevError extends Error {
+  constructor(expected: number, actual: number) {
+    super(`Board has changed (snapshot rev ${expected}, actual ${actual}) — refresh the board and retry`)
+    this.name = 'KanbanStaleRevError'
+  }
+}
+
 export const KANBAN_CAS_MAX_ATTEMPTS = 5
 
 function casDelay(attempt: number): Promise<void> {

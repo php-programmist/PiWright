@@ -399,6 +399,8 @@ export interface KanbanCardUpdateInput {
   description?: string
   /** Полная замена списка картинок (пути из kanban:attachment-put); undefined — не трогать. */
   images?: string[]
+  /** rev снимка UI; не совпадает с доской на диске → ошибка «обнови доску» вместо затирания правок агента. */
+  rev?: number
 }
 
 export interface KanbanCardMoveInput {
@@ -418,6 +420,8 @@ export interface KanbanCommentUpdateInput {
   commentId: string
   text: string
   images?: string[]
+  /** rev снимка UI; не совпадает с доской на диске → ошибка «обнови доску» вместо затирания правок агента. */
+  rev?: number
 }
 
 /** Комментарий от пользователя: id/author/at проставляет сервис. */

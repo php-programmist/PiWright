@@ -1,6 +1,6 @@
 /** KanbanService: резолв корня (git/не-git/worktree), CRUD через сервис, CAS-конфликт, вложения. */
 import { afterAll, describe, expect, it } from 'vitest'
-import { promises as fs, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { promises as fs, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join, win32 } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -261,6 +261,62 @@ describe('putAttachment', () => {
     const again = await service.putAttachment(project, 'shot.png', Buffer.from('x').toString('base64'))
     expect(again.name).not.toBe(result.name)
     expect(again.name.startsWith('shot-')).toBe(true)
+  })
+})
+
+describe('stale rev и quarantine', () => {
+  it('stale rev из UI: мутация с полными заменами отклонена, доска не тронута', async () => {
+    const project = native(tmpDir('stale-rev'))
+    const boardId = (await service.createBoard(project, 'B')).board!.id
+    const cardId = (await service.cardCreate(project, boardId, { title: 'T', description: 'agent text' })).board!.cards[0].id
+
+    const stale = (await service.getBoard(project, boardId)).board!.rev - 1
+    const rejected = await service.cardUpdate(project, boardId, { id: cardId, description: 'ui text', rev: stale })
+    expect(rejected.ok).toBe(false)
+    expect(rejected.error).toContain('Board has changed')
+    expect(rejected.error).toContain('refresh the board')
+    let onDisk = readBoardFile(join(project.dir, '.pi', 'kanban', `${boardId}.json`))!
+    expect(onDisk.cards[0].description).toBe('agent text')
+
+    const commentId = (await service.cardComment(project, boardId, { cardId, text: 'note' })).board!.cards[0].comments[0].id
+    const staleComment = (await service.getBoard(project, boardId)).board!.rev - 1
+    const rejectedComment = await service.commentUpdate(project, boardId, { cardId, commentId, text: 'hack', rev: staleComment })
+    expect(rejectedComment.ok).toBe(false)
+    expect(rejectedComment.error).toContain('Board has changed')
+    onDisk = readBoardFile(join(project.dir, '.pi', 'kanban', `${boardId}.json`))!
+    expect(onDisk.cards[0].comments[0].text).toBe('note')
+
+    const fresh = (await service.getBoard(project, boardId)).board!.rev
+    const applied = await service.cardUpdate(project, boardId, { id: cardId, title: 'Renamed', rev: fresh })
+    expect(applied.ok).toBe(true)
+  })
+
+  it('битый файл доски: quarantine, getBoard с явной ошибкой, listBoards его скрывает', async () => {
+    const project = native(tmpDir('corrupt'))
+    const boardId = (await service.createBoard(project, 'B')).board!.id
+    const file = join(project.dir, '.pi', 'kanban', `${boardId}.json`)
+    await fs.writeFile(file, '{broken json', 'utf8')
+
+    const got = await service.getBoard(project, boardId)
+    expect(got.ok).toBe(false)
+    expect(got.error).toContain('corrupted, quarantined')
+    expect(existsSync(file)).toBe(false)
+    const quarantined = (await fs.readdir(join(project.dir, '.pi', 'kanban'))).filter((name) => name.includes('.corrupt-'))
+    expect(quarantined).toHaveLength(1)
+    expect((await fs.readFile(join(project.dir, '.pi', 'kanban', quarantined[0]))).toString()).toBe('{broken json')
+
+    const listed = await service.listBoards(project)
+    expect(listed.ok).toBe(true)
+    expect(listed.boards).toHaveLength(0)
+  })
+
+  it('параллельные putAttachment с одним именем: оба успешны, файлы разные', async () => {
+    const project = native(tmpDir('att-race'))
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => service.putAttachment(project, 'shot.png', Buffer.from('x').toString('base64')))
+    )
+    expect(results.every((r) => r.ok)).toBe(true)
+    expect(new Set(results.map((r) => r.name)).size).toBe(6)
   })
 })
 

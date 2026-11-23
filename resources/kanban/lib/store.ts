@@ -1,4 +1,4 @@
-import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
@@ -65,20 +65,49 @@ async function withBoardLock<T>(file: string, fn: () => Promise<T>): Promise<T> 
   }
 }
 
-/** Уникальный tmp на запись + rename; при ошибке tmp подчищается. Общий детерминированный
- *  tmp двух писателей = переименование недописанного файла = битый JSON. */
+const RENAME_RETRY_MAX = 20
+
+/** Уникальный tmp на запись + fsync + rename; при ошибке tmp подчищается. Общий детерминированный
+ *  tmp двух писателей = переименование недописанного файла = битый JSON. fsync до rename: rename
+ *  атомарен для читателя, но без сброса на диск краш процесса/питания оставляет недописанный tmp.
+ *  EPERM/EBUSY на rename (антивирус, индексатор, 9P) — transient, ретраится с бэкоффом. */
 async function atomicWrite(file: string, data: string): Promise<void> {
   const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   try {
-    await writeFile(tmp, data, 'utf8')
-    await rename(tmp, file)
+    const handle = await open(tmp, 'w')
+    try {
+      await handle.writeFile(data, 'utf8')
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename(tmp, file)
+        break
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code
+        if ((code !== 'EPERM' && code !== 'EBUSY') || attempt >= RENAME_RETRY_MAX) throw err
+        await new Promise((resolve) => setTimeout(resolve, 25 + attempt * 5))
+      }
+    }
   } catch (err) {
     await rm(tmp, { force: true })
     throw err
   }
 }
 
-/** Доска из файла; нет файла или битый JSON — null. */
+const CORRUPT_MARK = '.corrupt-'
+
+/** Битый файл доски → `<board>.json.corrupt-<rev>-<ts>.json`: данные сохранены для разбора,
+ *  листинги досок такой файл игнорируют. */
+async function quarantineBoardFile(file: string, text: string): Promise<void> {
+  const rev = /"rev"\s*:\s*(\d+)/.exec(text)?.[1] ?? 'x'
+  await rename(file, `${file}${CORRUPT_MARK}${rev}-${Date.now()}.json`).catch(() => {})
+}
+
+/** Доска из файла; нет файла — null; битый JSON — quarantine + null (молчаливая потеря
+ *  доски недопустима, файл остаётся на диске для восстановления). */
 export async function readBoard(dir: string, boardId: string): Promise<KanbanBoard | null> {
   let text: string
   try {
@@ -86,29 +115,49 @@ export async function readBoard(dir: string, boardId: string): Promise<KanbanBoa
   } catch {
     return null
   }
+  let board: KanbanBoard | null = null
   try {
-    return parseKanbanBoard(JSON.parse(text))
+    board = parseKanbanBoard(JSON.parse(text))
   } catch {
-    return null
+    board = null
   }
+  if (board === null) await quarantineBoardFile(boardFile(dir, boardId), text)
+  return board
 }
 
-/** Ленивая дефолтная доска: первая существующая (по имени файла), иначе создание «Default»
- *  с дефолтными колонками и workflow. Вызов тулом или UI создаёт доску при первом обращении —
- *  в неиспользуемых проектах никакого мусора. */
+/** Ленивая дефолтная доска: первая существующая по имени (та же сортировка, что в listBoards
+ *  UI — иначе агент и UI при двух досках брали разные), иначе создание «Default» с дефолтными
+ *  колонками и workflow. Вызов тулом или UI создаёт доску при первом обращении — в неиспользуемых
+ *  проектах никакого мусора. Валидных досок нет, но есть quarantine-файлы — явная ошибка вместо
+ *  молчаливого дубля. */
 export async function ensureDefaultBoard(root: string): Promise<KanbanBoard> {
   const dir = boardsDir(root)
-  let names: string[] = []
+  let entries: string[] = []
   try {
-    names = (await readdir(dir))
-      .filter((name) => name.endsWith('.json') && !name.endsWith('.tmp.json'))
-      .sort()
+    entries = await readdir(dir)
   } catch {
     // каталога досок ещё нет — создаём дефолтную
   }
-  for (const name of names) {
+  const boards: KanbanBoard[] = []
+  for (const name of entries) {
+    if (!name.endsWith('.json') || name.includes(CORRUPT_MARK)) continue
     const board = await readBoard(dir, name.slice(0, -'.json'.length))
-    if (board !== null) return board
+    if (board !== null) boards.push(board)
+  }
+  if (boards.length > 0) {
+    boards.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    return boards[0]
+  }
+  let corrupt: string[] = []
+  try {
+    corrupt = (await readdir(dir)).filter((name) => name.includes(CORRUPT_MARK))
+  } catch {
+    // каталога досок нет
+  }
+  if (corrupt.length > 0) {
+    throw new Error(
+      `Kanban board file(s) corrupted and quarantined: ${corrupt.join(', ')}. Restore or delete them before creating a default board.`
+    )
   }
   const board = createDefaultBoard()
   await mkdir(dir, { recursive: true })
@@ -153,7 +202,7 @@ export async function findBoard(root: string, boardParam?: string): Promise<Kanb
   const needle = param.toLowerCase()
   let names: string[] = []
   try {
-    names = (await readdir(dir)).filter((name) => name.endsWith('.json') && !name.endsWith('.tmp.json'))
+    names = (await readdir(dir)).filter((name) => name.endsWith('.json') && !name.includes(CORRUPT_MARK))
   } catch {
     // каталога досок ещё нет
   }

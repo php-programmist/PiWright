@@ -1,6 +1,6 @@
 /** Логика тулов карточек канбана (spec/kanban-plan.md §2, §5). Не зависит от pi —
  *  регистрация в index.ts, тесты гоняют функции напрямую с tmp-каталогами. */
-import { access, copyFile, mkdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
 import {
   applyCardComment,
@@ -82,7 +82,8 @@ function sanitizeAttachmentFileName(path: string): string {
   return base.length > 0 ? base : 'image.bin'
 }
 
-/** Копия файлов картинок в `.pi/kanban/attachments/`; пути в карточке — `attachments/<name>`. */
+/** Копия файлов картинок в `.pi/kanban/attachments/`; пути в карточке — `attachments/<name>`.
+ *  Запись через 'wx' (атомарный create) — два агента с одним именем не затирают файл друг друга. */
 async function copyAttachments(
   root: string,
   cwd: string,
@@ -99,20 +100,22 @@ async function copyAttachments(
       const info = await stat(source)
       if (!info.isFile()) throw new Error('not a file')
       await mkdir(dir, { recursive: true })
+      const bytes = await readFile(source)
       const base = sanitizeAttachmentFileName(source)
       const ext = extname(base)
       const stem = ext.length > 0 ? base.slice(0, -ext.length) : base
-      let name = base
-      for (let i = 1; i < 1000; i += 1) {
+      let written = false
+      for (let i = 0; i < 1000 && !written; i += 1) {
+        const name = i === 0 ? base : `${stem}-${i}${ext}`
         try {
-          await access(join(dir, name))
-        } catch {
-          break
+          await writeFile(join(dir, name), bytes, { flag: 'wx' })
+          copied.push(`attachments/${name}`)
+          written = true
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
         }
-        name = `${stem}-${i}${ext}`
       }
-      await copyFile(source, join(dir, name))
-      copied.push(`attachments/${name}`)
+      if (!written) throw new Error('no free attachment name')
     } catch {
       failed.push(item.trim())
     }

@@ -976,13 +976,13 @@ function CardModal({
     void uploadFiles(files).then((uploaded) => {
       if (uploaded.length === 0) return
       void window.piwright
-        .kanbanCardUpdate(tab.project, board.id, { id: card.id, images: [...card.images, ...uploaded.map((item) => item.path)] })
+        .kanbanCardUpdate(tab.project, board.id, { id: card.id, images: [...card.images, ...uploaded.map((item) => item.path)], rev: board.rev })
         .then(apply)
     })
   }
 
   const removeCardImage = (path: string): void => {
-    void window.piwright.kanbanCardUpdate(tab.project, board.id, { id: card.id, images: card.images.filter((item) => item !== path) }).then(apply)
+    void window.piwright.kanbanCardUpdate(tab.project, board.id, { id: card.id, images: card.images.filter((item) => item !== path), rev: board.rev }).then(apply)
   }
 
   const addCommentImages = (files: File[]): void => {
@@ -1010,6 +1010,7 @@ function CardModal({
       id: card.id,
       ...(nextTitle.length > 0 && nextTitle !== card.title ? { title: nextTitle } : {}),
       ...(description !== card.description ? { description } : {}),
+      rev: board.rev,
     })
     apply(result)
   }
@@ -1043,6 +1044,7 @@ function CardModal({
       cardId: card.id,
       commentId: editingCommentId,
       text,
+      rev: board.rev,
     })
     cancelEditComment()
     apply(result)

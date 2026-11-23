@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -70,6 +70,40 @@ describe('ensureDefaultBoard', () => {
     expect(board.id).toBe('b-00000000')
     expect(board.name).toBe('A')
   })
+
+  it('picks the default board by name, not by file id (same order as the UI list)', async () => {
+    const root = tmpDir('piwright-kanban-order-')
+    const dir = join(root, '.pi', 'kanban')
+    mkdirSync(dir, { recursive: true })
+    const mk = (id: string, name: string): string =>
+      JSON.stringify({ version: 1, id, name, rev: 1, workflow: '', columns: [{ id: 'col-00000001', name: 'Backlog' }], cards: [] })
+    writeFileSync(join(dir, 'b-00000001.json'), mk('b-00000001', 'Zeta'), 'utf8')
+    writeFileSync(join(dir, 'b-00000002.json'), mk('b-00000002', 'Alpha'), 'utf8')
+    const board = await ensureDefaultBoard(root)
+    expect(board.id).toBe('b-00000002')
+  })
+
+  it('throws instead of creating a duplicate when only quarantined boards remain', async () => {
+    const root = tmpDir('piwright-kanban-quarant-')
+    const dir = join(root, '.pi', 'kanban')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'b-0000000a.json'), '{broken', 'utf8')
+    expect(await readBoard(dir, 'b-0000000a')).toBeNull()
+    const quarantined = readdirSync(dir).filter((name) => name.includes('.corrupt-'))
+    expect(quarantined).toHaveLength(1)
+    expect(existsSync(join(dir, 'b-0000000a.json'))).toBe(false)
+    await expect(ensureDefaultBoard(root)).rejects.toThrow(/corrupted and quarantined/)
+    expect(readdirSync(dir).some((name) => name.endsWith('.json') && !name.includes('.corrupt-'))).toBe(false)
+  })
+
+  it('leftover tmp from a killed writer does not break reads or default selection', async () => {
+    const root = tmpDir('piwright-kanban-tmp-')
+    const dir = join(root, '.pi', 'kanban')
+    const board = await ensureDefaultBoard(root)
+    writeFileSync(join(dir, `${board.id}.json.4242.deadbeef.tmp`), '{half-written', 'utf8')
+    expect(await readBoard(dir, board.id)).not.toBeNull()
+    expect((await ensureDefaultBoard(root)).id).toBe(board.id)
+  })
 })
 
 describe('readBoard', () => {
@@ -80,5 +114,16 @@ describe('readBoard', () => {
     expect(await readBoard(dir, 'b-00000000')).toBeNull()
     writeFileSync(join(dir, 'b-00000000.json'), '{not json', 'utf8')
     expect(await readBoard(dir, 'b-00000000')).toBeNull()
+  })
+
+  it('quarantines a structurally invalid board instead of losing it silently', async () => {
+    const root = tmpDir('piwright-kanban-read-')
+    const dir = join(root, '.pi', 'kanban')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'b-00000001.json'), JSON.stringify({ version: 2, id: 'b-00000001' }), 'utf8')
+    expect(await readBoard(dir, 'b-00000001')).toBeNull()
+    const quarantined = readdirSync(dir).find((name) => name.startsWith('b-00000001.json.corrupt-'))
+    expect(quarantined).toBeDefined()
+    expect(existsSync(join(dir, 'b-00000001.json'))).toBe(false)
   })
 })
