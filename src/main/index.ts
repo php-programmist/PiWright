@@ -28,9 +28,30 @@ let hub: NotificationHub | null = null
 let loopController: LoopController | null = null
 let windowStatePath = ''
 
+// Смоук-режим: окно вне всех мониторов, чтобы не красть фокус. Без этих переключателей
+// Chromium режет таймеры/rAF у невидимого окна и смоук начинает таймаутить.
+const SMOKE_SWITCHES = ['disable-renderer-backgrounding', 'disable-backgrounding-occluded-windows', 'disable-background-timer-throttling']
+const smokeMode = process.argv.includes('--smoke') || process.env['PIWRIGHT_SMOKE'] === '1'
+if (smokeMode) {
+  for (const name of SMOKE_SWITCHES) app.commandLine.appendSwitch(name)
+}
+
+/** Позиция за пределами объединения всех мониторов. */
+function offscreenPosition(): { x: number; y: number } {
+  const displays = screen.getAllDisplays()
+  const span = Math.max(...displays.map((d) => Math.max(d.bounds.width, d.bounds.height)))
+  return {
+    x: Math.min(...displays.map((d) => d.bounds.x)) - span * 2,
+    y: Math.min(...displays.map((d) => d.bounds.y)) - span * 2
+  }
+}
+
 function createWindow(bg: string): void {
   const state = loadWindowState(windowStatePath, screen.getPrimaryDisplay().workArea)
+  const offscreen = smokeMode ? offscreenPosition() : undefined
   mainWindow = new BrowserWindow({
+    x: offscreen?.x,
+    y: offscreen?.y,
     width: state.width,
     height: state.height,
     title: 'PiWright',
@@ -41,20 +62,17 @@ function createWindow(bg: string): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      ...(smokeMode ? { backgroundThrottling: false } : {})
     }
   })
-  const startMinimized = process.argv.includes('--minimized') || process.env['PIWRIGHT_MINIMIZED'] === '1'
   mainWindow.once('ready-to-show', () => {
-    if (startMinimized) {
-      mainWindow?.showInactive()
-      mainWindow?.minimize()
-    } else {
-      mainWindow?.show()
-    }
+    if (smokeMode) mainWindow?.showInactive()
+    else mainWindow?.show()
   })
-  if (state.maximized) mainWindow.maximize()
+  if (!smokeMode && state.maximized) mainWindow.maximize()
   mainWindow.on('close', () => {
+    if (smokeMode) return
     saveWindowState(windowStatePath, mainWindow as BrowserWindow)
   })
   mainWindow.on('closed', () => {
