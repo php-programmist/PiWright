@@ -8,7 +8,7 @@ import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
-import { buildTitlePrompt, cleanSessionTitle, truncateTitleMessage } from '../src/main/pi/session-title'
+import { buildTitlePrompt, cleanSessionTitle, fallbackTitle, truncateTitleMessage } from '../src/main/pi/session-title'
 
 const SETTINGS: Settings = { ...DEFAULT_SETTINGS }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
@@ -111,6 +111,19 @@ describe('session title generation', () => {
     expect(cleanSessionTitle('x'.repeat(100))).toHaveLength(60)
   })
 
+  it('cleanSessionTitle rejects tool-call markup', () => {
+    expect(cleanSessionTitle('<tool_call>')).toBe('')
+    expect(cleanSessionTitle('<invoke name="read">')).toBe('')
+    expect(cleanSessionTitle('Fix <parameter=name>Login</parameter>')).toBe('')
+  })
+
+  it('fallbackTitle takes first 3 words capped at 20 chars', () => {
+    expect(fallbackTitle('почини логин пожалуйста скорее')).toBe('почини логин пожалуй')
+    expect(fallbackTitle('Fix the authentication token expiry check')).toBe('Fix the authenticati')
+    expect(fallbackTitle('  spaced   out   words  ')).toBe('spaced out words')
+    expect(fallbackTitle('   ')).toBe('')
+  })
+
   it('first prompt generates a title via one-shot pi and renames before sending the prompt', async () => {
     const real = realChild()
     const title = titleChild('Fix login bug')
@@ -138,7 +151,7 @@ describe('session title generation', () => {
     host.dispose()
   })
 
-  it('empty title answer leaves the heuristic title and still sends the prompt', async () => {
+  it('empty title answer falls back to the first words of the message', async () => {
     const real = realChild()
     const title = titleChild(null)
     const { host, spawnArgs } = makeHost([real, title])
@@ -146,8 +159,21 @@ describe('session title generation', () => {
     const result = await host.prompt('hello there')
     expect(result.ok).toBe(true)
     expect(spawnArgs).toHaveLength(2)
-    expect(real.sent.some((c) => String(c['type']) === 'set_session_name')).toBe(false)
+    const rename = real.sent.find((c) => String(c['type']) === 'set_session_name')
+    expect(rename?.['name']).toBe('hello there')
     expect(real.sent.some((c) => String(c['type']) === 'prompt')).toBe(true)
+    host.dispose()
+  })
+
+  it('tool-call markup answer falls back to the first words of the message', async () => {
+    const real = realChild()
+    const title = titleChild('<tool_call>')
+    const { host } = makeHost([real, title])
+
+    const result = await host.prompt('Fix the authentication token expiry check')
+    expect(result.ok).toBe(true)
+    const rename = real.sent.find((c) => String(c['type']) === 'set_session_name')
+    expect(rename?.['name']).toBe('Fix the authenticati')
     host.dispose()
   })
 

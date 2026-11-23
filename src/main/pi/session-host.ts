@@ -21,7 +21,7 @@ import { ensureKanbanExtension } from './kanban-extension'
 import { ensureSubagentBridgeExtension } from './subagent-bridge-extension'
 import { readAttachmentImages } from '../attachments/attachments'
 import { runHandshake, decodeSessionTokens, decodeCommands, dataObject } from './handshake'
-import { generateSessionTitle } from './session-title'
+import { fallbackTitle, generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
 import { estimateContextBreakdown } from './context-breakdown'
@@ -962,7 +962,8 @@ export class SessionHost {
       const created = await this.createBackend(this.project, this.getSettings())
       if (created.backend === null) return
       const title = await generateSessionTitle(created.backend.spawner, this.project.dir, model, message)
-      if (title !== null && this.sessionName === null) await this.rename(title)
+      const name = title ?? fallbackTitle(message)
+      if (name.length > 0 && this.sessionName === null) await this.rename(name)
     } catch {
       // название не критично — молча продолжаем с эвристическим заголовком
     }

@@ -26,7 +26,17 @@ export function buildTitlePrompt(message: string): string {
   ].join('\n')
 }
 
-/** Ответ модели: первая непустая строка без заборов/кавычек, схлопнутые пробелы, лимит длины. */
+/** Разметка tool-call в ответе модели — признак того, что название не придумано. */
+const TOOL_CALL_MARKUP = /<\/?(?:tool_call|function_call|function|parameter|invoke)\b[^>]*>/i
+
+/** Запасное название: первые 3 слова сообщения, суммарно не более 20 символов. */
+export function fallbackTitle(message: string): string {
+  const words = message.trim().split(/\s+/).slice(0, 3).join(' ')
+  return words.length > 20 ? words.slice(0, 20).trimEnd() : words
+}
+
+/** Ответ модели: первая непустая строка без заборов/кавычек, схлопнутые пробелы, лимит длины.
+ *  Разметка tool-call отвергается — пустая строка означает неудачу подбора названия. */
 export function cleanSessionTitle(raw: string): string {
   let text = raw.trim()
   const fenced = text.match(/^```[^\n]*\n([\s\S]*?)\n?```$/)
@@ -38,7 +48,7 @@ export function cleanSessionTitle(raw: string): string {
   if (line === undefined) return ''
   const unwrapped = line.replace(/^["'«“]+/, '').replace(/["'»”]+$/, '').trim()
   const collapsed = unwrapped.replace(/\s+/g, ' ')
-  if (collapsed.length === 0) return ''
+  if (collapsed.length === 0 || TOOL_CALL_MARKUP.test(collapsed)) return ''
   return collapsed.length > MAX_TITLE_CHARS ? `${collapsed.slice(0, MAX_TITLE_CHARS - 1).trimEnd()}…` : collapsed
 }
 
