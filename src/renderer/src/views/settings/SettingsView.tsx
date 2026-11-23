@@ -249,6 +249,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   onChange={(e) => update({ loopsEnabled: e.target.checked })}
                 />
                 {t('Enable loops (the Loop checkbox near the prompt field and in Remote)')}
+                <Hint text={t(LOOPS_EXPLANATION)} />
               </label>
               {draft.loopsEnabled && (
                 <label className="settings-check">
@@ -258,9 +259,9 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                     onChange={(e) => update({ loopCloseSession: e.target.checked })}
                   />
                   {t('Close the session after the loop cycle ends')}
+                  <Hint text={t('When enabled, the parent session tab closes as soon as the loop opens its next iteration')} />
                 </label>
               )}
-              <div className="panel-hint">{t('Loops explanation')}</div>
             </section>
           )}
           {tab === 'advanced' && (
@@ -273,13 +274,52 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   onChange={(e) => update({ kanbanEnabled: e.target.checked })}
                 />
                 {t('Enable kanban boards (agent tools and the boards panel)')}
+                <Hint text={t(KANBAN_EXPLANATION)} />
               </label>
-              <div className="panel-hint">{t('Kanban explanation')}</div>
             </section>
           )}
         </div>
       </div>
     </>
+  )
+}
+
+const LOOPS_EXPLANATION =
+  'The loop repeats the same prompt in a new session after each turn. Tick the “Loop” checkbox next to the input field, write an exit condition and send the prompt: after each turn the condition is checked — if it is not met, the next iteration starts (20 by default, the limit can be changed on the fly) in a new session named “name (2)”, “name (3)”… The loop stops when the agent reports that the condition is met, a turn passes without tool calls, the limit is exhausted, or 3 iterations in a row start faster than 10 seconds. Useful for long multi-step tasks — working through a task list, refactoring in chunks, iterative debugging: each iteration starts with a clean context and the same prompt.'
+
+const KANBAN_EXPLANATION =
+  'The extension adds kanban board tools to the agent: pick up a task, create and move cards, leave a comment with links to the session and commits. Boards are stored in .pi/kanban at the root of the main repository (worktree sessions see a single board) and are committed together with the code; attachments go to .pi/kanban/attachments (not committed to git).'
+
+/** Иконка «?» с тултипом: поповер позиционируется fixed, чтобы не обрезался скроллом модалки настроек. */
+function Hint({ text }: { text: string }): React.JSX.Element {
+  const [anchor, setAnchor] = useState<{ x: number; y: number; above: boolean } | null>(null)
+
+  const show = (el: HTMLElement): void => {
+    const rect = el.getBoundingClientRect()
+    const above = rect.bottom + 240 > window.innerHeight && rect.top > 240
+    setAnchor({ x: rect.left + rect.width / 2, y: above ? rect.top : rect.bottom, above })
+  }
+
+  const half = anchor === null ? 0 : Math.min(210, (window.innerWidth - 24) / 2)
+  const left = anchor === null ? 0 : Math.min(Math.max(anchor.x, half + 12), window.innerWidth - 12 - half)
+
+  return (
+    <span
+      className="hint-icon"
+      onMouseEnter={(e) => show(e.currentTarget)}
+      onMouseLeave={() => setAnchor(null)}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+    >
+      ?
+      {anchor !== null && (
+        <span className={anchor.above ? 'hint-popover above' : 'hint-popover'} style={{ left, top: anchor.y }}>
+          {text}
+        </span>
+      )}
+    </span>
   )
 }
 

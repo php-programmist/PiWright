@@ -239,8 +239,8 @@ const RU: Record<string, string> = {
   'Loops': 'Петли',
   'Enable loops (the Loop checkbox near the prompt field and in Remote)':
     'Включить петли (чекбокс «Петля» у поля промпта и в Remote)',
-  'Loops explanation':
-    'Петля повторяет тот же промпт в новой сессии после каждого хода. Включите чекбокс «Петля» у поля ввода, впишите условие выхода и отправьте промпт — после каждого хода харнесс спрашивает агента, выполнено ли условие; если нет — запускает следующую итерацию (лимит по умолчанию 20, меняется на лету) в новой сессии с именем «имя (2)», «имя (3)»… Петля останавливается, когда агент сообщил о выполнении условия, ход прошёл без вызовов инструментов, лимит исчерпан или 3 итерации подряд запустились быстрее 10 секунд. Полезно для длинных многошаговых задач: разбор списка задач, рефакторинг по частям, итеративная отладка — каждая итерация начинается с чистым контекстом и тем же промптом.',
+  'The loop repeats the same prompt in a new session after each turn. Tick the “Loop” checkbox next to the input field, write an exit condition and send the prompt: after each turn the condition is checked — if it is not met, the next iteration starts (20 by default, the limit can be changed on the fly) in a new session named “name (2)”, “name (3)”… The loop stops when the agent reports that the condition is met, a turn passes without tool calls, the limit is exhausted, or 3 iterations in a row start faster than 10 seconds. Useful for long multi-step tasks — working through a task list, refactoring in chunks, iterative debugging: each iteration starts with a clean context and the same prompt.':
+    'Петля повторяет тот же промпт в новой сессии после каждого хода. Включите чекбокс «Петля» у поля ввода, впишите условие выхода и отправьте промпт: после каждого хода проверяется, выполнено ли условие, и если нет — запускается следующая итерация (по умолчанию не больше 20, лимит можно менять на лету) в новой сессии «имя (2)», «имя (3)»… Петля останавливается, когда агент сообщил о выполнении условия, ход прошёл без вызовов инструментов, лимит исчерпан или 3 итерации подряд запустились быстрее 10 секунд. Подходит для длинных многошаговых задач — разбор списка задач, рефакторинг по частям, итеративная отладка: каждая итерация начинается с чистым контекстом и тем же промптом.',
   'Close the session after the loop cycle ends': 'Закрывать сессию после завершения цикла',
   'When enabled, the parent session tab closes as soon as the loop opens its next iteration':
     'Родительская вкладка сессии закрывается сразу после того, как петля откроет следующую итерацию',
@@ -302,9 +302,9 @@ const RU: Record<string, string> = {
   'Agent': 'Агент',
   'You': 'Вы',
   'Enable kanban boards (agent tools and the boards panel)':
-    'Включить канбан-доски (тулы агента и панель досок)',
-  'Kanban explanation':
-    'Расширение добавляет агенту туы канбан-доски: взять задачу в работу, создать и переместить карточку, оставить комментарий с ссылкой на сессию и коммиты. Доски хранятся в .pi/kanban корня главного репозитория (worktree-сессии видят одну доску) и коммитятся вместе с кодом; вложения — в .pi/kanban/attachments (в git не попадают).',
+    'Включить канбан-доски (инструменты агента и панель досок)',
+  'The extension adds kanban board tools to the agent: pick up a task, create and move cards, leave a comment with links to the session and commits. Boards are stored in .pi/kanban at the root of the main repository (worktree sessions see a single board) and are committed together with the code; attachments go to .pi/kanban/attachments (not committed to git).':
+    'Расширение добавляет агенту инструменты канбан-доски: взять задачу в работу, создать и переместить карточку, оставить комментарий со ссылкой на сессию и коммитами. Доски хранятся в .pi/kanban в корне главного репозитория (worktree-сессии видят одну доску) и коммитятся вместе с кодом; вложения — в .pi/kanban/attachments (в git не попадают).',
 
   // Настройки — Внешний вид: темы канбана
   'Kanban theme': 'Тема канбана',
