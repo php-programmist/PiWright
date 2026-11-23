@@ -1968,6 +1968,7 @@ pre.code-block {
   right: 0;
   z-index: 60;
   min-width: 300px;
+  max-width: calc(100vw - 16px);
   background: var(--panel-bg);
   border: 1px solid var(--border-strong);
   border-radius: 10px;

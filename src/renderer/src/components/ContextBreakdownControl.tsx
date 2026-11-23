@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useT } from '../lib/i18n'
 import { percentColor } from '../../../shared/agent-events'
 import type { ContextBreakdownData } from '../../../shared/ipc-contracts'
@@ -33,6 +33,18 @@ export function ContextBreakdownControl({ hostId, percent, title }: Props) {
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  // Поповер шириной 300px якорится правым краем к кнопке; у левого края экрана
+  // (свернутая боковая панель) он вылезает за вьюпорт — сдвигаем его обратно.
+  useLayoutEffect(() => {
+    if (!open) return
+    const pop = rootRef.current?.querySelector<HTMLElement>('.ctx-popover')
+    if (pop === null || pop === undefined) return
+    pop.style.transform = ''
+    const rect = pop.getBoundingClientRect()
+    const shift = Math.min(Math.max(0, 8 - rect.left), window.innerWidth - 8 - rect.right)
+    if (shift !== 0) pop.style.transform = `translateX(${shift}px)`
+  }, [open, data, error])
 
   useEffect(() => {
     if (!open || hostId === null) return
