@@ -9,7 +9,7 @@ import { ThinkingLevelControl } from '../../components/ThinkingLevelControl'
 import { ContextBreakdownControl } from '../../components/ContextBreakdownControl'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
-import { useVirtualFeed } from './useVirtualFeed'
+import { useFeedWindow } from './useFeedWindow'
 import { useSessionsStore } from '../../stores/sessions'
 import { useTabsStore, parentTabKey } from '../../stores/tabs'
 import { cacheHitOf } from '../../../../shared/agent-events'
@@ -252,18 +252,16 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
   const toolsHidden = chat?.toolsHidden ?? false
-  const feedItems = useMemo(
-    () => (toolsHidden ? entries.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking') : entries),
-    [entries, toolsHidden]
-  )
   const handleFeedScroll = useCallback((atBottom: boolean) => {
     if (activeHostId === null) return
     autoScrollRef.current = atBottom
     atBottomMap.set(activeHostId, atBottom)
     if (atBottom) useChatStore.getState().markRead(activeHostId)
   }, [activeHostId])
-  const feed = useVirtualFeed(feedItems, transcriptRef, { pinRef: autoScrollRef, onScroll: handleFeedScroll })
-  const { jumpToBottom } = feed
+  const feed = useFeedWindow(entries, transcriptRef, { onScroll: handleFeedScroll })
+  // Окно по всем записям, фильтр инструментов — после окна: windowStart в координатах полной ленты.
+  const windowed = entries.slice(feed.windowStart)
+  const visibleEntries = toolsHidden ? windowed.filter((e) => e.kind !== 'tool' && e.kind !== 'thinking') : windowed
 
   /** Редактирование промпта: fork сессии на момент сообщения + новый prompt; лента обрезается. */
   const submitEdit = async (entry: UserEntry, newText: string): Promise<void> => {
@@ -433,8 +431,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     autoScrollRef.current = true
   }, [activeHostId])
 
-  // Прибитый к низу скролл: окно от хвоста и прыжок на дно. Реплей истории приходит одной
-  // пачкой — прыгаем без smooth-анимации через всю ленту.
+  // Прибитый к низу скролл: прыжок на дно. Реплей истории приходит одной пачкой — прыгаем
+  // без smooth-анимации через всю ленту; окно на хвост сбрасывает сам useFeedWindow.
   const prevLenRef = useRef(entries.length)
   useEffect(() => {
     const batch = entries.length - prevLenRef.current > 5
@@ -442,9 +440,8 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     if (!autoScrollRef.current || activeHostId === null) return
     atBottomMap.set(activeHostId, true)
     useChatStore.getState().markRead(activeHostId)
-    jumpToBottom()
     bottomRef.current?.scrollIntoView({ behavior: streaming || batch ? 'auto' : 'smooth' })
-  }, [entries, streaming, activeHostId, jumpToBottom])
+  }, [entries, streaming, activeHostId])
 
   if (activeHostId === null || status === null) {
     return (
@@ -813,18 +810,15 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       {queuedCount > 0 && <QueuePanel queue={queue} onRemove={(kind, index) => void removeQueued(kind, index)} onClearAll={() => void clearQueue()} />}
       {todoItems.length > 0 && <TodoPanel items={todoItems} />}
       <main className="transcript" ref={transcriptRef} onScroll={feed.handleScroll}>
-        {feed.topSpacer > 0 && <div className="feed-spacer" style={{ height: feed.topSpacer }} aria-hidden="true" />}
-        {feedItems.slice(feed.range.start, feed.range.end).map((entry) => (
-          <div key={entry.id} className="entry-slot" data-entry-id={entry.id}>
-            <EntryView
-              entry={entry}
-              onAnswer={stableAnswer}
-              onEdit={streaming ? undefined : stableEdit}
-              onFork={streaming ? undefined : stableFork}
-            />
-          </div>
+        {visibleEntries.map((entry) => (
+          <EntryView
+            key={entry.id}
+            entry={entry}
+            onAnswer={stableAnswer}
+            onEdit={streaming ? undefined : stableEdit}
+            onFork={streaming ? undefined : stableFork}
+          />
         ))}
-        {feed.bottomSpacer > 0 && <div className="feed-spacer" style={{ height: feed.bottomSpacer }} aria-hidden="true" />}
         {streaming && <div className="cursor">▍</div>}
         <div ref={bottomRef} />
       </main>

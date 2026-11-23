@@ -2,7 +2,7 @@
  *  кнопка «назад к родителю». Перезмонтируется по key={path} при смене сессии. */
 import { useEffect, useRef, useState } from 'react'
 import { EntryView } from './ChatView'
-import { useVirtualFeed } from './useVirtualFeed'
+import { useFeedWindow } from './useFeedWindow'
 import { transcriptEntries } from '../../stores/chat'
 import type { Entry } from '../../stores/chat'
 import { tabId, useTabsStore } from '../../stores/tabs'
@@ -21,14 +21,7 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
   const [error, setError] = useState<string | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
-  const pinRef = useRef(true)
-  const feed = useVirtualFeed(entries ?? [], transcriptRef, {
-    pinRef,
-    onScroll: (atBottom) => {
-      pinRef.current = atBottom
-    }
-  })
-  const { jumpToBottom } = feed
+  const feed = useFeedWindow(entries ?? [], transcriptRef)
 
   useEffect(() => {
     let cancelled = false
@@ -50,9 +43,8 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
 
   useEffect(() => {
     if (entries === null) return
-    jumpToBottom()
     bottomRef.current?.scrollIntoView({ behavior: 'auto' })
-  }, [entries, jumpToBottom])
+  }, [entries])
 
   const loaded = entries !== null && error === null && entries.length > 0
   return (
@@ -76,14 +68,10 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
         {entries !== null && error === null && entries.length === 0 && (
           <div className="panel-hint">{t('no past sessions')}</div>
         )}
-        {loaded && feed.topSpacer > 0 && <div className="feed-spacer" style={{ height: feed.topSpacer }} aria-hidden="true" />}
         {loaded &&
-          entries.slice(feed.range.start, feed.range.end).map((entry) => (
-            <div key={entry.id} className="entry-slot" data-entry-id={entry.id}>
-              <EntryView entry={entry} onAnswer={noopAnswer} />
-            </div>
+          entries.slice(feed.windowStart).map((entry) => (
+            <EntryView key={entry.id} entry={entry} onAnswer={noopAnswer} />
           ))}
-        {loaded && feed.bottomSpacer > 0 && <div className="feed-spacer" style={{ height: feed.bottomSpacer }} aria-hidden="true" />}
         <div ref={bottomRef} />
       </main>
     </>

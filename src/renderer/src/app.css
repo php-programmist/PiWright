@@ -1235,18 +1235,6 @@ body {
   font-size: var(--chat-font-size);
 }
 
-/* Слоты и распорки виртуализированной ленты: не сжимаются флексом, иначе рушится математика высот. */
-.entry-slot {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-.feed-spacer {
-  flex-shrink: 0;
-}
-
 .user-entry {
   display: flex;
   flex-direction: column;
