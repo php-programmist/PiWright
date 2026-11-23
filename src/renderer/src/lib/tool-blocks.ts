@@ -37,6 +37,13 @@ export function bashCommand(call: ToolCall): string | null {
   return command !== null && command.trim().length > 0 ? command : null
 }
 
+/** Поле под шапкой раскрытого блока: у bash — команда, у прочих инструментов — все аргументы JSON. */
+export function fullCommand(call: ToolCall): string | null {
+  if (call.name === 'bash') return bashCommand(call)
+  if (Object.keys(call.args).length === 0) return null
+  return JSON.stringify(call.args, null, 2)
+}
+
 /** Заголовок bash-блока: вся команда, многострочная схлопывается в одну строку. */
 export function terminalTitle(command: string): string {
   return `bash: ${command.replace(/\s+/g, ' ').trim()}`

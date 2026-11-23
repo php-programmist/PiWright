@@ -157,8 +157,6 @@ main {
 .tool .body .label { padding: 6px 10px 0; color: var(--muted); font-size: 11px; }
 .tool .body pre { border-top: 0; }
 .tool .body pre.command { max-height: none; }
-.tool.expanded .body .label { display: none; }
-.tool.expanded .body pre.command { display: none; }
 .tool .body pre.command + pre.output { border-top: 1px solid var(--line); }
 .tool pre {
   margin: 0;

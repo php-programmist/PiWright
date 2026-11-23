@@ -579,10 +579,14 @@ function onToolStart(frame) {
   keepBottom(stick);
 }
 
-/** Полная команда bash-инструмента: в шапке она обрезана, в теле показывается целиком. */
+/** Поле под шапкой раскрытой карточки: у bash — команда, у прочих инструментов — все аргументы JSON. */
 function commandOf(name, args) {
-  if (name !== "bash" || !args || typeof args.command !== "string") return "";
-  return args.command;
+  if (!args || typeof args !== "object") return "";
+  if (name === "bash") {
+    return typeof args.command === "string" && args.command.trim() ? args.command : "";
+  }
+  if (Object.keys(args).length === 0) return "";
+  return JSON.stringify(args, null, 2);
 }
 
 /** Карточка инструмента: шапка кликабельна, тело — команда (bash) и вывод, сворачивается по клику/Enter/Space. */

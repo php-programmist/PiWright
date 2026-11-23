@@ -1,4 +1,4 @@
-import { bashCommand, editTexts, toolHeader } from '../lib/tool-blocks'
+import { editTexts, fullCommand, toolHeader } from '../lib/tool-blocks'
 import { useFilesStore } from '../stores/files'
 import { useGitStore } from '../stores/git'
 import { useSessionsStore } from '../stores/sessions'
@@ -14,7 +14,7 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
   const edits = editTexts(call)
   const body = result !== null ? result.text : partial
   const t = useT()
-  const command = bashCommand(call)
+  const command = fullCommand(call)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const openFile = useFilesStore((s) => s.openFile)
