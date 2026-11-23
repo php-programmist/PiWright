@@ -377,6 +377,15 @@ body {
   background: var(--hover-strong);
 }
 
+.project-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.project-menu-item:disabled:hover {
+  background: transparent;
+}
+
 .project-menu-item.danger {
   color: var(--red);
 }

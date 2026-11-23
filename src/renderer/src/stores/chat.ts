@@ -538,14 +538,12 @@ export const useChatStore = create<ChatState>((set) => ({
     }),
   setLoopEnabled: (hostId, enabled) =>
     set((state) => {
-      const host = state.hosts[hostId]
-      if (host === undefined) return state
+      const host = state.hosts[hostId] ?? emptyHostChat()
       return { hosts: { ...state.hosts, [hostId]: { ...host, loopEnabled: enabled } } }
     }),
   setLoopMax: (hostId, max) =>
     set((state) => {
-      const host = state.hosts[hostId]
-      if (host === undefined) return state
+      const host = state.hosts[hostId] ?? emptyHostChat()
       return { hosts: { ...state.hosts, [hostId]: { ...host, loopMax: max } } }
     }),
   carryOverLoopFlags: (previousHostId, hostId) =>

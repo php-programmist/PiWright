@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
-import type { KanbanBoard, KanbanCard, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
+import type { KanbanBoard, KanbanCard, KanbanColumn, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
 import type { KanbanMutationResult, ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
 import { base64FromBytes } from '../../../../shared/attachments'
+import { draftMap, loopExitMap, useChatStore } from '../../stores/chat'
 import { useSessionsStore } from '../../stores/sessions'
 import { parentTabKey, useTabsStore } from '../../stores/tabs'
 import { useGitLogStore } from '../../stores/gitlog'
@@ -157,6 +158,9 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const [columnRenameText, setColumnRenameText] = useState('')
   const [addingCardColumnId, setAddingCardColumnId] = useState<string | null>(null)
   const [newCardTitle, setNewCardTitle] = useState('')
+  const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
+  const [columnMenu, setColumnMenu] = useState<{ columnId: string; x: number; y: number } | null>(null)
+  const columnMenuRef = useRef<HTMLDivElement | null>(null)
   const boardId = tab.boardId
 
   useEffect(() => {
@@ -170,6 +174,25 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       cancelled = true
     }
   }, [tab.project, boardId])
+
+  useEffect(() => {
+    if (columnMenu === null) return
+    const onDown = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement
+      if (columnMenuRef.current !== null && !columnMenuRef.current.contains(target) && target.closest('.board-column-head .board-column-btn') === null) {
+        setColumnMenu(null)
+      }
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setColumnMenu(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [columnMenu])
 
   const reload = (): void => {
     void window.piwright.kanbanBoardGet(tab.project, boardId ?? '').then((result) => {
@@ -290,6 +313,27 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     void window.piwright.kanbanCardCreate(tab.project, boardId ?? '', { title, columnId }).then(apply)
   }
 
+  const openColumnMenu = (columnId: string, x: number, y: number): void => {
+    setColumnMenu({ columnId, x: Math.min(x, window.innerWidth - 210), y: Math.min(y, window.innerHeight - 320) })
+  }
+
+  const startLoopSession = async (column: KanbanColumn, mode: 'while' | 'count'): Promise<void> => {
+    setColumnMenu(null)
+    const ref = await window.piwright.newSession(tab.project)
+    const chatStore = useChatStore.getState()
+    chatStore.setLoopEnabled(ref.hostId, true)
+    if (mode === 'while') {
+      loopExitMap.set(ref.hostId, t('The kanban column {name} has no tasks', { name: column.name }))
+    } else {
+      const count = board.cards.filter((card) => card.columnId === column.id).length
+      chatStore.setLoopMax(ref.hostId, Math.max(1, count))
+    }
+    draftMap.set(ref.hostId, t('Kanban. Take a task from the {name} column and complete it', { name: column.name }))
+    useTabsStore.getState().setActiveProject(parentTabKey(tab.project))
+    useTabsStore.getState().activateSession(tab.project)
+    useSessionsStore.getState().setActive(ref.hostId)
+  }
+
   const renderCards = (columnId: string, cards: KanbanCard[]): React.JSX.Element[] => {
     const items: React.JSX.Element[] = []
     const showLine = dragCardId !== null && dropTarget?.columnId === columnId
@@ -338,7 +382,7 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
         </button>
       </div>
       <div className="board-columns">
-        {board.columns.map((column, columnIndex) => {
+        {board.columns.map((column) => {
           const cards = board.cards.filter((card) => card.columnId === column.id).sort((a, b) => a.order - b.order)
           return (
             <div
@@ -348,7 +392,13 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
               onDragLeave={(e) => columnDragLeave(e, column.id)}
               onDrop={columnDrop}
             >
-              <div className="board-column-head">
+              <div
+                className="board-column-head"
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  openColumnMenu(column.id, e.clientX, e.clientY)
+                }}
+              >
                 {renamingColumnId === column.id ? (
                   <input
                     className="kanban-name-input"
@@ -373,22 +423,17 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
                     <span className="board-column-count">{cards.length}</span>
                     <button
                       className="board-column-btn"
-                      title={t('Move left')}
-                      disabled={columnIndex === 0}
-                      onClick={() => moveColumn(column.id, columnIndex - 1)}
+                      title={t('Column menu')}
+                      onClick={(e) => {
+                        if (columnMenu?.columnId === column.id) {
+                          setColumnMenu(null)
+                          return
+                        }
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        openColumnMenu(column.id, rect.left, rect.bottom + 2)
+                      }}
                     >
-                      ←
-                    </button>
-                    <button
-                      className="board-column-btn"
-                      title={t('Move right')}
-                      disabled={columnIndex === board.columns.length - 1}
-                      onClick={() => moveColumn(column.id, columnIndex + 1)}
-                    >
-                      →
-                    </button>
-                    <button className="board-column-btn" title={t('Delete column')} onClick={() => void deleteColumn(column.id, column.name)}>
-                      ✕
+                      ⋯
                     </button>
                   </>
                 )}
@@ -440,6 +485,76 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
           </div>
         )}
       </div>
+      {columnMenu !== null &&
+        (() => {
+          const column = board.columns.find((item) => item.id === columnMenu.columnId)
+          if (column === undefined) return null
+          const columnIndex = board.columns.indexOf(column)
+          return (
+            <div className="files-menu" style={{ left: columnMenu.x, top: columnMenu.y }} ref={columnMenuRef}>
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setColumnMenu(null)
+                  setAddingCardColumnId(column.id)
+                  setNewCardTitle('')
+                }}
+              >
+                {t('Add task')}
+              </button>
+              {loopsEnabled && (
+                <>
+                  <button className="project-menu-item" onClick={() => void startLoopSession(column, 'while')}>
+                    {t('Loop: while there are tasks')}
+                  </button>
+                  <button className="project-menu-item" onClick={() => void startLoopSession(column, 'count')}>
+                    {t('Loop: exact count')}
+                  </button>
+                </>
+              )}
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setColumnMenu(null)
+                  startColumnRename(column.id, column.name)
+                }}
+              >
+                {t('Rename')}
+              </button>
+              <button
+                className="project-menu-item"
+                disabled={columnIndex === 0}
+                onClick={() => {
+                  setColumnMenu(null)
+                  moveColumn(column.id, columnIndex - 1)
+                }}
+              >
+                {t('Move left')}
+              </button>
+              <button
+                className="project-menu-item"
+                disabled={columnIndex === board.columns.length - 1}
+                onClick={() => {
+                  setColumnMenu(null)
+                  moveColumn(column.id, columnIndex + 1)
+                }}
+              >
+                {t('Move right')}
+              </button>
+              <div className="project-menu-sep" />
+              <button
+                className="project-menu-item danger"
+                onClick={() => {
+                  setColumnMenu(null)
+                  void deleteColumn(column.id, column.name)
+                }}
+              >
+                {t('Delete')}
+              </button>
+            </div>
+          )
+        })()}
       {modalCardId !== null && cardById(modalCardId) !== undefined && (
         <CardModal
           tab={tab}
