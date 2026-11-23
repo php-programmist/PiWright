@@ -271,6 +271,7 @@ const RU: Record<string, string> = {
   'Move to top': 'Переместить в начало',
   'Move to bottom': 'Переместить в конец',
   'The kanban column {name} has no tasks': 'В колонке канбана {name} нет задач',
+  'The kanban column {name} on the {board} board has no tasks': 'В колонке канбана {name} на доске {board} нет задач',
   'Card title': 'Название карточки',
   'Add column': 'Добавить колонку',
   'Edit workflow': 'Редактировать workflow',

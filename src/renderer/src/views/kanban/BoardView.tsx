@@ -439,7 +439,12 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     const chatStore = useChatStore.getState()
     chatStore.setLoopEnabled(ref.hostId, true)
     if (mode === 'while') {
-      loopExitMap.set(ref.hostId, t('The kanban column {name} has no tasks', { name: column.name }))
+      loopExitMap.set(
+        ref.hostId,
+        multiBoard
+          ? t('The kanban column {name} on the {board} board has no tasks', { name: column.name, board: board.name })
+          : t('The kanban column {name} has no tasks', { name: column.name }),
+      )
     } else {
       const count = board.cards.filter((card) => card.columnId === column.id).length
       chatStore.setLoopMax(ref.hostId, Math.max(1, count))
