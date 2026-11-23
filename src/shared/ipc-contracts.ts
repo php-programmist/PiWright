@@ -621,6 +621,8 @@ export interface PiWrightApi {
   filesDelete(project: ProjectEntry, path: string): Promise<FileWriteResult>
   filesMkdir(project: ProjectEntry, path: string): Promise<FileWriteResult>
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  /** Открыть внешнюю ссылку (http/https/mailto) в системном браузере. */
+  shellOpenExternal(url: string): Promise<GitOpResult>
   /** base64 → файл в `.pi/attachments/` (paste); name — желаемое, возвращается фактическое. */
   putAttachment(project: ProjectEntry, name: string, base64: string): Promise<AttachmentResult>
   kanbanBoards(project: ProjectEntry): Promise<KanbanBoardsResult>
@@ -731,6 +733,7 @@ export const FILES_RENAME_CHANNEL = 'files:rename'
 export const FILES_DELETE_CHANNEL = 'files:delete'
 export const FILES_MKDIR_CHANNEL = 'files:mkdir'
 export const FILES_WATCH_CHANNEL = 'files:watch'
+export const SHELL_OPEN_EXTERNAL_CHANNEL = 'shell:open-external'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'
 export const ATTACHMENTS_CHOOSE_CHANNEL = 'attachments:choose'

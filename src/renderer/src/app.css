@@ -1278,6 +1278,21 @@ body {
   font-size: 0.9em;
 }
 
+.markdown a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.markdown a:hover {
+  text-decoration: underline;
+}
+
+.markdown .md-link.dead {
+  cursor: default;
+  color: inherit;
+}
+
 .markdown pre code {
   background: transparent;
   padding: 0;

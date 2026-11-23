@@ -1,6 +1,7 @@
 import { bashCommand, editTexts, toolHeader } from '../lib/tool-blocks'
 import { useFilesStore } from '../stores/files'
 import { useSessionsStore } from '../stores/sessions'
+import { useTabsStore } from '../stores/tabs'
 import { useT } from '../lib/i18n'
 import { toProjectRelative } from '../../../shared/file-paths'
 import type { ToolCall, ToolResult } from '../../../shared/agent-events'
@@ -31,6 +32,7 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                useTabsStore.getState().openTab(project, { kind: 'file', path: relPath })
                 void openFile(project, relPath)
               }}
             >

@@ -4,6 +4,9 @@ import remarkGfm from 'remark-gfm'
 import { highlightCode } from '../lib/highlight'
 import { shikiLanguage } from '../lib/tool-blocks'
 import { useSessionsStore } from '../stores/sessions'
+import { useFilesStore } from '../stores/files'
+import { useTabsStore } from '../stores/tabs'
+import { resolveChatLink } from '../../../shared/file-paths'
 import { useT } from '../lib/i18n'
 
 interface CodeElementProps {
@@ -131,6 +134,31 @@ function TaskCheckbox({
   )
 }
 
+/** Ссылка в markdown: файл проекта — вкладка файла, http(s)/mailto — системный браузер,
+ *  остальное — мёртвая ссылка без href. */
+function MdLink({ href, children }: { href?: string; children?: React.ReactNode }): React.JSX.Element {
+  const activeHostId = useSessionsStore((s) => s.activeHostId)
+  const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
+  const target = href !== undefined && project !== null ? resolveChatLink(project.dir, href) : null
+  const onClick = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (target === null || project === null) return
+    if (target.kind === 'external') {
+      void window.piwright.shellOpenExternal(target.url)
+      return
+    }
+    useTabsStore.getState().openTab(project, { kind: 'file', path: target.path })
+    void useFilesStore.getState().openFile(project, target.path)
+  }
+  if (target === null) return <span className="md-link dead">{children}</span>
+  return (
+    <a href={href} title={target.kind === 'file' ? target.path : undefined} onClick={onClick}>
+      {children}
+    </a>
+  )
+}
+
 /** Markdown ассистента: GFM, fenced-блоки — через Shiki. */
 export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.Element {
   return (
@@ -158,7 +186,8 @@ export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.E
           },
           input: (props: React.JSX.IntrinsicElements['input'] & HastNodeProp) => (
             <TaskCheckbox {...props} onToggleCheckbox={onToggleCheckbox} />
-          )
+          ),
+          a: (props: React.JSX.IntrinsicElements['a']) => <MdLink {...props} />
         }}
       >
         {text}

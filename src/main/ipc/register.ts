@@ -14,6 +14,7 @@ import {
   FILES_DELETE_CHANNEL,
   FILES_MKDIR_CHANNEL,
   FILES_WATCH_CHANNEL,
+  SHELL_OPEN_EXTERNAL_CHANNEL,
   FILES_WRITE_CHANNEL,
   GIT_BRANCHES_CHANNEL,
   GIT_BRANCH_DELETE_CHANNEL,
@@ -673,6 +674,18 @@ export function registerIpc(
     if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
     files.setWatched(project, paths)
     return { ok: true, error: null }
+  })
+
+  ipcMain.handle(SHELL_OPEN_EXTERNAL_CHANNEL, async (_event, url: unknown) => {
+    if (typeof url !== 'string' || !/^(https?:\/\/|mailto:)/i.test(url.trim())) {
+      return { ok: false, error: 'Invalid url' }
+    }
+    try {
+      await shell.openExternal(url.trim())
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle(ATTACHMENTS_PUT_CHANNEL, async (_event, project: unknown, name: unknown, base64: unknown) => {
