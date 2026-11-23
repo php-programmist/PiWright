@@ -2,6 +2,7 @@
  *  Корень резолвится через git-бэкенд проекта (native spawn / wsl.exe), fs — напрямую
  *  (для WSL — по UNC). Все мутации — CAS через casMutate из shared/kanban.ts. */
 import { promises as fs } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { posix, win32 } from 'node:path'
@@ -61,6 +62,52 @@ interface ExecResult {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+const LOCK_TIMEOUT_MS = 10_000
+const LOCK_STALE_MS = 30_000
+
+/** Кросс-процессная блокировка файла доски на время rev-check + записи: main-процесс и
+ *  pi-агент пишут одну доску независимо, check-then-write без лока теряет апдейты и
+ *  рвёт JSON. Ловушка через 'wx' (EEXIST если занято); зависший лок (краш писателя)
+ *  снимается по возрасту. */
+async function withBoardLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+  const lockFile = `${file}.lock`
+  const deadline = Date.now() + LOCK_TIMEOUT_MS
+  for (;;) {
+    let handle: fs.FileHandle
+    try {
+      handle = await fs.open(lockFile, 'wx')
+    } catch (err) {
+      // EPERM: Windows оставляет только что удалённое имя в pending-delete — это «занято», не фатально.
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'EPERM') throw err
+      if (code === 'EEXIST') {
+        try {
+          const st = await fs.stat(lockFile)
+          if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+            await fs.rm(lockFile, { force: true }).catch(() => {})
+            continue
+          }
+        } catch {
+          continue
+        }
+      }
+      if (Date.now() > deadline) throw new Error(`Kanban board file is locked: ${lockFile}`)
+      await new Promise((resolve) => setTimeout(resolve, 25 + Math.random() * 75))
+      continue
+    }
+    try {
+      await handle.writeFile(String(process.pid))
+    } finally {
+      await handle.close()
+    }
+    try {
+      return await fn()
+    } finally {
+      await fs.rm(lockFile, { force: true }).catch(() => {})
+    }
+  }
 }
 
 function okBoard(board: KanbanBoard): KanbanMutationResult {
@@ -204,18 +251,25 @@ export class KanbanService {
       },
       write: async (board) => {
         const file = this.boardFile(dir, board.id)
-        let currentRev: number | null = null
-        try {
-          const parsed = parseKanbanBoard(JSON.parse(await fs.readFile(file, 'utf8')))
-          if (parsed !== null) currentRev = parsed.rev
-        } catch {
-          // Файла нет — первая запись.
-        }
-        if (currentRev !== null && currentRev !== board.rev - 1) throw new KanbanConflictError()
-        await fs.mkdir(dir, { recursive: true })
-        const tmp = `${file}.tmp`
-        await fs.writeFile(tmp, JSON.stringify(board, null, 2), 'utf8')
-        await fs.rename(tmp, file)
+        await withBoardLock(file, async () => {
+          let currentRev: number | null = null
+          try {
+            const parsed = parseKanbanBoard(JSON.parse(await fs.readFile(file, 'utf8')))
+            if (parsed !== null) currentRev = parsed.rev
+          } catch {
+            // Файла нет — первая запись.
+          }
+          if (currentRev !== null && currentRev !== board.rev - 1) throw new KanbanConflictError()
+          await fs.mkdir(dir, { recursive: true })
+          const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+          try {
+            await fs.writeFile(tmp, JSON.stringify(board, null, 2), 'utf8')
+            await fs.rename(tmp, file)
+          } catch (err) {
+            await fs.rm(tmp, { force: true })
+            throw err
+          }
+        })
       }
     }
     return { dir, store }

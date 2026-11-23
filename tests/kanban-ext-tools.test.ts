@@ -1,8 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { KanbanConflictError, type KanbanBoardStore } from '../resources/kanban/lib/core'
+import { applyCardCreate, casMutate, KanbanConflictError, type KanbanBoardStore } from '../resources/kanban/lib/core'
 import { createFsStore, findBoard, readBoard, boardsDir } from '../resources/kanban/lib/store'
 import {
   kanbanColumn,
@@ -320,6 +321,40 @@ describe('createFsStore CAS', () => {
     await expect(store.write({ ...board, rev: board.rev + 10 })).rejects.toThrow(KanbanConflictError)
     await store.write({ ...board, rev: board.rev + 1 })
     expect((await readBoard(boardsDir(root), boardId))!.rev).toBe(board.rev + 1)
+  })
+
+  it('parallel casMutate from two stores: no lost updates, no lock/tmp leftovers', async () => {
+    const dir = tmpDir('piwright-kanban-tool-')
+    await kanbanCreateCard(env(dir), { title: 'Seed' })
+    const root = dir
+    const boardId = (await findBoard(root)).id
+    const baseRev = (await readBoard(boardsDir(root), boardId))!.rev
+    const storeA = createFsStore(boardsDir(root))
+    const storeB = createFsStore(boardsDir(root))
+    const results = await Promise.all([
+      ...Array.from({ length: 6 }, (_, i) =>
+        casMutate(storeA, boardId, (board) => ({
+          board: applyCardCreate(board, { title: `A${i}` }),
+          value: true
+        }))
+      ),
+      ...Array.from({ length: 6 }, (_, i) =>
+        casMutate(storeB, boardId, (board) => ({
+          board: applyCardCreate(board, { title: `B${i}` }),
+          value: true
+        }))
+      )
+    ])
+    expect(results.every((r) => r === true)).toBe(true)
+    const final = (await readBoard(boardsDir(root), boardId))!
+    expect(final.rev).toBe(baseRev + 12)
+    for (let i = 0; i < 6; i += 1) {
+      expect(final.cards.some((c) => c.title === `A${i}`)).toBe(true)
+      expect(final.cards.some((c) => c.title === `B${i}`)).toBe(true)
+    }
+    const names = await readdir(boardsDir(root))
+    expect(names.some((n) => n.endsWith('.tmp'))).toBe(false)
+    expect(names.some((n) => n.endsWith('.lock'))).toBe(false)
   })
 })
 

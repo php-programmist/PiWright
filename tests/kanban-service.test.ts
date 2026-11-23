@@ -219,6 +219,29 @@ describe('CAS', () => {
     expect(onDisk.rev).toBe(external.rev + 11)
     expect(onDisk.cards[0].title).toBe('After conflict')
   })
+
+  it('параллельные мутации: все применены, rev сходится, мусорных tmp/lock нет', async () => {
+    const project = native(tmpDir('cas-parallel'))
+    const dir = win32.join(await service.resolveKanbanRoot(project), '.pi', 'kanban')
+    const board = (await service.createBoard(project, 'B')).board!
+    const boardId = board.id
+    const file = win32.join(dir, `${boardId}.json`)
+    const baseRev = readBoardFile(file)!.rev
+
+    const results = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => service.cardCreate(project, boardId, { title: `Card ${i}` }))
+    )
+    expect(results.map((r) => r.error).filter((e) => e !== null)).toEqual([])
+    expect(results.every((r) => r.ok)).toBe(true)
+
+    const onDisk = readBoardFile(file)!
+    expect(onDisk.rev).toBe(baseRev + 12)
+    expect(onDisk.cards).toHaveLength(12)
+    for (const name of await fs.readdir(dir)) {
+      expect(name.endsWith('.tmp')).toBe(false)
+      expect(name.endsWith('.lock')).toBe(false)
+    }
+  })
 })
 
 describe('putAttachment', () => {
