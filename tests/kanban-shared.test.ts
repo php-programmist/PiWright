@@ -397,12 +397,12 @@ describe('CAS', () => {
     expect(cardsIn(final, inProgress)).toEqual(['c-00000004', 'c-00000003', 'c-00000001'])
   })
 
-  it('конфликты исчерпаны — throw после 5 попыток', async () => {
+  it('конфликты исчерпаны — throw после 10 попыток', async () => {
     const store = storeWith(boardWithCards())
     store.failWrites = true
     await expect(
       casMutate(store, 'b-11111111', (board) => ({ board: applyBoardRename(board, 'X'), value: null })),
-    ).rejects.toThrow('Kanban CAS failed after 5 attempts')
+    ).rejects.toThrow('Kanban CAS failed after 10 attempts')
   })
 
   it('чужая ошибка не глотается', async () => {

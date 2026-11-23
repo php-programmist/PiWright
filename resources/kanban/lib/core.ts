@@ -498,13 +498,13 @@ export function claimNextCard(board: KanbanBoard, now = new Date().toISOString()
   return null
 }
 
-export const KANBAN_CAS_MAX_ATTEMPTS = 5
+export const KANBAN_CAS_MAX_ATTEMPTS = 10
 
 function casDelay(attempt: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 40 + attempt * 20 + Math.random() * 80))
+  return new Promise((resolve) => setTimeout(resolve, 30 + attempt * 40 + Math.random() * 150))
 }
 
-/** CAS-мутация: read → mutate → write; конфликт rev — перечитать и повторить (до 5 попыток).
+/** CAS-мутация: read → mutate → write; конфликт rev — перечитать и повторить (до 10 попыток).
  *  mutate вернул null или тот же объект доски — записи нет, возвращается value/null. */
 export async function casMutate<T>(
   store: KanbanBoardStore,
