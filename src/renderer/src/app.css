@@ -149,6 +149,20 @@ body {
   flex: none;
 }
 
+.sessions-panel.collapsed .icon {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.collapsed-settings {
+  margin-top: auto;
+  margin-bottom: 8px;
+}
+
+.expand-sidebar svg {
+  display: block;
+}
+
 .sidebar-badges {
   display: flex;
   flex-direction: column;

@@ -533,12 +533,24 @@ export function SessionsPanel(): React.JSX.Element {
   if (collapsed) {
     return (
       <aside className="sessions-panel collapsed">
-        <button className="icon expand-sidebar" title={t('Expand panel')} onClick={expand}>+</button>
+        <button className="icon expand-sidebar" title={t('Expand panel')} onClick={expand}>
+          <svg width="25" height="25" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M6 5l7 7-7 7M13 5l7 7-7 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
         <div className="sidebar-badges" onClick={expand}>
           {unreadCount > 0 && <span className="proj-badge green" title={t('Unread turns')}>{unreadCount}</span>}
           {busyCount > 0 && <span className="proj-badge busy" title={t('Working')}>{busyCount}</span>}
           {attentionCount > 0 && <span className="proj-badge attention" title={t('Need your answer')}>{attentionCount}</span>}
         </div>
+        <button className="icon collapsed-settings" title={t('Settings')} onClick={openSettings}>⚙</button>
       </aside>
     )
   }
