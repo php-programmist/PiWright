@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
 import type { KanbanBoard, KanbanCard, KanbanColumn, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
 import type { KanbanMutationResult, ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { draftMap, loopExitMap, useChatStore } from '../../stores/chat'
-import { useSessionsStore } from '../../stores/sessions'
+import { useSessionsStore, projectKey } from '../../stores/sessions'
 import { parentTabKey, useTabsStore } from '../../stores/tabs'
 import { useGitLogStore } from '../../stores/gitlog'
+import { useKanbanStore } from '../../stores/kanban'
 import { useTerminalStore } from '../../stores/terminal'
 import { persistPanel } from '../../stores/panels-prefs'
 import type { ProjectTab } from '../../stores/tabs'
@@ -149,7 +150,6 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const boardTheme = useBoardTheme()
   const [board, setBoard] = useState<KanbanBoard | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [modalCardId, setModalCardId] = useState<string | null>(null)
   const [workflowOpen, setWorkflowOpen] = useState(false)
   const [dragCardId, setDragCardId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
@@ -179,6 +179,15 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(null)
   const cardMenuRef = useRef<HTMLDivElement | null>(null)
   const boardId = tab.boardId
+  // Открытая карточка живёт в сторе: смена вкладки размонтирует BoardView, при возврате модалка восстанавливается.
+  const boardKey = `${projectKey(tab.project)}\u0000${boardId ?? ''}`
+  const modalCardId = useKanbanStore((s) => s.openCard[boardKey] ?? null)
+  const setModalCardId = useCallback(
+    (cardId: string | null): void => {
+      useKanbanStore.getState().setOpenCard(boardKey, cardId)
+    },
+    [boardKey],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -1042,7 +1051,7 @@ function CardModal({
   const locale = lang === 'ru' ? 'ru-RU' : 'en-US'
 
   return (
-    <div className="board-modal-overlay">
+    <div className="board-card-overlay">
       <div className="board-modal" onPaste={pasteImages}>
         <header className="board-modal-head">
           <input

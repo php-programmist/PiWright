@@ -12,6 +12,9 @@ interface KanbanState {
   boards: KanbanBoardSummary[]
   loading: boolean
   error: string | null
+  /** Открытая карточка модалки по ключу доски (projectKey\0boardId) — переживает смену вкладки. */
+  openCard: Record<string, string>
+  setOpenCard: (key: string, cardId: string | null) => void
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   create: (project: ProjectEntry, name: string) => Promise<boolean>
@@ -28,6 +31,16 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   boards: [],
   loading: false,
   error: null,
+  openCard: {},
+
+  setOpenCard: (key, cardId) =>
+    set((state) => {
+      if ((state.openCard[key] ?? null) === cardId) return state
+      const next = { ...state.openCard }
+      if (cardId === null) delete next[key]
+      else next[key] = cardId
+      return { openCard: next }
+    }),
 
   setProject: (project) => {
     const key = project === null ? null : projectKey(project)

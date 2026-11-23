@@ -4011,6 +4011,7 @@ pre.code-block {
 }
 
 .board-view {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -4208,6 +4209,18 @@ pre.code-block {
 
 .board-modal-overlay {
   position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* Модалка карточки перекрывает только область доски: таб-бар, правые панели и нижний док остаются доступны. */
+.board-card-overlay {
+  position: absolute;
   inset: 0;
   z-index: 100;
   background: rgba(0, 0, 0, 0.45);
