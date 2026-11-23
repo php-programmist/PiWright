@@ -47,8 +47,9 @@ function KanbanThumb({ project, path, onOpen }: { project: ProjectEntry; path: s
 
 /** Чип сессии в комментарии: живая — активация чата, из истории — восстановление чата,
  *  нигде не найдена — приглушённый чип с тултипом. */
-function SessionChip({ project, session }: { project: ProjectEntry; session: KanbanSessionRef }): React.JSX.Element {
+function SessionChip({ project, session, at }: { project: ProjectEntry; session: KanbanSessionRef; at?: string }): React.JSX.Element {
   const t = useT()
+  const lang = useLang()
   const [missing, setMissing] = useState(false)
   useEffect(() => {
     const st = useSessionsStore.getState()
@@ -95,10 +96,11 @@ function SessionChip({ project, session }: { project: ProjectEntry; session: Kan
     })
   }
 
+  const when = at === undefined ? '' : ` · ${new Date(at).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US')}`
   return (
     <span
       className={missing ? 'board-chip missing' : 'board-chip session'}
-      title={missing ? t('Session not found') : session.title}
+      title={missing ? t('Session not found') : `${session.title}${when}`}
       onClick={open}
     >
       {session.title}
@@ -108,7 +110,9 @@ function SessionChip({ project, session }: { project: ProjectEntry; session: Kan
 
 /** Чип коммита: первый клик — док «История Git» + выделение коммита, повторный —
  *  дифф первого файла коммита во вкладке. */
-function CommitChip({ project, commit }: { project: ProjectEntry; commit: KanbanCommitRef }): React.JSX.Element {
+function CommitChip({ project, commit, at }: { project: ProjectEntry; commit: KanbanCommitRef; at?: string }): React.JSX.Element {
+  const lang = useLang()
+  const when = at === undefined ? '' : ` · ${new Date(at).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US')}`
   const open = (): void => {
     const gl = useGitLogStore.getState()
     if (!gl.open) {
@@ -129,7 +133,7 @@ function CommitChip({ project, commit }: { project: ProjectEntry; commit: Kanban
     }
   }
   return (
-    <span className="board-chip commit" title={commit.message} onClick={open}>
+    <span className="board-chip commit" title={`${commit.message}${when}`} onClick={open}>
       {commit.hash.slice(0, 7)}
     </span>
   )
@@ -921,6 +925,14 @@ function CardModal({
   const uploadingRef = useRef(false)
   const cardFileRef = useRef<HTMLInputElement | null>(null)
   const commentFileRef = useRef<HTMLInputElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const scrollOnCommentRef = useRef(false)
+
+  useEffect(() => {
+    if (!scrollOnCommentRef.current) return
+    scrollOnCommentRef.current = false
+    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight })
+  }, [card?.comments.length])
 
   const setLightboxSafe = (src: string | null): void => {
     lightboxRef.current = src
@@ -1008,6 +1020,7 @@ function CardModal({
     setComment('')
     const images = pendingImages.map((item) => item.path)
     setPendingImages([])
+    scrollOnCommentRef.current = true
     const result = await window.piwright.kanbanCardComment(tab.project, board.id, { cardId: card.id, text, images })
     apply(result)
   }
@@ -1045,12 +1058,6 @@ function CardModal({
     apply(await window.piwright.kanbanCommentDelete(tab.project, board.id, card.id, commentId))
   }
 
-  const saveAndClose = async (): Promise<void> => {
-    await saveDetails()
-    await addComment()
-    onClose()
-  }
-
   const moveCardToColumn = (columnId: string): void => {
     if (columnId === card.columnId) return
     void window.piwright.kanbanCardMove(tab.project, board.id, { id: card.id, columnId }).then(apply)
@@ -1071,7 +1078,7 @@ function CardModal({
 
   return (
     <div className="board-card-overlay">
-      <div className="board-modal" onPaste={pasteImages}>
+      <div className="board-modal board-card-modal" onPaste={pasteImages}>
         <header className="board-modal-head">
           <input
             className="board-modal-title"
@@ -1082,98 +1089,142 @@ function CardModal({
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
             }}
           />
+          <button className="board-head-danger" title={t('Delete card')} onClick={() => void removeCard()}>
+            🗑
+          </button>
           <button className="settings-close" title={t('Close')} onClick={onClose}>
             ×
           </button>
         </header>
-        <div className="board-modal-body">
-          <textarea
-            className="board-modal-description"
-            placeholder={t('Description')}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => void saveDetails()}
-          />
-          <div className="board-modal-description-actions">
-            <button className="board-danger" onClick={() => void removeCard()}>
-              {t('Delete card')}
-            </button>
-            <button className="board-primary" onClick={() => void saveAndClose()}>
-              {t('Ok')}
-            </button>
+        <div className="board-card-split">
+          <div className="board-modal-body" ref={bodyRef}>
+            <div className="board-section-label">{t('Description')}</div>
+            <textarea
+              className="board-modal-description"
+              placeholder={t('Description')}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => void saveDetails()}
+            />
+            <div className="board-section-label">
+              {t('Activity')} <span className="board-section-count">({card.comments.length})</span>
+            </div>
+            <div className="board-feed">
+              {card.comments.map((item) => (
+                <div key={item.id} className="board-feed-item">
+                  <div className={item.author === 'agent' ? 'board-feed-avatar agent' : 'board-feed-avatar user'}>
+                    {(item.author === 'agent' ? t('Agent') : t('You')).charAt(0)}
+                  </div>
+                  <div className="board-feed-main">
+                    <div className="board-feed-head">
+                      <span className="board-feed-name">{item.author === 'agent' ? t('Agent') : t('You')}</span>
+                      <span className="board-feed-date">{new Date(item.at).toLocaleString(locale)}</span>
+                      {item.author === 'user' && editingCommentId !== item.id && (
+                        <div className="board-comment-actions">
+                          <button title={t('Edit')} onClick={() => startEditComment(item)}>
+                            ✏️
+                          </button>
+                          <button title={t('Delete')} onClick={() => void removeComment(item.id)}>
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editingCommentId === item.id ? (
+                      <>
+                        <textarea
+                          className="board-comment-edit"
+                          value={editCommentText}
+                          autoFocus
+                          onChange={(e) => setEditCommentText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.ctrlKey && e.key === 'Enter') void saveEditComment()
+                            if (e.key === 'Escape') cancelEditComment()
+                          }}
+                        />
+                        <div className="board-comment-edit-actions">
+                          <button className="board-primary" onClick={() => void saveEditComment()}>
+                            {t('Save')}
+                          </button>
+                          <button onClick={cancelEditComment}>{t('Cancel')}</button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="board-comment-text">{item.text}</div>
+                    )}
+                    {(item.session !== undefined || (item.commits?.length ?? 0) > 0) && (
+                      <div className="board-comment-refs">
+                        {item.session !== undefined && <SessionChip project={tab.project} session={item.session} at={item.at} />}
+                        {item.commits?.map((commit) => (
+                          <CommitChip key={commit.hash} project={tab.project} commit={commit} at={item.at} />
+                        ))}
+                      </div>
+                    )}
+                    {item.images.length > 0 && (
+                      <div className="board-comment-images">
+                        {item.images.map((path) => (
+                          <KanbanThumb key={path} project={tab.project} path={path} onOpen={setLightboxSafe} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="board-card-images">
-            {card.images.map((path) => (
-              <div key={path} className="board-thumb-wrap">
-                <KanbanThumb project={tab.project} path={path} onOpen={setLightboxSafe} />
-                <button className="board-thumb-remove" title={t('Remove image')} onClick={() => removeCardImage(path)}>
-                  ×
+          <aside className="board-card-rail">
+            <div className="board-rail-section">
+              <span className="board-section-label">{t('Column')}</span>
+              <select
+                className="board-column-select"
+                title={t('Move to column')}
+                value={card.columnId}
+                onChange={(e) => moveCardToColumn(e.target.value)}
+              >
+                {board.columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    {column.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="board-rail-section">
+              <span className="board-section-label">{t('Attachments')}</span>
+              <div className="board-card-images">
+                {card.images.map((path) => (
+                  <div key={path} className="board-thumb-wrap">
+                    <KanbanThumb project={tab.project} path={path} onOpen={setLightboxSafe} />
+                    <button className="board-thumb-remove" title={t('Remove image')} onClick={() => removeCardImage(path)}>
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button className="board-thumb-add" title={t('Attach image')} onClick={() => cardFileRef.current?.click()}>
+                  +
                 </button>
               </div>
-            ))}
-            <button className="board-thumb-add" title={t('Attach image')} onClick={() => cardFileRef.current?.click()}>
-              +
-            </button>
-          </div>
-          <div className="board-comments">
-            {card.comments.map((item) => (
-              <div key={item.id} className="board-comment">
-                <div className="board-comment-meta">
-                  <span className={item.author === 'agent' ? 'board-comment-author agent' : 'board-comment-author user'}>
-                    {item.author === 'agent' ? t('Agent') : t('You')}
-                  </span>
-                  <span className="board-comment-date">{new Date(item.at).toLocaleString(locale)}</span>
-                  {item.author === 'user' && editingCommentId !== item.id && (
-                    <div className="board-comment-actions">
-                      <button title={t('Edit')} onClick={() => startEditComment(item)}>
-                        ✏️
-                      </button>
-                      <button title={t('Delete')} onClick={() => void removeComment(item.id)}>
-                        ×
-                      </button>
-                    </div>
-                  )}
+            </div>
+            {(card.sessions?.length ?? 0) > 0 && (
+              <div className="board-rail-section">
+                <span className="board-section-label">{t('Sessions')}</span>
+                <div className="board-comment-refs">
+                  {card.sessions?.map((item) => (
+                    <SessionChip key={item.id} project={tab.project} session={item} at={item.at} />
+                  ))}
                 </div>
-                {editingCommentId === item.id ? (
-                  <>
-                    <textarea
-                      className="board-comment-edit"
-                      value={editCommentText}
-                      autoFocus
-                      onChange={(e) => setEditCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.ctrlKey && e.key === 'Enter') void saveEditComment()
-                        if (e.key === 'Escape') cancelEditComment()
-                      }}
-                    />
-                    <div className="board-comment-edit-actions">
-                      <button className="board-primary" onClick={() => void saveEditComment()}>
-                        {t('Save')}
-                      </button>
-                      <button onClick={cancelEditComment}>{t('Cancel')}</button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="board-comment-text">{item.text}</div>
-                )}
-                {(item.session !== undefined || (item.commits?.length ?? 0) > 0) && (
-                  <div className="board-comment-refs">
-                    {item.session !== undefined && <SessionChip project={tab.project} session={item.session} />}
-                    {item.commits?.map((commit) => (
-                      <CommitChip key={commit.hash} project={tab.project} commit={commit} />
-                    ))}
-                  </div>
-                )}
-                {item.images.length > 0 && (
-                  <div className="board-comment-images">
-                    {item.images.map((path) => (
-                      <KanbanThumb key={path} project={tab.project} path={path} onOpen={setLightboxSafe} />
-                    ))}
-                  </div>
-                )}
               </div>
-            ))}
-          </div>
+            )}
+            {(card.commits?.length ?? 0) > 0 && (
+              <div className="board-rail-section">
+                <span className="board-section-label">{t('Commits')}</span>
+                <div className="board-comment-refs">
+                  {card.commits?.map((item) => (
+                    <CommitChip key={item.hash} project={tab.project} commit={item} at={item.at} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
         </div>
         <footer className="board-modal-foot">
           {pendingImages.length > 0 && (
@@ -1202,18 +1253,6 @@ function CardModal({
             }}
           />
           <div className="board-modal-actions">
-            <select
-              className="board-column-select"
-              title={t('Move to column')}
-              value={card.columnId}
-              onChange={(e) => moveCardToColumn(e.target.value)}
-            >
-              {board.columns.map((column) => (
-                <option key={column.id} value={column.id}>
-                  {column.name}
-                </option>
-              ))}
-            </select>
             <button className="board-attach" title={t('Attach image')} onClick={() => commentFileRef.current?.click()}>
               📎
             </button>

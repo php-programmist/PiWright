@@ -17,6 +17,15 @@ export interface KanbanCommitRef {
   message: string
 }
 
+/** Сессия/коммит, скопированные с комментария на карточку; at — время комментария-источника. */
+export interface KanbanCardSession extends KanbanSessionRef {
+  at: string
+}
+
+export interface KanbanCardCommit extends KanbanCommitRef {
+  at: string
+}
+
 export interface KanbanComment {
   id: string
   author: 'user' | 'agent'
@@ -37,6 +46,8 @@ export interface KanbanCard {
   updatedAt: string
   images: string[]
   comments: KanbanComment[]
+  sessions?: KanbanCardSession[]
+  commits?: KanbanCardCommit[]
 }
 
 export interface KanbanBoard {
@@ -148,6 +159,30 @@ function parseComment(raw: unknown): KanbanComment | null {
   return comment
 }
 
+function parseCardSessions(raw: unknown): KanbanCardSession[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const parsed: KanbanCardSession[] = []
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const record = item as Record<string, unknown>
+    if (typeof record['id'] !== 'string' || typeof record['title'] !== 'string' || !isIsoString(record['at'])) continue
+    parsed.push({ id: record['id'], title: record['title'], at: record['at'] })
+  }
+  return parsed.length > 0 ? parsed : undefined
+}
+
+function parseCardCommits(raw: unknown): KanbanCardCommit[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const parsed: KanbanCardCommit[] = []
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const record = item as Record<string, unknown>
+    if (typeof record['hash'] !== 'string' || typeof record['message'] !== 'string' || !isIsoString(record['at'])) continue
+    parsed.push({ hash: record['hash'], message: record['message'], at: record['at'] })
+  }
+  return parsed.length > 0 ? parsed : undefined
+}
+
 function parseCard(raw: unknown, columnIds: Set<string>): KanbanCard | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
   const record = raw as Record<string, unknown>
@@ -177,7 +212,9 @@ function parseCard(raw: unknown, columnIds: Set<string>): KanbanCard | null {
     createdAt: record['createdAt'],
     updatedAt: record['updatedAt'],
     images: sanitizeStringArray(record['images'], isValidKanbanImagePath),
-    comments
+    comments,
+    sessions: parseCardSessions(record['sessions']),
+    commits: parseCardCommits(record['commits'])
   }
 }
 
@@ -359,12 +396,32 @@ export interface CardCommentInput {
   now?: string
 }
 
+function mergeCardSessions(existing: KanbanCardSession[] | undefined, comment: KanbanComment): KanbanCardSession[] | undefined {
+  const session = comment.session
+  if (session === undefined) return existing
+  const list = existing ?? []
+  if (list.some((item) => item.id === session.id)) return existing
+  return [...list, { id: session.id, title: session.title, at: comment.at }]
+}
+
+function mergeCardCommits(existing: KanbanCardCommit[] | undefined, comment: KanbanComment): KanbanCardCommit[] | undefined {
+  if (comment.commits === undefined || comment.commits.length === 0) return existing
+  const list = existing ?? []
+  const known = new Set(list.map((item) => item.hash))
+  const added = comment.commits
+    .filter((commit) => !known.has(commit.hash))
+    .map((commit) => ({ hash: commit.hash, message: commit.message, at: comment.at }))
+  return added.length === 0 ? existing : [...list, ...added]
+}
+
 export function applyCardComment(board: KanbanBoard, input: CardCommentInput): KanbanBoard {
   const index = cardIndex(board, input.id)
   const card = board.cards[index]
   const next: KanbanCard = {
     ...card,
     comments: [...card.comments, input.comment],
+    sessions: mergeCardSessions(card.sessions, input.comment),
+    commits: mergeCardCommits(card.commits, input.comment),
     updatedAt: input.now ?? new Date().toISOString()
   }
   return withCard(board, next)

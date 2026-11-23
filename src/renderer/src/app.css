@@ -4325,6 +4325,86 @@ pre.code-block {
   overflow: hidden;
 }
 
+.board-card-modal {
+  width: 860px;
+  height: min(640px, 100%);
+}
+
+.board-head-danger {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+
+.board-head-danger:hover {
+  color: #d66;
+  background: var(--border);
+}
+
+.board-card-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.board-card-split .board-modal-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-card-rail {
+  width: 190px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.board-rail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-section-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  text-transform: uppercase;
+}
+
+.board-section-count {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.board-card-rail .board-column-select {
+  width: 100%;
+  max-width: none;
+  margin-right: 0;
+}
+
+.board-card-rail .board-thumb,
+.board-card-rail .board-thumb-add {
+  width: 72px;
+  height: 54px;
+}
+
+.board-card-rail .board-thumb-add {
+  font-size: 16px;
+}
+
 .board-modal-head {
   display: flex;
   align-items: center;
@@ -4410,43 +4490,61 @@ pre.code-block {
   gap: 8px;
 }
 
-.board-comments {
+.board-feed {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.board-feed-item {
+  display: flex;
   gap: 8px;
 }
 
-.board-comment {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
-}
-
-.board-comment-meta {
+.board-feed-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 1px;
 }
 
-.board-comment-author {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 8px;
-}
-
-.board-comment-author.user {
+.board-feed-avatar.user {
   color: var(--accent);
   border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.board-comment-author.agent {
+.board-feed-avatar.agent {
   color: var(--muted);
   border: 1px solid var(--border-strong);
+  background: transparent;
 }
 
-.board-comment-date {
+.board-feed-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-feed-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.board-feed-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.board-feed-date {
   color: var(--faint);
   font-size: 11px;
 }
@@ -4582,27 +4680,6 @@ pre.code-block {
   font-size: 12px;
   max-width: 200px;
   margin-right: auto;
-}
-
-.board-modal-description-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.board-danger {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  color: #d66;
-  font-size: 12px;
-  padding: 4px 10px;
-  cursor: pointer;
-}
-
-.board-danger:hover {
-  border-color: #d66;
 }
 
 .board-primary {

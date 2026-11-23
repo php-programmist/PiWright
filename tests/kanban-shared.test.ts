@@ -196,6 +196,65 @@ describe('чистые мутации', () => {
     expect(board.cards.find((item) => item.id === 'c-00000001')!.comments).toEqual([comment])
   })
 
+  it('card comment копирует session/commits комментария на карточку без дублей', () => {
+    const first = {
+      id: 'm-00000001',
+      author: 'agent' as const,
+      text: 'Done',
+      images: [],
+      at: NOW,
+      session: { id: 's-1', title: 'Fix ux' },
+      commits: [{ hash: 'a1b2c3d', message: 'fix' }],
+    }
+    let board = applyCardComment(boardWithCards(), { id: 'c-00000001', comment: first })
+    let card = board.cards.find((item) => item.id === 'c-00000001')!
+    expect(card.sessions).toEqual([{ id: 's-1', title: 'Fix ux', at: NOW }])
+    expect(card.commits).toEqual([{ hash: 'a1b2c3d', message: 'fix', at: NOW }])
+    const second = {
+      id: 'm-00000002',
+      author: 'agent' as const,
+      text: 'More',
+      images: [],
+      at: '2026-11-22T11:00:00.000Z',
+      session: { id: 's-1', title: 'Fix ux' },
+      commits: [
+        { hash: 'a1b2c3d', message: 'fix' },
+        { hash: 'e4f5a6b', message: 'feat' },
+      ],
+    }
+    board = applyCardComment(board, { id: 'c-00000001', comment: second })
+    card = board.cards.find((item) => item.id === 'c-00000001')!
+    expect(card.sessions).toEqual([{ id: 's-1', title: 'Fix ux', at: NOW }])
+    expect(card.commits).toEqual([
+      { hash: 'a1b2c3d', message: 'fix', at: NOW },
+      { hash: 'e4f5a6b', message: 'feat', at: '2026-11-22T11:00:00.000Z' },
+    ])
+  })
+
+  it('parseKanbanBoard читает sessions/commits карточки и отбрасывает битые записи', () => {
+    const comment = {
+      id: 'm-00000001',
+      author: 'agent' as const,
+      text: 'Done',
+      images: [],
+      at: NOW,
+      session: { id: 's-1', title: 'Fix ux' },
+    }
+    let board = applyCardComment(boardWithCards(), { id: 'c-00000001', comment })
+    board = {
+      ...board,
+      cards: board.cards.map((item) =>
+        item.id === 'c-00000001'
+          ? { ...item, commits: [{ hash: 'a1b2c3d', message: 'fix', at: NOW }, { hash: 'bad', message: 'x', at: 'nope' } as never] }
+          : item,
+      ),
+    }
+    const parsed = parseKanbanBoard(JSON.parse(JSON.stringify(board)))!
+    const card = parsed.cards.find((item) => item.id === 'c-00000001')!
+    expect(card.sessions).toEqual([{ id: 's-1', title: 'Fix ux', at: NOW }])
+    expect(card.commits).toEqual([{ hash: 'a1b2c3d', message: 'fix', at: NOW }])
+  })
+
   it('column create/rename/move', () => {
     let board = applyColumnCreate(boardWithCards(), 'Extra')
     expect(board.columns).toHaveLength(6)

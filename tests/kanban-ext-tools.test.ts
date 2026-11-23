@@ -236,6 +236,8 @@ describe('kanban_comment', () => {
     expect(comment.session).toEqual({ id: 'sess-1', title: 'my-session' })
     expect(comment.commits).toEqual([{ hash: 'abc1234', message: 'fix' }])
     expect(comment.images).toEqual(['attachments/shot.png'])
+    expect(card.sessions).toEqual([{ id: 'sess-1', title: 'my-session', at: comment.at }])
+    expect(card.commits).toEqual([{ hash: 'abc1234', message: 'fix', at: comment.at }])
     const bad = await kanbanComment(env(dir), { id, text: '   ' })
     expect(bad.text).toContain('Invalid comment text')
   })
