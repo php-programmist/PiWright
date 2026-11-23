@@ -131,36 +131,54 @@ const IMAGE_MIME: Record<string, string> = {
 
 const MAX_INLINE_IMAGES = 10
 
-/** Картинки вложений (пути `attachments/<name>` внутри boardsDir) → base64-блоки для модели. */
+interface InlineImage {
+  data: string
+  mimeType: string
+}
+
+/** Картинки вложений (пути `attachments/<name>` внутри boardsDir) → base64-блоки для модели и
+ *  строки-описания. Относительный путь `attachments/...` от cwd агента не читается, поэтому в
+ *  строках печатается абсолютный путь — fallback для read, когда inline-блок не загружен. */
 async function loadInlineImages(
   root: string,
   paths: string[]
-): Promise<{ images: { data: string; mimeType: string }[]; missing: string[] }> {
-  const images: { data: string; mimeType: string }[] = []
-  const missing: string[] = []
+): Promise<{ images: InlineImage[]; lines: string[] }> {
+  const images: InlineImage[] = []
+  const lines: string[] = []
   const dir = boardsDir(root)
   for (const path of paths) {
-    if (images.length >= MAX_INLINE_IMAGES) {
-      missing.push(`${path} (inline image limit ${MAX_INLINE_IMAGES} reached)`)
-      continue
-    }
     if (!isValidKanbanImagePath(path)) {
-      missing.push(path)
+      lines.push(`- ${path} — not an attachments image path`)
       continue
     }
+    const absPath = join(dir, path)
     const mimeType = IMAGE_MIME[extname(path).slice(1).toLowerCase()]
     if (mimeType === undefined) {
-      missing.push(path)
+      lines.push(`- ${path} → ${absPath} — unsupported image format, read the file directly`)
+      continue
+    }
+    if (images.length >= MAX_INLINE_IMAGES) {
+      lines.push(`- ${path} → ${absPath} — not attached (inline image limit ${MAX_INLINE_IMAGES}), read the file directly`)
       continue
     }
     try {
-      const bytes = await readFile(join(dir, path))
+      const bytes = await readFile(absPath)
       images.push({ data: bytes.toString('base64'), mimeType })
+      lines.push(`- ${path} → ${absPath} (image #${images.length} below)`)
     } catch {
-      missing.push(path)
+      lines.push(`- ${path} → ${absPath} — file not readable, read the file directly`)
     }
   }
-  return { images, missing }
+  return { images, lines }
+}
+
+/** Блок «Images» в тексте тула: явное указание, что картинки уже в результате, плюс пути. */
+function imagesSection(paths: string[], lines: string[]): string {
+  if (paths.length === 0) return ''
+  return (
+    `\n\nImages (${paths.length}) — these files are attached to this tool result as image blocks; ` +
+    `study them before starting work.\n${lines.join('\n')}`
+  )
 }
 
 function commentImages(comment: KanbanComment): string[] {
@@ -179,20 +197,14 @@ function renderComment(comment: KanbanComment): string {
 async function commentsSection(
   root: string,
   card: KanbanCard
-): Promise<{ text: string; images: { data: string; mimeType: string }[] }> {
+): Promise<{ text: string; images: InlineImage[] }> {
   const paths = [...card.images, ...card.comments.flatMap(commentImages)]
-  const { images, missing } = await loadInlineImages(root, paths)
+  const { images, lines } = await loadInlineImages(root, paths)
   let text = ''
   if (card.comments.length > 0) {
     text = `\n\nComments (${card.comments.length}):\n${card.comments.map(renderComment).join('\n')}`
   }
-  if (images.length > 0) {
-    text += `\n\nAttached images (in order): ${images.map((_, i) => `#${i + 1}`).join(', ')}`
-  }
-  if (missing.length > 0) {
-    text += `\nImages not loaded: ${missing.join(', ')}`
-  }
-  return { text, images }
+  return { text: text + imagesSection(paths, lines), images }
 }
 
 interface CommentRefs {
@@ -348,13 +360,13 @@ export async function kanbanGetCard(env: KanbanToolEnv, args: { board?: string; 
     `Created: ${card.createdAt} · Updated: ${card.updatedAt}`
   ]
   parts.push(`Description:\n${card.description.length > 0 ? card.description : '(empty)'}`)
-  if (card.images.length > 0) parts.push(`Images (${card.images.length}):\n${card.images.map((path) => `- ${path}`).join('\n')}`)
   if (card.comments.length > 0) {
     parts.push(`Comments (${card.comments.length}):\n${card.comments.map(renderComment).join('\n')}`)
   }
-  const { images, missing } = await loadInlineImages(ctx.root, [...card.images, ...card.comments.flatMap(commentImages)])
-  if (images.length > 0) parts.push(`Attached images (in order): ${images.map((_, i) => `#${i + 1}`).join(', ')}`)
-  if (missing.length > 0) parts.push(`Images not loaded: ${missing.join(', ')}`)
+  const imagePaths = [...card.images, ...card.comments.flatMap(commentImages)]
+  const { images, lines } = await loadInlineImages(ctx.root, imagePaths)
+  const imagesText = imagesSection(imagePaths, lines).trim()
+  if (imagesText.length > 0) parts.push(imagesText)
   return { text: parts.join('\n\n'), details: { cardId }, images }
 }
 

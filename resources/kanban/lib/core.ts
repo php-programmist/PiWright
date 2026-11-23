@@ -65,11 +65,12 @@ export const KANBAN_DEFAULT_COLUMNS = ['Backlog', 'Todo', 'In Progress', 'Review
 export const KANBAN_DEFAULT_WORKFLOW = [
   '1. Rename the current session to match the task (2-3 words; if the card title is 3 words or fewer, use it as is).',
   '2. Add link to this session (sessionName) as a comment.',
-  '3. Implement the task.',
-  '4. When done, call kanban_move to Review and add comment to the card:',
+  '3. If the card has Images, study them before coding — they arrive as image blocks in the kanban_pick_task/kanban_get_card result.',
+  '4. Implement the task.',
+  '5. When done, call kanban_move to Review and add comment to the card:',
   '   a) pass commit hashes via the commits parameter of kanban_move/kanban_comment (hash + optional message); hashes written as plain text in the comment body do not become clickable badges;',
   '   b) a short completion report.',
-  '5. Never move a card to Done yourself — the user does that after review.'
+  '6. Never move a card to Done yourself — the user does that after review.'
 ].join('\n')
 
 const KANBAN_ID_HEX = '[0-9a-f]{8}'

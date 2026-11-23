@@ -51,7 +51,8 @@ export default function (pi: ExtensionAPI): void {
       'Atomically claim the next task from the kanban board: moves the first card of the Todo column (fallback: Backlog) to In Progress and returns it with the board workflow. Call this when the user asks to take or work on a task from the kanban board.',
     promptSnippet: 'kanban_pick_task: atomically claim the next kanban task (Todo → In Progress)',
     promptGuidelines: [
-      'When taking a kanban task: call kanban_pick_task first, then rename_session to the task title; when done, kanban_move the card to Review and add two comments (session link + commit hashes, then a completion report).'
+      'When taking a kanban task: call kanban_pick_task first, then rename_session to the task title; when done, kanban_move the card to Review and add two comments (session link + commit hashes, then a completion report).',
+      'Card images are returned as image blocks in the same result — study them before implementing. The attachments/ paths are relative to <repoRoot>/.pi/kanban, so use the absolute path printed next to each file to read it directly.'
     ],
     parameters: Type.Object({ board: BOARD_PARAM }),
     executionMode: 'sequential',
@@ -95,6 +96,9 @@ export default function (pi: ExtensionAPI): void {
     label: 'Kanban: get card',
     description: 'Return one kanban card in full: description, images, comments with session and commit references.',
     promptSnippet: 'kanban_get_card: full kanban card by id',
+    promptGuidelines: [
+      'Card images are returned as image blocks in the same result — study them before acting. The attachments/ paths are relative to <repoRoot>/.pi/kanban, so use the absolute path printed next to each file to read it directly.'
+    ],
     parameters: Type.Object({
       board: BOARD_PARAM,
       id: Type.String({ description: 'Card id (c-xxxxxxxx).' })
