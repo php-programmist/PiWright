@@ -6,8 +6,10 @@ import { shikiLanguage } from '../lib/tool-blocks'
 import { useSessionsStore } from '../stores/sessions'
 import { useFilesStore } from '../stores/files'
 import { useTabsStore } from '../stores/tabs'
-import { resolveChatLink } from '../../../shared/file-paths'
+import { resolveChatLink, resolveMarkdownImage } from '../../../shared/file-paths'
+import type { ProjectEntry } from '../../../shared/ipc-contracts'
 import { useT } from '../lib/i18n'
+import { Lightbox } from './Lightbox'
 
 interface CodeElementProps {
   className?: string
@@ -159,8 +161,85 @@ function MdLink({ href, children }: { href?: string; children?: React.ReactNode 
   )
 }
 
+/** Кэш data URL картинок из markdown: ключ kind\0dir\0path. */
+const mdImageCache = new Map<string, string>()
+
+interface MdImageProps extends HastNodeProp {
+  src?: string
+  alt?: string
+  title?: string
+  project: ProjectEntry | null
+  imageBase: string
+}
+
+/** Картинка в markdown: путь файла проекта (относительный — от каталога md-файла)
+ *  грузится через filesReadImage как data URL; data:/http(s) — как есть.
+ *  Клик — просмотр в Lightbox. */
+function MdImage({ src, alt, title, project: projectProp, imageBase }: MdImageProps): React.JSX.Element {
+  const activeHostId = useSessionsStore((s) => s.activeHostId)
+  const storeProject = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
+  const project = projectProp !== undefined ? projectProp : storeProject
+  const resolved = src !== undefined && project !== null ? resolveMarkdownImage(project.dir, imageBase, src) : null
+  const cacheKey = resolved !== null && project !== null ? `${project.kind}\u0000${project.dir}\u0000${resolved}` : null
+  const [state, setState] = useState<{ status: 'loading' | 'ok' | 'error'; url: string }>(() =>
+    cacheKey !== null && mdImageCache.has(cacheKey)
+      ? { status: 'ok', url: mdImageCache.get(cacheKey) ?? '' }
+      : { status: 'loading', url: '' }
+  )
+  const [zoom, setZoom] = useState(false)
+
+  useEffect(() => {
+    if (cacheKey === null || project === null || resolved === null || mdImageCache.has(cacheKey)) return
+    let cancelled = false
+    void window.piwright.filesReadImage(project, resolved).then((result) => {
+      if (cancelled) return
+      if (result.ok) {
+        mdImageCache.set(cacheKey, result.dataUrl)
+        setState({ status: 'ok', url: result.dataUrl })
+      } else {
+        setState({ status: 'error', url: '' })
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [cacheKey, project, resolved])
+
+  if (resolved === null) return <img src={src} alt={alt ?? ''} title={title} draggable={false} />
+  if (state.status !== 'ok') {
+    return (
+      <span className={`md-image ${state.status === 'loading' ? 'pending' : 'dead'}`} title={resolved}>
+        {alt ?? ''}
+      </span>
+    )
+  }
+  return (
+    <>
+      <img
+        className="md-image"
+        src={state.url}
+        alt={alt ?? ''}
+        title={title ?? resolved}
+        draggable={false}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setZoom(true)
+        }}
+      />
+      {zoom && <Lightbox src={state.url} alt={alt ?? ''} onClose={() => setZoom(false)} />}
+    </>
+  )
+}
+
 /** Markdown ассистента: GFM, fenced-блоки — через Shiki. */
-export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.Element {
+export function Markdown({
+  text,
+  onToggleCheckbox,
+  project,
+  imageBase = ''
+}: MarkdownProps & { project?: ProjectEntry | null; imageBase?: string }): React.JSX.Element {
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -187,7 +266,10 @@ export function Markdown({ text, onToggleCheckbox }: MarkdownProps): React.JSX.E
           input: (props: React.JSX.IntrinsicElements['input'] & HastNodeProp) => (
             <TaskCheckbox {...props} onToggleCheckbox={onToggleCheckbox} />
           ),
-          a: (props: React.JSX.IntrinsicElements['a']) => <MdLink {...props} />
+          a: (props: React.JSX.IntrinsicElements['a']) => <MdLink {...props} />,
+          img: (props: React.JSX.IntrinsicElements['img'] & HastNodeProp) => (
+            <MdImage {...props} project={project ?? null} imageBase={imageBase} />
+          )
         }}
       >
         {text}

@@ -1348,6 +1348,26 @@ body {
   color: inherit;
 }
 
+.markdown .md-image {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.markdown .md-image.pending,
+.markdown .md-image.dead {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.15);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.markdown .md-image.dead {
+  cursor: default;
+  text-decoration: line-through;
+}
+
 .markdown pre code {
   background: transparent;
   padding: 0;

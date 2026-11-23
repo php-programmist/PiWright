@@ -124,7 +124,12 @@ export function MarkdownLive({ project, path, content, wordWrap }: MarkdownLiveP
               startEdit(i)
             }}
           >
-            <Markdown text={block.replace(/\s+$/, '')} onToggleCheckbox={(line) => toggleCheckbox(i, line)} />
+            <Markdown
+              text={block.replace(/\s+$/, '')}
+              onToggleCheckbox={(line) => toggleCheckbox(i, line)}
+              project={project}
+              imageBase={path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''}
+            />
           </div>
         )
       )}
