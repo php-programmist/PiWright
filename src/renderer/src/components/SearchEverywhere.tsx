@@ -108,7 +108,9 @@ export function SearchEverywhereHost(): React.JSX.Element | null {
   const lang = useLang()
   const project = useCenterProject()
   const projectRef = useRef(project)
-  projectRef.current = project
+  useEffect(() => {
+    projectRef.current = project
+  }, [project])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -117,7 +119,9 @@ export function SearchEverywhereHost(): React.JSX.Element | null {
   const openRef = useRef(false)
   const loadSeq = useRef(0)
   const listRef = useRef<HTMLDivElement | null>(null)
-  openRef.current = open
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
 
   const close = (): void => {
     setOpen(false)
@@ -290,9 +294,11 @@ export function SearchEverywhereHost(): React.JSX.Element | null {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, items, index])
 
-  useEffect(() => {
+  const [prevQuery, setPrevQuery] = useState(query)
+  if (prevQuery !== query) {
+    setPrevQuery(query)
     setIndex(0)
-  }, [query])
+  }
 
   useEffect(() => {
     listRef.current?.querySelector('.selected')?.scrollIntoView({ block: 'nearest' })
