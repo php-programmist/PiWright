@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModelsTab } from './ModelsTab'
+import { KanbanThemeSection } from './KanbanThemeSection'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
 import type { TFunc } from '../../lib/i18n'
@@ -233,6 +234,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                   </select>
                 </label>
               </section>
+              {draft.kanbanEnabled && <KanbanThemeSection draft={draft} update={update} />}
             </>
           )}
           {tab === 'notifications' && <NotificationsTab draft={draft} update={update} />}

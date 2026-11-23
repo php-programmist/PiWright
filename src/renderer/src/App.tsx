@@ -28,7 +28,9 @@ import { useGitLogStore } from './stores/gitlog'
 import { useKanbanStore } from './stores/kanban'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { closeSessionAndSweepWorktree } from './lib/worktree-cleanup'
-import { applyAppearance } from './lib/appearance'
+import { applyAppearance, applyKanbanTheme } from './lib/appearance'
+import { useKanbanThemeStore } from './stores/kanban-theme'
+import { KANBAN_DEFAULT_THEME_ID, resolveKanbanTheme } from '../../shared/kanban-theme'
 import { useT } from './lib/i18n'
 import { playNotificationSound } from './lib/sounds'
 
@@ -57,6 +59,17 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     applyAppearance(theme, chatFontSize)
   }, [theme, chatFontSize])
+
+  // Тема канбана: своя палитра колонок/карточек в CSS-переменных; при выключенном канбане — системные цвета.
+  const kanbanEnabled = settings?.kanbanEnabled ?? false
+  const kanbanThemeId = settings?.kanbanTheme ?? KANBAN_DEFAULT_THEME_ID
+  const customKanbanThemes = useKanbanThemeStore((s) => s.custom)
+  useEffect(() => {
+    if (kanbanEnabled && !useKanbanThemeStore.getState().loaded) void useKanbanThemeStore.getState().load()
+  }, [kanbanEnabled])
+  useEffect(() => {
+    applyKanbanTheme(kanbanEnabled ? resolveKanbanTheme(customKanbanThemes, kanbanThemeId) : null)
+  }, [kanbanEnabled, kanbanThemeId, customKanbanThemes])
 
   // Канбан выключен — убрать канбан-вкладки из всех проектов.
   useEffect(() => {

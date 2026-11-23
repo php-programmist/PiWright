@@ -11,6 +11,10 @@ import { useTerminalStore } from '../../stores/terminal'
 import { persistPanel } from '../../stores/panels-prefs'
 import type { ProjectTab } from '../../stores/tabs'
 import { useLang, useT } from '../../lib/i18n'
+import { kanbanColumnStyle } from '../../lib/appearance'
+import { useKanbanThemeStore } from '../../stores/kanban-theme'
+import { resolveKanbanTheme } from '../../../../shared/kanban-theme'
+import type { KanbanTheme } from '../../../../shared/kanban-theme'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Lightbox } from '../../components/Lightbox'
 
@@ -130,10 +134,19 @@ function CommitChip({ project, commit }: { project: ProjectEntry; commit: Kanban
   )
 }
 
+/** Тема досок из настроек (null — канбан выключен, цвета системные). */
+function useBoardTheme(): KanbanTheme | null {
+  const settings = useSessionsStore((s) => s.settings)
+  const custom = useKanbanThemeStore((s) => s.custom)
+  if (settings === null || !settings.kanbanEnabled) return null
+  return resolveKanbanTheme(custom, settings.kanbanTheme)
+}
+
 /** Вкладка-доска: колонки в ряд, DnD карточек (между колонками и внутри), CRUD колонок,
  *  модалка карточки (описание, комментарии, удаление). */
 export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const t = useT()
+  const boardTheme = useBoardTheme()
   const [board, setBoard] = useState<KanbanBoard | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [modalCardId, setModalCardId] = useState<string | null>(null)
@@ -452,12 +465,13 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
         </button>
       </div>
       <div className="board-columns">
-        {board.columns.map((column) => {
+        {board.columns.map((column, index) => {
           const cards = board.cards.filter((card) => card.columnId === column.id).sort((a, b) => a.order - b.order)
           return (
             <div
               key={column.id}
               className="board-column"
+              style={kanbanColumnStyle(boardTheme, index)}
               onDragOver={(e) => columnDragOver(e, column.id)}
               onDragLeave={(e) => columnDragLeave(e, column.id)}
               onDrop={columnDrop}

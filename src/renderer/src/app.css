@@ -4026,8 +4026,8 @@ pre.code-block {
   flex: 0 0 240px;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--kb-column-tint, var(--bg));
+  border: 1px solid var(--kb-column-border, var(--border));
   border-radius: 8px;
   max-height: 100%;
 }
@@ -4040,12 +4040,13 @@ pre.code-block {
   font-weight: 600;
   font-size: 12px;
   color: var(--text);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--kb-column-border, var(--border));
+  box-shadow: inset 4px 0 0 0 var(--kb-accent, transparent);
 }
 
 .board-column-count {
   margin-left: auto;
-  color: var(--faint);
+  color: var(--kb-accent, var(--faint));
   font-size: 11px;
 }
 
@@ -4061,8 +4062,8 @@ pre.code-block {
 
 .board-card {
   position: relative;
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
+  background: var(--kb-card-tint, var(--panel-bg));
+  border: 1px solid var(--kb-card-border, var(--border));
   border-radius: 6px;
   padding: 6px 8px;
 }
@@ -4104,7 +4105,7 @@ pre.code-block {
 }
 
 .board-badge {
-  color: var(--muted);
+  color: var(--kb-badge, var(--muted));
   font-size: 11px;
 }
 
@@ -4154,7 +4155,7 @@ pre.code-block {
 .board-drop-line {
   height: 2px;
   border-radius: 1px;
-  background: var(--accent);
+  background: var(--kb-accent, var(--accent));
   flex: 0 0 auto;
 }
 
@@ -4629,4 +4630,96 @@ pre.code-block {
   object-fit: contain;
   border-radius: 6px;
   cursor: default;
+}
+
+/* Настройки — Внешний вид: список тем канбана с превью колонок и карточек. */
+.kanban-theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kanban-theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.kanban-theme.current {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.settings-section .kanban-theme-pick {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.kanban-theme-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  width: 76px;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.kanban-theme-stripe {
+  flex: none;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+}
+
+.kanban-theme-card {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.kanban-theme-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.kanban-theme-badge {
+  font-size: 10px;
+}
+
+.kanban-theme-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-section .kanban-theme .ghost {
+  flex: none;
+}
+
+.kanban-theme-message {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
