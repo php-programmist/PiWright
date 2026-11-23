@@ -42,6 +42,7 @@ const RU: Record<string, string> = {
   'commit not found in loaded history': 'коммит не найден в загруженной истории',
   'loading…': 'загрузка…',
   'no past sessions': 'нет прошлых сессий',
+  'Search sessions…': 'Поиск сессий…',
   'Show less': 'Свернуть',
   'Show all ({count})': 'Показать все ({count})',
   'Delete session from disk': 'Удалить сессию с диска',
@@ -315,6 +316,9 @@ const RU: Record<string, string> = {
   'Port is free': 'Порт свободен',
   'Port is busy': 'Порт занят',
   'Port {port} is busy — pick a free one': 'Порт {port} занят — выберите свободный',
+  'Static PIN code': 'Статичный пин-код',
+  '6 digits (empty = random PIN)': '6 цифр (пусто = случайный пин)',
+  'PIN must be exactly 6 digits': 'Пин-код должен быть ровно из 6 цифр',
 
   // Настройки — Models
   'Open models.json in editor': 'Открыть models.json в редакторе',

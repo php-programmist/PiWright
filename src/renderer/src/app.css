@@ -167,6 +167,28 @@ body {
   font-weight: 600;
 }
 
+.panel-search {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-search input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--input-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+}
+
+.panel-search input:focus {
+  border-color: var(--accent);
+}
+
 .panel-body {
   flex: 1;
   overflow-y: auto;

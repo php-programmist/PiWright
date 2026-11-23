@@ -152,7 +152,7 @@ export const WORKTREE_ICON = (
   </svg>
 )
 
-function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): React.JSX.Element {
+function ProjectRow({ row, query }: { row: import('../stores/sessions').ProjectRow; query: string }): React.JSX.Element {
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
   const isActiveProject = useTabsStore((s) => s.activeProjectKey === key)
@@ -245,7 +245,12 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
   }
 
   const activeIds = useMemo(() => new Set(active.map((r) => r.sessionId).filter((id): id is string => id !== null)), [active])
-  const topLevel = useMemo(() => row.history.filter((h) => h.parentSession === null && !activeIds.has(h.id)), [row.history, activeIds])
+  const q = query.trim().toLowerCase()
+  const matches = (title: string): boolean => q === '' || title.toLowerCase().includes(q)
+  const activeFiltered = q === '' ? active : active.filter((r) => r.title.toLowerCase().includes(q))
+  const topLevel = row.history.filter(
+    (h) => h.parentSession === null && !activeIds.has(h.id) && (q === '' || h.title.toLowerCase().includes(q))
+  )
   const childrenOf = useMemo(() => {
     const map = new Map<string, SessionSummary[]>()
     for (const h of row.history) {
@@ -256,7 +261,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
     }
     return map
   }, [row.history])
-  const visible = row.showAllHistory ? topLevel : topLevel.slice(0, HISTORY_PREVIEW_LIMIT)
+  const visible = q !== '' || row.showAllHistory ? topLevel : topLevel.slice(0, HISTORY_PREVIEW_LIMIT)
 
   const projectName = row.project.name ?? dirName(row.project.dir)
 
@@ -298,6 +303,8 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
       document.removeEventListener('keydown', onKey)
     }
   }, [menuOpen])
+
+  if (q !== '' && activeFiltered.length === 0 && topLevel.length === 0) return <></>
 
   return (
     <div className={`project${isActiveProject ? ' active' : ''}`}>
@@ -385,7 +392,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
           {attentionCount > 0 && <span className="proj-badge attention" title={t('Need your answer')}>{attentionCount}</span>}
         </div>
       )}
-      {expanded && (
+      {(expanded || q !== '') && (
         <div className="project-children">
           {wtCreating && (
             <div className="session-row">
@@ -408,7 +415,7 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
               />
             </div>
           )}
-          {active.map((s) => {
+          {activeFiltered.map((s) => {
             const wt = splitWorktreeHostDir(s.project.dir)
             const sub = s.sessionFile !== null ? (childrenOf.get(s.sessionFile) ?? []) : []
             return (
@@ -443,11 +450,11 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
-                  sub.map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
+                  sub.filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
               </div>
             )
           })}
-          {active.length === 0 && <div className="panel-hint">{t('no active sessions')}</div>}
+          {q === '' && active.length === 0 && <div className="panel-hint">{t('no active sessions')}</div>}
           <div className="history-head">{t('History')}</div>
           {row.historyLoading && <div className="panel-hint">{t('loading…')}</div>}
           {!row.historyLoading && topLevel.length === 0 && <div className="panel-hint">{t('no past sessions')}</div>}
@@ -462,10 +469,10 @@ function ProjectRow({ row }: { row: import('../stores/sessions').ProjectRow }): 
                 onDelete={() => void deleteHistory(h)}
               />
               {subOpen[h.path] &&
-                (childrenOf.get(h.path) ?? []).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
+                (childrenOf.get(h.path) ?? []).filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
             </div>
           ))}
-          {!row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (
+          {q === '' && !row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (
             <button className="show-all" onClick={() => setShowAll(key, !row.showAllHistory)}>
               {row.showAllHistory ? t('Show less') : t('Show all ({count})', { count: topLevel.length })}
             </button>
@@ -492,6 +499,7 @@ export function SessionsPanel(): React.JSX.Element {
   const t = useT()
   const [adding, setAdding] = useState(false)
   const [version, setVersion] = useState('')
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     void window.piwright.appVersion().then(setVersion)
@@ -545,9 +553,19 @@ export function SessionsPanel(): React.JSX.Element {
         {adding ? <AddProjectControl onDone={() => setAdding(false)} /> : <button className="icon" title={t('Add project')} onClick={() => setAdding(true)}>+</button>}
         <button className="icon" title={t('Collapse panel')} onClick={collapse}>−</button>
       </div>
+      <div className="panel-search">
+        <input
+          value={query}
+          placeholder={t('Search sessions…')}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setQuery('')
+          }}
+        />
+      </div>
       <div className="panel-body">
         {projects.length === 0 && <div className="panel-hint">{t('Add a project to start')}</div>}
-        {projects.map((row) => <ProjectRow key={projectKey(row.project)} row={row} />)}
+        {projects.map((row) => <ProjectRow key={projectKey(row.project)} row={row} query={query} />)}
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
