@@ -253,6 +253,81 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
+  const promptRef = useRef<HTMLTextAreaElement | null>(null)
+  const loopExitRef = useRef<HTMLTextAreaElement | null>(null)
+  const fieldsRef = useRef<HTMLDivElement | null>(null)
+  // Высота блока полей ввода (px); null — авто по содержимому. Меняется перетаскиванием верхней границы композера.
+  const [fieldsHeight, setFieldsHeight] = useState<number | null>(null)
+
+  /** Линия текста и вертикальные отступы с рамкой поля ввода. */
+  const fieldMetrics = (ta: HTMLTextAreaElement): { line: number; pad: number } => {
+    const cs = getComputedStyle(ta)
+    const lh = Number.parseFloat(cs.lineHeight)
+    const padRaw =
+      Number.parseFloat(cs.paddingTop) +
+      Number.parseFloat(cs.paddingBottom) +
+      Number.parseFloat(cs.borderTopWidth) +
+      Number.parseFloat(cs.borderBottomWidth)
+    return { line: Number.isFinite(lh) ? lh : 18, pad: Number.isFinite(padRaw) ? padRaw : 18 }
+  }
+
+  // Авто-рост полей по содержимому, пока высота не задана перетаскиванием: промпт до 15 строк,
+  // условие выхода до 6; дальше — внутренний скролл (референс jb-pi: 3..15 строк).
+  useEffect(() => {
+    if (fieldsHeight !== null) {
+      for (const ta of [promptRef.current, loopExitRef.current]) {
+        if (ta !== null) {
+          ta.style.flex = ''
+          ta.style.height = ''
+        }
+      }
+      return
+    }
+    const grow = (ta: HTMLTextAreaElement, maxLines: number): void => {
+      const { line, pad } = fieldMetrics(ta)
+      // flex: 0 0 auto — иначе flex-basis 0% из .composer textarea перебивает inline-height
+      ta.style.flex = '0 0 auto'
+      ta.style.height = 'auto'
+      let target = ta.scrollHeight
+      // Пустое поле с длинным placeholder: scrollHeight его не учитывает — меряем подставив его в value
+      if (ta.value === '' && ta.placeholder !== '') {
+        ta.value = ta.placeholder
+        target = Math.max(target, ta.scrollHeight)
+        ta.value = ''
+      }
+      ta.style.height = `${Math.min(target, line * maxLines + pad)}px`
+    }
+    if (promptRef.current !== null) grow(promptRef.current, 15)
+    if (loopExitRef.current !== null) grow(loopExitRef.current, 6)
+  }, [input, loopExit, loopSplit, fieldsHeight])
+
+  /** Перетаскивание верхней границы композера: блок полей растёт вверх, оба поля делят высоту. */
+  const onComposerResizeStart = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (e.button !== 0) return
+    const fields = fieldsRef.current
+    if (fields === null) return
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = fields.offsetHeight
+    const pm = promptRef.current !== null ? fieldMetrics(promptRef.current) : { line: 18, pad: 18 }
+    const em = loopExitRef.current !== null ? fieldMetrics(loopExitRef.current) : pm
+    const exitSpace = loopSplit ? em.line + em.pad + 6 : 0
+    const min = (loopSplit ? 2 : 3) * pm.line + pm.pad + exitSpace
+    const max = Math.max(min, Math.min(pm.line * 15 + pm.pad + exitSpace, window.innerHeight - 240))
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    const move = (ev: PointerEvent): void => {
+      setFieldsHeight(Math.min(max, Math.max(min, startH + (startY - ev.clientY))))
+    }
+    const up = (): void => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
   const toolsHidden = chat?.toolsHidden ?? false
   const handleFeedScroll = useCallback((atBottom: boolean) => {
     if (activeHostId === null) return
@@ -883,7 +958,17 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           for (const file of Array.from(e.dataTransfer.files)) void saveAttachmentFile(file)
         }}
       >
-        <div className="composer-fields">
+        <div
+          className="composer-resize"
+          title={t('Drag to resize, double-click to reset')}
+          onPointerDown={onComposerResizeStart}
+          onDoubleClick={() => setFieldsHeight(null)}
+        />
+        <div
+          className={`composer-fields${fieldsHeight !== null ? ' sized' : ''}`}
+          ref={fieldsRef}
+          style={fieldsHeight !== null ? { height: fieldsHeight } : undefined}
+        >
         {slashActive && (
           <div className="slash-menu" ref={slashMenuRef} role="listbox">
             {slashFiltered.map((c, i) => (
@@ -919,6 +1004,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           </div>
         )}
         <textarea
+          ref={promptRef}
           value={input}
           placeholder={
             sendOnEnter
@@ -975,6 +1061,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         {loopSplit && (
           <textarea
             className="loop-exit"
+            ref={loopExitRef}
             value={loopExit}
             placeholder={t('Loop exit condition (optional): the loop stops when the agent calls loop_stop; empty — the loop runs until the iteration limit')}
             rows={1}

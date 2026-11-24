@@ -123,6 +123,7 @@ const RU: Record<string, string> = {
   'Edit prompt and resend': 'Редактировать промпт и отправить заново',
   'Fork into a new session from this point': 'Форкнуть в новую сессию с этого места',
   'Attach file': 'Прикрепить файл',
+  'Drag to resize, double-click to reset': 'Потяните, чтобы изменить высоту; двойной клик — сбросить',
   'Remove image': 'Убрать изображение',
   'Loop': 'Петля',
   'Loop iterations left': 'Осталось итераций петли',

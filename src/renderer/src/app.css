@@ -2326,21 +2326,61 @@ pre.code-block {
 }
 
 .composer {
+  position: relative;
   display: flex;
   gap: 8px;
   padding: 10px 14px;
   border-top: 1px solid var(--border);
 }
 
+/* Ручка перетаскивания верхней границы композера: тянем вверх/вниз — блок полей меняет высоту. */
+.composer-resize {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 20;
+}
+
+.composer-resize::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.composer-resize:hover::after {
+  background: var(--border-strong);
+}
+
 .composer textarea {
   flex: 1;
-  resize: vertical;
+  resize: none;
+  overflow-y: auto;
   background: var(--input-bg);
   color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 8px;
   font: inherit;
+}
+
+/* Высота задана перетаскиванием: поля делят блок 2:1 (промпт : условие выхода). */
+.composer-fields.sized textarea {
+  flex: 2 1 0;
+  min-height: 0;
+}
+
+.composer-fields.sized .loop-exit {
+  flex: 1 1 0;
 }
 
 /* Чекбокс «Петля» делит поле промпта пополам: сверху задача, снизу условие выхода. */
@@ -2351,6 +2391,7 @@ pre.code-block {
   gap: 6px;
   min-width: 0;
   position: relative;
+  min-height: 0;
 }
 
 /* Автодополнение slash-команд над полем ввода (как в thinkrail). */
