@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
@@ -153,7 +153,23 @@ export const WORKTREE_ICON = (
   </svg>
 )
 
-function ProjectRow({ row, query }: { row: import('../stores/sessions').ProjectRow; query: string }): React.JSX.Element {
+function ProjectRow({
+  row,
+  query,
+  index,
+  dragging,
+  canDrag,
+  onDragStart,
+  onDragEnd
+}: {
+  row: import('../stores/sessions').ProjectRow
+  query: string
+  index: number
+  dragging: boolean
+  canDrag: boolean
+  onDragStart: (e: React.DragEvent) => void
+  onDragEnd: () => void
+}): React.JSX.Element {
   const key = projectKey(row.project)
   const expanded = useSessionsStore((s) => s.expanded[key] ?? false)
   const isActiveProject = useTabsStore((s) => s.activeProjectKey === key)
@@ -307,8 +323,13 @@ function ProjectRow({ row, query }: { row: import('../stores/sessions').ProjectR
   if (q !== '' && activeFiltered.length === 0 && topLevel.length === 0) return <></>
 
   return (
-    <div className={`project${isActiveProject ? ' active' : ''}`}>
-      <div className="project-row">
+    <div className={`project${isActiveProject ? ' active' : ''}${dragging ? ' dragging' : ''}`} data-project-index={index}>
+      <div
+        className="project-row"
+        draggable={canDrag && !projRenaming}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
         <button className="expand" onClick={() => toggleExpanded(key)}>{expanded ? '▾' : '▸'}</button>
         {projRenaming ? (
           <input
@@ -500,6 +521,58 @@ export function SessionsPanel(): React.JSX.Element {
   const [adding, setAdding] = useState(false)
   const [version, setVersion] = useState('')
   const [query, setQuery] = useState('')
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const dragKeyRef = useRef<string | null>(null)
+  const dropIndexRef = useRef<number | null>(null)
+
+  const projectDragStart = (key: string) => (e: React.DragEvent): void => {
+    e.dataTransfer.setData('text/plain', key)
+    e.dataTransfer.effectAllowed = 'move'
+    dragKeyRef.current = key
+    setDragKey(key)
+  }
+
+  const projectDragEnd = (): void => {
+    dragKeyRef.current = null
+    dropIndexRef.current = null
+    setDragKey(null)
+    setDropIndex(null)
+  }
+
+  const bodyDragOver = (e: React.DragEvent): void => {
+    if (dragKeyRef.current === null || bodyRef.current === null) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    const els = Array.from(bodyRef.current.querySelectorAll<HTMLElement>('[data-project-index]'))
+    let index = els.length
+    for (let i = 0; i < els.length; i += 1) {
+      const rect = els[i].getBoundingClientRect()
+      if (e.clientY < rect.top + rect.height / 2) {
+        index = Number(els[i].dataset.projectIndex)
+        break
+      }
+    }
+    dropIndexRef.current = index
+    setDropIndex(index)
+  }
+
+  const bodyDragLeave = (e: React.DragEvent): void => {
+    const body = e.currentTarget as HTMLElement
+    if (e.relatedTarget instanceof Node && body.contains(e.relatedTarget)) return
+    dropIndexRef.current = null
+    setDropIndex(null)
+  }
+
+  const bodyDrop = (e: React.DragEvent): void => {
+    e.preventDefault()
+    const key = dragKeyRef.current ?? e.dataTransfer.getData('text/plain')
+    const index = dropIndexRef.current
+    projectDragEnd()
+    if (key.length === 0 || index === null) return
+    useSessionsStore.getState().moveProject(key, index)
+  }
 
   useEffect(() => {
     void window.piwright.appVersion().then(setVersion)
@@ -575,9 +648,26 @@ export function SessionsPanel(): React.JSX.Element {
           }}
         />
       </div>
-      <div className="panel-body">
+      <div className="panel-body" ref={bodyRef} onDragOver={bodyDragOver} onDragLeave={bodyDragLeave} onDrop={bodyDrop}>
         {projects.length === 0 && <div className="panel-hint">{t('Add a project to start')}</div>}
-        {projects.map((row) => <ProjectRow key={projectKey(row.project)} row={row} query={query} />)}
+        {projects.map((row, i) => {
+          const key = projectKey(row.project)
+          return (
+            <Fragment key={key}>
+              {dropIndex === i && <div className="project-drop-line" />}
+              <ProjectRow
+                row={row}
+                query={query}
+                index={i}
+                dragging={dragKey === key}
+                canDrag={query === ''}
+                onDragStart={projectDragStart(key)}
+                onDragEnd={projectDragEnd}
+              />
+            </Fragment>
+          )
+        })}
+        {dropIndex === projects.length && <div className="project-drop-line" />}
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>

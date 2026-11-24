@@ -53,6 +53,8 @@ interface SessionsState {
   addProject: (project: ProjectEntry) => Promise<void>
   removeProject: (project: ProjectEntry) => Promise<void>
   renameProject: (project: ProjectEntry, name: string) => Promise<void>
+  /** Перестановка проекта в списке (drag-and-drop): index — позиция вставки в полном списке. */
+  moveProject: (key: string, index: number) => void
   toggleExpanded: (key: string) => void
   refreshHistory: (project: ProjectEntry) => Promise<void>
   setShowAll: (key: string, showAll: boolean) => void
@@ -64,12 +66,6 @@ export const HISTORY_PREVIEW_LIMIT = 3
 
 export function projectKey(project: ProjectEntry): string {
   return `${project.kind}\u0000${normalizeDir(project.dir)}`
-}
-
-function sortProjects(projects: ProjectRow[]): ProjectRow[] {
-  return [...projects].sort((a, b) =>
-    a.project.kind === b.project.kind ? a.project.dir.localeCompare(b.project.dir) : a.project.kind.localeCompare(b.project.kind)
-  )
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -103,10 +99,10 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
       expanded: { ...state.expanded, ...settings.expandedProjects },
-      projects: sortProjects(settings.projects.map((project) => {
+      projects: settings.projects.map((project) => {
         const existing = state.projects.find((p) => projectKey(p.project) === projectKey(project))
         return existing ?? { project, history: [], historyLoading: false, showAllHistory: false }
-      }))
+      })
     }))
     for (const row of get().projects) void get().refreshHistory(row.project)
   },
@@ -192,10 +188,10 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     const settings = await window.piwright.setSettings({ projects: [...get().projects.map((p) => p.project), project] })
     set((state) => ({
       settings,
-      projects: sortProjects(settings.projects.map((p) => {
+      projects: settings.projects.map((p) => {
         const existing = state.projects.find((x) => projectKey(x.project) === projectKey(p))
         return existing ?? { project: p, history: [], historyLoading: false, showAllHistory: false }
-      }))
+      })
     }))
     void get().refreshHistory(project)
   },
@@ -218,10 +214,23 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         : p
     )
     const settings = await window.piwright.setSettings({ projects: projects.map((p) => p.project) })
-    set({ settings, projects: sortProjects(settings.projects.map((p) => {
+    set({ settings, projects: settings.projects.map((p) => {
       const existing = projects.find((x) => projectKey(x.project) === projectKey(p))
       return existing ?? { project: p, history: [], historyLoading: false, showAllHistory: false }
-    })) })
+    }) })
+  },
+
+  moveProject: (key, index) => {
+    const projects = get().projects
+    const pos = projects.findIndex((p) => projectKey(p.project) === key)
+    if (pos === -1) return
+    const next = [...projects]
+    const [row] = next.splice(pos, 1)
+    // index посчитан по полному списку; после удаления перетаскиваемого сдвигаем на 1
+    const insertAt = Math.max(0, Math.min(pos < index ? index - 1 : index, next.length))
+    next.splice(insertAt, 0, row)
+    set({ projects: next })
+    void window.piwright.setSettings({ projects: next.map((p) => p.project) }).then((saved) => set({ settings: saved }))
   },
 
   toggleExpanded: (key) => {

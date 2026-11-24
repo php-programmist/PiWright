@@ -70,3 +70,63 @@ describe('sessions store refreshHistory', () => {
     expect(useSessionsStore.getState().active[0]).toMatchObject({ telegram: true, shared: false })
   })
 })
+
+describe('sessions store moveProject', () => {
+  const pa: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\a' }
+  const pb: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\b' }
+  const pc: ProjectEntry = { kind: 'wsl', dir: 'D:\\tmp\\c' }
+
+  function seed3(): void {
+    useSessionsStore.setState({
+      projects: [pa, pb, pc].map((p) => ({ project: p, history: [], historyLoading: false, showAllHistory: false }))
+    })
+  }
+
+  function order(): string[] {
+    return useSessionsStore.getState().projects.map((p) => projectKey(p.project))
+  }
+
+  it('переставляет вверх и персистит новый порядок', async () => {
+    const setSettings = vi.fn().mockResolvedValue({ projects: [pc, pa, pb] })
+    vi.stubGlobal('window', { piwright: { setSettings } })
+
+    seed3()
+    useSessionsStore.getState().moveProject(projectKey(pc), 0)
+    expect(order()).toEqual([projectKey(pc), projectKey(pa), projectKey(pb)])
+    expect(setSettings).toHaveBeenCalledWith({ projects: [pc, pa, pb] })
+    await Promise.resolve()
+    expect(useSessionsStore.getState().settings).toEqual({ projects: [pc, pa, pb] })
+    vi.unstubAllGlobals()
+  })
+
+  it('перестановка вниз корректирует индекс (index по полному списку)', () => {
+    const setSettings = vi.fn().mockResolvedValue(null)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+
+    seed3()
+    useSessionsStore.getState().moveProject(projectKey(pa), 3)
+    expect(order()).toEqual([projectKey(pb), projectKey(pc), projectKey(pa)])
+    vi.unstubAllGlobals()
+  })
+
+  it('перестановка на своё место ничего не меняет', () => {
+    const setSettings = vi.fn().mockResolvedValue(null)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+
+    seed3()
+    useSessionsStore.getState().moveProject(projectKey(pa), 1)
+    expect(order()).toEqual([projectKey(pa), projectKey(pb), projectKey(pc)])
+    vi.unstubAllGlobals()
+  })
+
+  it('неизвестный ключ — no-op', () => {
+    const setSettings = vi.fn().mockResolvedValue(null)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+
+    seed3()
+    useSessionsStore.getState().moveProject('native\u0000D:/tmp/none', 0)
+    expect(order()).toEqual([projectKey(pa), projectKey(pb), projectKey(pc)])
+    expect(setSettings).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
