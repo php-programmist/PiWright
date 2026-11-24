@@ -79,7 +79,9 @@ const rx = (ru, en) => new RegExp(`${ru}|${en}`)
   // убрать за собой
   const kbRow = p.locator('.kanban-board-row', { hasText: BOARD })
   if (await kbRow.count()) {
-    await kbRow.locator('.kanban-board-action').last().evaluate((el) => el.click())
+    await kbRow.locator('.kanban-board-action').evaluate((el) => el.click())
+    await p.waitForTimeout(400)
+    await p.locator('.project-menu button', { hasText: rx('Удалить доску', 'Delete board') }).click()
     await p.waitForTimeout(400)
     await p.locator('.files-rename-box button', { hasText: rx('Удалить', 'Delete') }).last().click()
     await p.waitForTimeout(800)

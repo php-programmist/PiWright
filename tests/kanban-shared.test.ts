@@ -13,18 +13,22 @@ import {
   applyColumnRename,
   applyBoardRename,
   applyWorkflowSet,
+  attentionSessionOfCard,
+  cardAttentionKey,
   casMutate,
   claimNextCard,
   createDefaultBoard,
   isValidKanbanId,
   isValidKanbanImagePath,
   KanbanConflictError,
+  mergeKanbanCardAttention,
   newKanbanId,
   parseKanbanBoard,
   pickTask,
   sanitizeKanbanName,
   type KanbanBoard,
   type KanbanBoardStore,
+  type KanbanCard,
 } from '../src/shared/kanban'
 
 const NOW = '2026-11-22T10:00:00.000Z'
@@ -414,5 +418,52 @@ describe('CAS', () => {
     await expect(
       casMutate(store, 'b-11111111', (board) => ({ board: applyBoardRename(board, 'X'), value: null })),
     ).rejects.toThrow('disk full')
+  })
+})
+
+function cardWithSessions(sessions: Array<{ id: string; at: string }>): KanbanCard {
+  return {
+    id: 'c-00000001',
+    title: 'Task',
+    description: '',
+    columnId: 'c-col-1',
+    order: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    images: [],
+    comments: [],
+    sessions: sessions.map((s) => ({ id: s.id, title: s.id, at: s.at })),
+  }
+}
+
+describe('kanbanCardAttention', () => {
+  const attention = { sessions: ['s-old', 's-new'], dismissed: [] }
+
+  it('берёт самую свежую непрочитанную сессию карточки', () => {
+    const card = cardWithSessions([
+      { id: 's-old', at: '2026-11-20T10:00:00.000Z' },
+      { id: 's-new', at: '2026-11-22T10:00:00.000Z' },
+    ])
+    expect(attentionSessionOfCard(card, 'b-11111111', attention)?.id).toBe('s-new')
+  })
+
+  it('открытая карточка точку снимает', () => {
+    const card = cardWithSessions([{ id: 's-new', at: NOW }])
+    const dismissed = { sessions: attention.sessions, dismissed: [cardAttentionKey('b-11111111', card.id)] }
+    expect(attentionSessionOfCard(card, 'b-11111111', dismissed)).toBeNull()
+  })
+
+  it('сессии карточки не в внимании — точки нет', () => {
+    expect(attentionSessionOfCard(cardWithSessions([{ id: 's-other', at: NOW }]), 'b-11111111', attention)).toBeNull()
+  })
+
+  it('санитайзер: дедуп строк, пустые записи и мусор выкидываются', () => {
+    const merged = mergeKanbanCardAttention({
+      'p\u00001': { sessions: ['a', 'a', '', 1 as never], dismissed: 'no' },
+      '': { sessions: ['a'], dismissed: [] },
+      'p\u00002': { sessions: [], dismissed: [] },
+      broken: null,
+    })
+    expect(merged).toEqual({ 'p\u00001': { sessions: ['a'], dismissed: [] } })
   })
 })

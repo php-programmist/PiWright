@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { compactionBannerText, compactionSummaryText } from '../../../shared/agent-events'
 import type { ExtensionDialog, LoopInfo, SessionTokens, ToolCall, ToolResult, TurnUsage, UiEvent } from '../../../shared/agent-events'
 import type { PiEventMessage, PiStatus } from '../../../shared/ipc-contracts'
+import { markSessionAttention } from '../lib/kanban-attention'
 
 export interface ToolEntry {
   kind: 'tool'
@@ -469,7 +470,7 @@ function reduceEvent(hostId: string, host: HostChat, event: UiEvent): HostChat {
   }
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   hosts: {},
   applyEvent: (message) => {
     const { hostId, event } = message
@@ -500,6 +501,10 @@ export const useChatStore = create<ChatState>((set) => ({
     })
   },
   removeHost: (hostId) => {
+    const closing = get().hosts[hostId]
+    if (closing?.unread === true && closing.status?.dot === 'idle' && closing.status.sessionId !== null) {
+      markSessionAttention(closing.status.project, closing.status.sessionId)
+    }
     resetBuffers(hostId)
     buffers.delete(hostId)
     ownEchoes.delete(hostId)

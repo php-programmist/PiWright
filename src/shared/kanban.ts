@@ -1,5 +1,6 @@
 /** Канбан-доска: типы файла доски (spec/kanban-plan.md §1), чистые мутации, CAS-протокол.
  *  Используется main-процессом и renderer'ом; расширение pi дублирует компактную копию. */
+import type { KanbanCardAttention } from './ipc-contracts'
 
 export interface KanbanColumn {
   id: string
@@ -641,4 +642,45 @@ export async function pickTask(store: KanbanBoardStore, boardId: string, now = n
     if (claimed === null) return { board, value: null }
     return { board: claimed.board, value: claimed.card }
   })
+}
+
+/** Ключ карточки в kanbanCardAttention. */
+export function cardAttentionKey(boardId: string, cardId: string): string {
+  return `${boardId}\u0000${cardId}`
+}
+
+/** Санитайзер settings.kanbanCardAttention: строковые ключи проекта, дедуп непустых строк,
+ *  пустые записи выкидываются (файл настроек не разрастается). */
+export function mergeKanbanCardAttention(value: unknown): Record<string, KanbanCardAttention> {
+  const out: Record<string, KanbanCardAttention> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const entry: KanbanCardAttention = { sessions: [], dismissed: [] }
+    for (const field of ['sessions', 'dismissed'] as const) {
+      const list = (raw as Record<string, unknown>)[field]
+      if (!Array.isArray(list)) continue
+      const seen = new Set<string>()
+      for (const item of list) if (typeof item === 'string' && item.length > 0) seen.add(item)
+      entry[field] = [...seen]
+    }
+    if (entry.sessions.length > 0 || entry.dismissed.length > 0) out[key] = entry
+  }
+  return out
+}
+
+/** Сессия карточки, которой светится зелёная точка: непрочитанная закрытая сессия,
+ *  ещё не снятая открытием карточки; newest — с самым поздним комментарием. */
+export function attentionSessionOfCard(
+  card: KanbanCard,
+  boardId: string,
+  attention: KanbanCardAttention | undefined,
+): KanbanCardSession | null {
+  if (attention === undefined || attention.sessions.length === 0) return null
+  if (attention.dismissed.includes(cardAttentionKey(boardId, card.id))) return null
+  const pending = new Set(attention.sessions)
+  const hit = (card.sessions ?? [])
+    .filter((s) => pending.has(s.id))
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))[0]
+  return hit ?? null
 }

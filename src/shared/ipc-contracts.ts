@@ -54,6 +54,12 @@ export interface Settings {
   panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs; kanban?: PanelPrefs; sessions?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
   expandedProjects: Record<string, boolean>
+  /** Развернутые доски в панели канбана (ключ projectKey\0boardId). */
+  kanbanBoardsExpanded: Record<string, boolean>
+  /** Свёрнутые колонки дерева канбана (ключ projectKey\0boardId\0columnId, true = свёрнута). */
+  kanbanColumnsCollapsed: Record<string, boolean>
+  /** Непрочитанное внимание на задачах канбана (ключ projectKey). */
+  kanbanCardAttention: Record<string, KanbanCardAttention>
   /** Вкладки терминала на проект (ключ projectKey) — переименованные вкладки переоткрываются после перезапуска. */
   terminalTabs: Record<string, TerminalTabsSnapshot>
   /** Вкладки проекта (файлы/диффы/MCP/навыки; ключ projectKey) — переживают перезапуск, сессии не сохраняются. */
@@ -67,6 +73,13 @@ export interface Settings {
   /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
   lastThinkingLevel: string | null
   projects: ProjectEntry[]
+}
+
+/** Зелёная точка на задаче после закрытия сессии: sessions — pi session id с непрочитанным
+ *  ходом, dismissed — ключи boardId\0cardId, где точку уже сняли открытием карточки. */
+export interface KanbanCardAttention {
+  sessions: string[]
+  dismissed: string[]
 }
 
 /** Путь к звуковому файлу (wav/aif/aiff/au); пусто — звук выключен. */

@@ -5,6 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFil
 import { dirname } from 'node:path'
 import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
+import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { isValidStaticPin } from '../remote/auth'
 
@@ -36,6 +37,9 @@ export const DEFAULT_SETTINGS: Settings = {
   language: 'en',
   panels: {},
   expandedProjects: {},
+  kanbanBoardsExpanded: {},
+  kanbanColumnsCollapsed: {},
+  kanbanCardAttention: {},
   terminalTabs: {},
   projectTabs: {},
   lastProjectKey: null,
@@ -174,6 +178,9 @@ export class SettingsService {
       const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<Settings>) }
       merged.notifications = mergeNotifications((raw as Partial<Settings>)['notifications'])
       merged.expandedProjects = mergeExpandedProjects((raw as Partial<Settings>)['expandedProjects'])
+      merged.kanbanBoardsExpanded = mergeExpandedProjects((raw as Partial<Settings>)['kanbanBoardsExpanded'])
+      merged.kanbanColumnsCollapsed = mergeExpandedProjects((raw as Partial<Settings>)['kanbanColumnsCollapsed'])
+      merged.kanbanCardAttention = mergeKanbanCardAttention((raw as Partial<Settings>)['kanbanCardAttention'])
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
   merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null

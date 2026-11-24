@@ -137,6 +137,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
+import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
@@ -278,6 +279,15 @@ export function registerIpc(
       }
       if (raw['expandedProjects'] !== null && typeof raw['expandedProjects'] === 'object' && !Array.isArray(raw['expandedProjects'])) {
         safe.expandedProjects = mergeExpandedProjects(raw['expandedProjects'])
+      }
+      if (raw['kanbanBoardsExpanded'] !== null && typeof raw['kanbanBoardsExpanded'] === 'object' && !Array.isArray(raw['kanbanBoardsExpanded'])) {
+        safe.kanbanBoardsExpanded = mergeExpandedProjects(raw['kanbanBoardsExpanded'])
+      }
+      if (raw['kanbanColumnsCollapsed'] !== null && typeof raw['kanbanColumnsCollapsed'] === 'object' && !Array.isArray(raw['kanbanColumnsCollapsed'])) {
+        safe.kanbanColumnsCollapsed = mergeExpandedProjects(raw['kanbanColumnsCollapsed'])
+      }
+      if (raw['kanbanCardAttention'] !== null && typeof raw['kanbanCardAttention'] === 'object' && !Array.isArray(raw['kanbanCardAttention'])) {
+        safe.kanbanCardAttention = mergeKanbanCardAttention(raw['kanbanCardAttention'])
       }
       if (raw['terminalTabs'] !== null && typeof raw['terminalTabs'] === 'object' && !Array.isArray(raw['terminalTabs'])) {
         safe.terminalTabs = mergeTerminalTabs(raw['terminalTabs'])

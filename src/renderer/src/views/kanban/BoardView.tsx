@@ -13,9 +13,10 @@ import { persistPanel } from '../../stores/panels-prefs'
 import type { ProjectTab } from '../../stores/tabs'
 import { useLang, useT } from '../../lib/i18n'
 import { kanbanColumnStyle } from '../../lib/appearance'
-import { useKanbanThemeStore } from '../../stores/kanban-theme'
-import { resolveKanbanTheme } from '../../../../shared/kanban-theme'
-import type { KanbanTheme } from '../../../../shared/kanban-theme'
+import { useBoardTheme } from '../../lib/kanban-tree-prefs'
+import { dismissCardAttention } from '../../lib/kanban-attention'
+import { useCardDotInputs } from '../../lib/kanban-card-dot'
+import { CardDot } from './CardDot'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Lightbox } from '../../components/Lightbox'
 
@@ -139,14 +140,6 @@ function CommitChip({ project, commit, at }: { project: ProjectEntry; commit: Ka
   )
 }
 
-/** Тема досок из настроек (null — канбан выключен, цвета системные). */
-function useBoardTheme(): KanbanTheme | null {
-  const settings = useSessionsStore((s) => s.settings)
-  const custom = useKanbanThemeStore((s) => s.custom)
-  if (settings === null || !settings.kanbanEnabled) return null
-  return resolveKanbanTheme(custom, settings.kanbanTheme)
-}
-
 /** Вкладка-доска: колонки в ряд, DnD карточек (между колонками и внутри), CRUD колонок,
  *  модалка карточки (описание, комментарии, удаление). */
 export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
@@ -183,9 +176,14 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const [cardMenu, setCardMenu] = useState<{ cardId: string; x: number; y: number } | null>(null)
   const cardMenuRef = useRef<HTMLDivElement | null>(null)
   const boardId = tab.boardId
+  const dotInputs = useCardDotInputs(tab.project)
   // Открытая карточка живёт в сторе: смена вкладки размонтирует BoardView, при возврате модалка восстанавливается.
   const boardKey = `${projectKey(tab.project)}\u0000${boardId ?? ''}`
   const modalCardId = useKanbanStore((s) => s.openCard[boardKey] ?? null)
+  // Открытая карточка снимает с неё зелёную точку «сессия закрылась непрочитанной».
+  useEffect(() => {
+    if (modalCardId !== null) dismissCardAttention(tab.project, boardId ?? '', modalCardId)
+  }, [tab.project, boardId, modalCardId])
   const setModalCardId = useCallback(
     (cardId: string | null): void => {
       useKanbanStore.getState().setOpenCard(boardKey, cardId)
@@ -264,7 +262,11 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
       reload()
       return
     }
-    if (result.board !== null) setBoard(result.board)
+    if (result.board !== null) {
+      setBoard(result.board)
+      // панель досок справа показывает то же содержимое — синхронизируем её дерево
+      void useKanbanStore.getState().refresh(tab.project)
+    }
   }
 
   if (error !== null) return <div className="board-view"><div className="panel-hint">{error}</div></div>
@@ -501,7 +503,10 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
           >
             ⋯
           </button>
-          <div className="board-card-title">{card.title}</div>
+          <div className="board-card-title-row">
+            <CardDot card={card} boardId={boardId ?? ''} inputs={dotInputs} />
+            <div className="board-card-title">{card.title}</div>
+          </div>
           {(card.comments.length > 0 || card.images.length > 0) && (
             <div className="board-card-badges">
               {card.comments.length > 0 && <span className="board-badge" title={t('Comments')}>💬 {card.comments.length}</span>}

@@ -50,7 +50,9 @@ async function setProject(page, dir) {
   // удалить доску от прошлого прогона
   const oldRow = p.locator('.kanban-board-row', { hasText: BOARD })
   if (await oldRow.count()) {
-    await oldRow.locator('.kanban-board-action').last().evaluate((el) => el.click())
+    await oldRow.locator('.kanban-board-action').evaluate((el) => el.click())
+    await p.waitForTimeout(400)
+    await p.locator('.project-menu button', { hasText: rx('Удалить доску', 'Delete board') }).click()
     await p.waitForTimeout(400)
     await p.locator('.files-rename-box button', { hasText: rx('Удалить', 'Delete') }).last().click()
     await p.waitForTimeout(800)
@@ -131,7 +133,9 @@ async function setProject(page, dir) {
   await p.locator('.right-bar .gitlog-toggle').click()
   await p.waitForTimeout(500)
   const kbRow = p.locator('.kanban-board-row', { hasText: BOARD })
-  await kbRow.locator('.kanban-board-action').last().evaluate((el) => el.click())
+  await kbRow.locator('.kanban-board-action').evaluate((el) => el.click())
+  await p.waitForTimeout(400)
+  await p.locator('.project-menu button', { hasText: rx('Удалить доску', 'Delete board') }).click()
   await p.waitForTimeout(400)
   await p.locator('.files-rename-box button', { hasText: rx('Удалить', 'Delete') }).last().click()
   await p.waitForTimeout(800)

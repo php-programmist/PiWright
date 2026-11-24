@@ -4202,7 +4202,7 @@ pre.code-block {
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 15px;
+  font-size: 25px;
   line-height: 1;
   padding: 0 4px;
 }
@@ -4274,7 +4274,7 @@ pre.code-block {
   border: none;
   color: var(--muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 15px;
   padding: 0 2px;
 }
 
@@ -4284,6 +4284,81 @@ pre.code-block {
 
 .kanban-board-action:hover {
   color: var(--text);
+}
+
+/* Дерево задач в панели канбана: доска → колонки → задачи. */
+.kanban-board-row .expand {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.kanban-tree {
+  padding-bottom: 4px;
+}
+
+.kanban-tree-col {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px 0 16px;
+}
+
+.kanban-tree-col:hover {
+  background: var(--hover);
+}
+
+.kanban-tree-col .expand {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.kanban-col-accent {
+  flex: none;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.kanban-tree-col-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.kanban-tree-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 0 8px 0 44px;
+  cursor: pointer;
+}
+
+.kanban-tree-card:hover {
+  background: var(--hover);
+}
+
+.kanban-tree-card-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.kanban-menu-glyph {
+  width: 13px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.proj-badge.waiting {
+  background: var(--disabled);
 }
 
 .board-view {
@@ -4392,6 +4467,12 @@ pre.code-block {
 .board-card-btn:hover {
   background: var(--hover-strong);
   color: var(--text);
+}
+
+.board-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .board-card-title {
