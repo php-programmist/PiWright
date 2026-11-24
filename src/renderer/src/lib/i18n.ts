@@ -205,6 +205,8 @@ const RU: Record<string, string> = {
   'new branch from {name}': 'новая ветка от {name}',
   'new branch name': 'имя новой ветки',
   'Checkout': 'Checkout',
+  'Pin': 'Закрепить',
+  'Unpin': 'Открепить',
   'New Branch from {name}...': 'Новая ветка от {name}...',
   'Rename...': 'Переименовать...',
   'Delete': 'Удалить',

@@ -64,6 +64,8 @@ export interface Settings {
   terminalTabs: Record<string, TerminalTabsSnapshot>
   /** Вкладки проекта (файлы/диффы/MCP/навыки; ключ projectKey) — переживают перезапуск, сессии не сохраняются. */
   projectTabs: Record<string, ProjectTabsSnapshot>
+  /** Закреплённые ветки проекта (ключ projectKey) — всегда вверху списка переключателя веток. */
+  pinnedBranches: Record<string, string[]>
   /** Последний активный проект (ключ projectKey) — восстанавливается при старте. */
   lastProjectKey: string | null
   /** Звуки, telegram и remote-мост (вкладка Notifications). */

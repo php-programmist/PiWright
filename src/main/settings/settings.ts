@@ -7,6 +7,7 @@ import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, typ
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
+import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { isValidStaticPin } from '../remote/auth'
 
 /** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
@@ -42,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   kanbanCardAttention: {},
   terminalTabs: {},
   projectTabs: {},
+  pinnedBranches: {},
   lastProjectKey: null,
   notifications: DEFAULT_NOTIFICATIONS,
   lastModel: null,
@@ -183,6 +185,7 @@ export class SettingsService {
       merged.kanbanCardAttention = mergeKanbanCardAttention((raw as Partial<Settings>)['kanbanCardAttention'])
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
   merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
+  merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null
       if (typeof merged.kanbanTheme !== 'string' || merged.kanbanTheme.trim().length === 0) merged.kanbanTheme = KANBAN_DEFAULT_THEME_ID
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null

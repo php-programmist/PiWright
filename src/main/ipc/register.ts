@@ -143,6 +143,7 @@ import type { ScheduleService } from '../schedule/schedule-service'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
+import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
@@ -343,6 +344,9 @@ export function registerIpc(
       }
       if (raw['projectTabs'] !== null && typeof raw['projectTabs'] === 'object' && !Array.isArray(raw['projectTabs'])) {
         safe.projectTabs = mergeProjectTabs(raw['projectTabs'])
+      }
+      if (raw['pinnedBranches'] !== null && typeof raw['pinnedBranches'] === 'object' && !Array.isArray(raw['pinnedBranches'])) {
+        safe.pinnedBranches = mergePinnedBranches(raw['pinnedBranches'])
       }
       if (typeof raw['lastProjectKey'] === 'string' || raw['lastProjectKey'] === null) {
         safe.lastProjectKey = raw['lastProjectKey'] as string | null

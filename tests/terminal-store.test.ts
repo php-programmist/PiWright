@@ -32,6 +32,7 @@ const baseSettings: Settings = {
   kanbanCardAttention: {},
   terminalTabs: {},
   projectTabs: {},
+  pinnedBranches: {},
   lastProjectKey: null,
   lastModel: null,
   lastThinkingLevel: null,

@@ -2952,6 +2952,10 @@ pre.code-block {
   color: var(--yellow);
 }
 
+.branch-glyph.pin {
+  font-size: 10px;
+}
+
 .branch-item-name {
   overflow: hidden;
   text-overflow: ellipsis;

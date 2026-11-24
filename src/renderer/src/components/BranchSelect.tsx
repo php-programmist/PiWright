@@ -1,9 +1,12 @@
 /** Попап веток (референс PHPStorm): поиск, «New branch...», клик по ветке — подменю
- *  (Checkout / New Branch from / Rename / Delete; у текущей — без Checkout и Delete).
- *  Живёт в шапке приложения и в шапке git-панели; данные — из git-стора проекта. */
-import { useState } from 'react'
+ *  (Pin/Unpin / Checkout / New Branch from / Rename / Delete; у текущей — без Checkout и Delete).
+ *  Порядок: закреплённые → main/master → алфавит. Живёт в шапке приложения; данные — из git-стора проекта. */
+import { useMemo, useState } from 'react'
 import { useGitStore } from '../stores/git'
 import { useT } from '../lib/i18n'
+import { togglePinnedBranch } from '../lib/pinned-branches'
+import { sortBranches } from '../../../shared/pinned-branches'
+import { projectKey, useSessionsStore } from '../stores/sessions'
 import type { ProjectEntry } from '../../../shared/ipc-contracts'
 
 export function BranchSelect({ project, branch, detached }: { project: ProjectEntry; branch: string | null; detached: boolean }): React.JSX.Element {
@@ -13,6 +16,10 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
   const renameBranch = useGitStore((s) => s.renameBranch)
   const deleteBranch = useGitStore((s) => s.deleteBranch)
   const t = useT()
+  const settings = useSessionsStore((s) => s.settings)
+  const pKey = projectKey(project)
+  const pinned = useMemo(() => settings?.pinnedBranches[pKey] ?? [], [settings, pKey])
+  const sorted = useMemo(() => sortBranches(branches, pinned), [branches, pinned])
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'list' | 'submenu' | 'new' | 'rename'>('list')
   const [target, setTarget] = useState<string | null>(null)
@@ -30,7 +37,7 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
     setFilter('')
     setName('')
   }
-  const filtered = branches.filter((b) => b.toLowerCase().includes(filter.toLowerCase()))
+  const filtered = sorted.filter((b) => b.toLowerCase().includes(filter.toLowerCase()))
 
   const createBranch = (): void => {
     const trimmed = name.trim()
@@ -86,19 +93,22 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
                 <span className="branch-glyph">+</span>
                 <span>{t('New branch...')}</span>
               </button>
-              {filtered.map((b) => (
-                <button
-                  key={b}
-                  className={`branch-item${b === branch ? ' current' : ''}`}
-                  onClick={() => {
-                    setTarget(b)
-                    setMode('submenu')
-                  }}
-                >
-                  <span className={`branch-glyph${b === branch ? ' star' : ''}`}>{b === branch ? '★' : '⑂'}</span>
-                  <span className="branch-item-name">{b}</span>
-                </button>
-              ))}
+              {filtered.map((b) => {
+                const isPinned = pinned.includes(b)
+                return (
+                  <button
+                    key={b}
+                    className={`branch-item${b === branch ? ' current' : ''}`}
+                    onClick={() => {
+                      setTarget(b)
+                      setMode('submenu')
+                    }}
+                  >
+                    <span className={`branch-glyph${b === branch ? ' star' : isPinned ? ' pin' : ''}`}>{b === branch ? '★' : isPinned ? '📌' : '⑂'}</span>
+                    <span className="branch-item-name">{b}</span>
+                  </button>
+                )
+              })}
               {filtered.length === 0 && <div className="panel-hint">{t('no branches')}</div>}
             </>
           )}
@@ -126,6 +136,16 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
           <button className="branch-item back" onClick={() => setMode('list')}>
             <span className="branch-glyph">‹</span>
             <span className="branch-item-name">{target}</span>
+          </button>
+          <button
+            className="branch-item"
+            onClick={() => {
+              togglePinnedBranch(project, target)
+              close()
+            }}
+          >
+            <span className="branch-glyph">📌</span>
+            <span>{pinned.includes(target) ? t('Unpin') : t('Pin')}</span>
           </button>
           {target !== branch && (
             <button
