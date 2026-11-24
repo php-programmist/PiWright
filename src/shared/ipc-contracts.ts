@@ -632,6 +632,8 @@ export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
   revealSettings(): Promise<{ ok: boolean; error: string | null }>
+  /** Пункт «Настройки» в меню приложения (File): renderer открывает оверлей настроек. */
+  onMenuSettings(cb: () => void): () => void
   appVersion(): Promise<string>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
@@ -792,6 +794,7 @@ export interface PiWrightApi {
 export const SETTINGS_GET_CHANNEL = 'settings:get'
 export const SETTINGS_SET_CHANNEL = 'settings:set'
 export const SETTINGS_REVEAL_CHANNEL = 'settings:reveal'
+export const APP_MENU_SETTINGS_CHANNEL = 'app:menu-settings'
 export const APP_VERSION_CHANNEL = 'app:version'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'

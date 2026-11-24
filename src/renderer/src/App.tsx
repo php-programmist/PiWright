@@ -229,6 +229,7 @@ export function App(): React.JSX.Element {
       termWriteExit(message.id, message.code)
       useTerminalStore.getState().applyExit(message.id, message.code)
     })
+    const offMenuSettings = window.piwright.onMenuSettings(() => useSessionsStore.getState().openSettings())
     void load()
     void window.piwright.getPendingDialogs().then((pending) => {
       for (const p of pending) applyEvent({ hostId: p.hostId, event: { type: 'dialog_open', id: p.id, dialog: p.dialog } })
@@ -239,6 +240,7 @@ export function App(): React.JSX.Element {
       offFilesChanged()
       offTermData()
       offTermExit()
+      offMenuSettings()
     }
   }, [applyEvent, applyChatStatus, applySessionsStatus, load])
 

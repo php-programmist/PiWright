@@ -11,6 +11,7 @@ import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { LoopController } from './pi/loop-controller'
 import { SettingsService } from './settings/settings'
+import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
 import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
@@ -142,10 +143,14 @@ app.whenReady().then(() => {
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
   })
+  const rebuildMenu = installAppMenu(() => settings.get().language, () => mainWindow)
   registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
     tokenStore,
     bridge,
-    onSettingsChanged: (next) => bridge?.applySettings(next)
+    onSettingsChanged: (next) => {
+      bridge?.applySettings(next)
+      rebuildMenu()
+    }
   })
   startAutoUpdater(() => settings.get().updateUrl)
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
