@@ -206,7 +206,7 @@ function TurnTimer({ startedAt }: { startedAt: number }): React.JSX.Element {
 export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element {
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
-  const sendOnEnter = useSessionsStore((s) => s.settings?.sendOnEnter ?? false)
+  const sendOnEnter = useSessionsStore((s) => s.settings?.sendOnEnter ?? true)
   const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
   const t = useT()
   const status = chat?.status ?? null

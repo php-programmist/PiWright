@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   selectorPlacement: 'top',
   theme: 'dark',
   chatFontSize: 14,
-  sendOnEnter: false,
+  sendOnEnter: true,
   loopsEnabled: false,
   loopCloseSession: false,
   kanbanEnabled: false,
