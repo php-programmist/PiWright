@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron'
 import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
@@ -38,6 +39,18 @@ const SMOKE_SWITCHES = ['disable-renderer-backgrounding', 'disable-backgrounding
 const smokeMode = process.argv.includes('--smoke') || process.env['PIWRIGHT_SMOKE'] === '1'
 if (smokeMode) {
   for (const name of SMOKE_SWITCHES) app.commandLine.appendSwitch(name)
+}
+
+// Chromium draws native menu accelerator names (e.g. comma) from its own locale pak,
+// which follows the OS language — not the app language setting. Force --lang from
+// settings.json before ready so English UI shows "Ctrl+," instead of "Ctrl+Запятая".
+// Chromium reads this switch once at startup: changing the language takes effect after restart.
+try {
+  const raw: unknown = JSON.parse(readFileSync(join(app.getPath('userData'), 'settings.json'), 'utf8'))
+  const lang = raw !== null && typeof raw === 'object' && (raw as Record<string, unknown>)['language'] === 'ru' ? 'ru-RU' : 'en-US'
+  app.commandLine.appendSwitch('lang', lang)
+} catch {
+  app.commandLine.appendSwitch('lang', 'en-US')
 }
 
 /** Позиция за пределами объединения всех мониторов. */
