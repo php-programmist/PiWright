@@ -154,6 +154,9 @@ export class SessionHost {
   private subagentToolSeen = false
   /** Check-ход петли: его turn_end помечается check — без звука и Telegram-уведомления. */
   private checkTurnPending = false
+  /** Ошибка текущего хода: из translator на agent_end (message_end с ошибкой приходит раньше)
+   *  или из onError на agent_settled (ход с субагентами). Гасит дубль turn_error. */
+  private turnError: string | null = null
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
@@ -199,7 +202,10 @@ export class SessionHost {
       thinkingLevel: this.handshake?.thinkingLevel ?? this.desiredThinkingLevel,
       project: this.project,
       title: this.title,
-      dot: sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind), state === 'waiting')
+      dot:
+        state === 'error' && this.pendingDialogs.size === 0
+          ? 'error'
+          : sessionStatus(state === 'streaming', [...this.pendingDialogs.values()].map((e) => e.dialog.kind), state === 'waiting')
     }
     this.lastStatusData = snapshot
     this.listener.onStatus(snapshot)
@@ -326,7 +332,14 @@ export class SessionHost {
       onCompactionStart: (reason) => this.emit({ type: 'compaction_start', reason }),
       onCompactionEnd: (end) => this.emit({ type: 'compaction_end', end }),
       onResult: (usage) => this.emit({ type: 'turn_result', usage }),
-      onError: (message) => this.emit({ type: 'turn_error', message }),
+      onError: (message) => {
+        // Ход с субагентами: agent_settled приходит до отложенного turn_end — ошибку фиксируем
+        // сразу (звук + запись в чате + красный статус), дубль на agent_end гасим.
+        if (this.turnError !== null) return
+        this.turnError = message
+        this.emit({ type: 'turn_error', message })
+        this.status('error', message)
+      },
       onSubagentsActivity: (kind, id) => {
         this.trackSubagents(kind, id)
         this.emit({ type: 'subagents_activity', kind, id })
@@ -435,6 +448,7 @@ export class SessionHost {
       this.turnEndHandled = false
       this.waitingSubagents = false
       this.subagentToolSeen = false
+      this.turnError = null
       this.emit({ type: 'turn_start', external })
       this.status('streaming')
     } else if (type === 'agent_settled' || type === 'agent_end') {
@@ -530,8 +544,19 @@ export class SessionHost {
     this.waitingSubagents = false
     const check = this.checkTurnPending
     this.checkTurnPending = false
-    this.emit(check ? { type: 'turn_end', check: true } : { type: 'turn_end' })
-    this.status('ready')
+    // Ошибка модели известна уже к agent_end — turn_error вместо completion-звука,
+    // статус error (красный кружок) вместо ready.
+    const translatorError = this.translator?.turnError ?? null
+    if (translatorError !== null && this.turnError === null) {
+      this.turnError = translatorError
+      this.emit({ type: 'turn_error', message: translatorError })
+    }
+    const error = this.turnError
+    const end: UiEvent = { type: 'turn_end' }
+    if (check) end.check = true
+    if (error !== null) end.error = error
+    this.emit(end)
+    this.status(error !== null ? 'error' : 'ready', error)
     this.refreshSessionStats()
   }
 

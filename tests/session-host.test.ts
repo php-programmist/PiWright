@@ -552,6 +552,86 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('errored turn ends with error status and red dot instead of ready', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"agent_start"}\n' +
+              '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"Request timed out.: Connect Timeout Error"}}\n' +
+              '{"type":"agent_end"}\n' +
+              '{"type":"agent_settled","aborted":false}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events, statuses } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_end')).toBe(true)
+    })
+    // turn_error ровно один (дубль с agent_settled погашен), turn_end несёт error.
+    const errors = events.filter((e) => e.type === 'turn_error')
+    expect(errors).toHaveLength(1)
+    expect((errors[0] as { message: string }).message).toBe('Request timed out.: Connect Timeout Error')
+    const end = events.find((e) => e.type === 'turn_end') as { error?: string }
+    expect(end.error).toBe('Request timed out.: Connect Timeout Error')
+    expect(statuses[statuses.length - 1]?.state).toBe('error')
+    expect(statuses[statuses.length - 1]?.dot).toBe('error')
+    host.dispose()
+  })
+
+  it('errored turn with subagents emits turn_error once and resolves to error status', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_session_stats') return { tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          child?.emitData(
+            '{"type":"agent_start"}\n' +
+              '{"type":"tool_execution_start","toolCallId":"t1","toolName":"Agent","args":{},"parentToolCallId":null}\n' +
+              '{"type":"entry_appended","entry":{"customType":"piwright:subagents","data":{"kind":"started","id":"sa-1"}}}\n' +
+              '{"type":"message_end","message":{"role":"assistant","content":[],"stopReason":"error","errorMessage":"boom"}}\n' +
+              '{"type":"agent_end"}\n' +
+              '{"type":"agent_settled","aborted":false}\n'
+          )
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host, events, statuses } = makeHost([child], SETTINGS, { subagentGraceMs: 20 })
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_error')).toBe(true)
+    })
+    // Ошибка зафиксирована на agent_settled, до отложенного turn_end.
+    expect(events.some((e) => e.type === 'turn_end')).toBe(false)
+    expect(statuses[statuses.length - 1]?.state).toBe('error')
+    child.emitData('{"type":"entry_appended","entry":{"customType":"piwright:subagents","data":{"kind":"completed","id":"sa-1"}}}\n')
+    await vi.waitFor(() => {
+      expect(events.some((e) => e.type === 'turn_end')).toBe(true)
+    })
+    expect(events.filter((e) => e.type === 'turn_error')).toHaveLength(1)
+    const end = events.find((e) => e.type === 'turn_end') as { error?: string }
+    expect(end.error).toBe('boom')
+    expect(statuses[statuses.length - 1]?.state).toBe('error')
+    expect(statuses[statuses.length - 1]?.dot).toBe('error')
+    host.dispose()
+  })
+
   it('markCheckTurn tags the next turn_end with check:true', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

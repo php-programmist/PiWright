@@ -120,8 +120,8 @@ export interface TerminalTabsSnapshot {
 }
 
 /** Кружок статуса сессии: разрешение важнее вопроса, вопрос — важнее идущего хода,
- *  ожидание фоновых субагентов — важнее простоя. */
-export type SessionDot = 'confirm' | 'question' | 'busy' | 'waiting' | 'idle'
+ *  ожидание фоновых субагентов — важнее простоя, ошибка хода — красный. */
+export type SessionDot = 'confirm' | 'question' | 'busy' | 'waiting' | 'idle' | 'error'
 
 export type PiStatusState = 'idle' | 'starting' | 'ready' | 'streaming' | 'waiting' | 'disconnected' | 'error'
 
@@ -141,7 +141,7 @@ export interface PiStatus {
   project: ProjectEntry
   /** Заголовок: имя сессии → первый текст пользователя → «New Chat». */
   title: string
-  /** Кружок статуса: confirm > question > busy > waiting > idle. */
+  /** Кружок статуса: confirm > question > busy > waiting > idle > error. */
   dot: SessionDot
   /** Telegram-флаг сессии (RemoteBridge, в памяти; включается иконкой в шапке чата). */
   telegram?: boolean

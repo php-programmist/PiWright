@@ -85,4 +85,14 @@ describe('cardDotOf', () => {
   it('ожидание субагентов — waiting', () => {
     expect(cardDotOf(card([{ id: 's-1' }]), 'b-1', inputs({ active: [row('s-1', 'waiting')] }))?.dot).toBe('waiting')
   })
+
+  it('ход с ошибкой — error, важнее busy но ниже confirm', () => {
+    expect(cardDotOf(card([{ id: 's-1' }]), 'b-1', inputs({ active: [row('s-1', 'error')] }))?.dot).toBe('error')
+    const hit = cardDotOf(
+      card([{ id: 's-1' }, { id: 's-2' }]),
+      'b-1',
+      inputs({ active: [row('s-1', 'error'), row('s-2', 'confirm')] }),
+    )
+    expect(hit?.dot).toBe('confirm')
+  })
 })

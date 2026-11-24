@@ -116,6 +116,12 @@ export class PiEventTranslator {
   /** Размер окна текущей модели — для процента заполнения; 0 — неизвестен. */
   contextWindow = 0
 
+  /** Ошибка текущего хода (message_end со stopReason=error); известна уже к agent_end,
+   *  т.к. message_end приходит раньше agent_end (см. fixture edit-turn.jsonl). */
+  get turnError(): string | null {
+    return this.turn.error
+  }
+
   private readonly toolCalls = new Map<string, ToolCall>()
   private turn: TurnAccumulator = freshTurn()
   private messageStartNanos: number | null = null

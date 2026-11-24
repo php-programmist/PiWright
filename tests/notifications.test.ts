@@ -49,7 +49,7 @@ describe('telegramMessage', () => {
     expect(telegramMessage('api', 'fix auth', 'turnEnd')).toBe('api · fix auth: ход завершён')
     expect(telegramMessage('api', 'fix auth', 'permission')).toBe('api · fix auth: просит разрешение на команду')
     expect(telegramMessage('api', 'fix auth', 'question')).toBe('api · fix auth: нужен ответ')
-    expect(telegramMessage('api', 'fix auth', 'error')).toBe('api · fix auth: ошибка расширения')
+    expect(telegramMessage('api', 'fix auth', 'error')).toBe('api · fix auth: ошибка')
     expect(telegramMessage('api', 'fix auth', 'loopEnd')).toBe('api · fix auth: петля завершена')
     expect(telegramMessage('api', 'fix auth', 'loopEnd', 'условие выхода выполнено')).toBe('api · fix auth: петля завершена (условие выхода выполнено)')
   })
@@ -184,7 +184,7 @@ describe('NotificationHub', () => {
     const h = hub({ chatId: '42' })
     h.onEvent(event({ type: 'notify', message: 'boom', isError: true }))
     h.onEvent(event({ type: 'notify', message: 'info', isError: false }))
-    expect(sent).toEqual([{ chatId: '42', text: 'api · fix auth: ошибка расширения' }])
+    expect(sent).toEqual([{ chatId: '42', text: 'api · fix auth: ошибка' }])
   })
 
   it('loop stopped sends loopEnd notification with reason', () => {

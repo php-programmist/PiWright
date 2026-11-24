@@ -191,8 +191,8 @@ export function App(): React.JSX.Element {
       const event = message.event
       if (event.type === 'turn_end' || event.type === 'dialog_open' || event.type === 'turn_error' || (event.type === 'notify' && event.isError)) {
         const kind = event.type === 'turn_end' ? 'completion' : event.type === 'dialog_open' ? 'await' : 'error'
-        // Check-ход петли — служебный, без звука.
-        if (!(event.type === 'turn_end' && event.check === true)) {
+        // Check-ход петли — служебный, без звука; ход с ошибкой уже дал звук turn_error.
+        if (!(event.type === 'turn_end' && (event.check === true || event.error != null))) {
           playNotificationSound(
             message.hostId,
             kind,

@@ -152,7 +152,7 @@ export type UiEvent =
   | { type: 'turn_result'; usage: TurnUsage }
   | { type: 'turn_error'; message: string }
   | { type: 'turn_start'; external?: boolean }
-  | { type: 'turn_end'; check?: boolean }
+  | { type: 'turn_end'; check?: boolean; /** Ход закончился ошибкой модели — без completion-звука, статус error. */ error?: string }
   | { type: 'subagents_activity'; kind: 'started' | 'completed' | 'workflow_started' | 'workflow_settled' | 'disposed'; id: string | null }
   | { type: 'loop_state'; info: LoopInfo; previousHostId: string | null }
   | { type: 'assistant_message_start' }

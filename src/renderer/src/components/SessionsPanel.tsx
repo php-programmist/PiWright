@@ -15,7 +15,8 @@ const DOT_CLASS: Record<string, string> = {
   question: 'question',
   busy: 'busy',
   waiting: 'waiting',
-  idle: 'idle'
+  idle: 'idle',
+  error: 'error'
 }
 
 function dirName(dir: string): string {

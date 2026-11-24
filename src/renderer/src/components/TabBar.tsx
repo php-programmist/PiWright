@@ -15,7 +15,7 @@ import { WORKTREE_ICON } from './SessionsPanel'
 import { renameDialog } from './RenameDialog'
 import { baseName } from '../views/git/GitPanel'
 
-const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle' }
+const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle', error: 'error' }
 
 interface MenuState {
   x: number

@@ -21,14 +21,22 @@ export class NotificationHub {
     const event = message.event
     let kind: RemoteNotifyKind | null = null
     if (event.type === 'turn_end') {
-      // Check-ход петли — служебный, без уведомления.
+      // Check-ход петли — служебный, без уведомления; ход с ошибкой — уведомление об ошибке.
       if (event.check === true) return
+      if (event.error != null) {
+        this.send(message, 'error', event.error)
+        return
+      }
       kind = 'turnEnd'
     }
     else if (event.type === 'dialog_open') kind = event.dialog.kind === 'confirm' ? 'permission' : 'question'
     else if (event.type === 'notify' && event.isError) kind = 'error'
     if (kind === null) return
 
+    this.send(message, kind)
+  }
+
+  private send(message: PiEventMessage, kind: RemoteNotifyKind, detail?: string): void {
     const settings = this.getSettings()
     if (!settings.notifications.telegram.events[kind]) return
     const host = this.piHost.get(message.hostId)
@@ -39,7 +47,7 @@ export class NotificationHub {
     if (token === null) return
     const status = host.lastStatus()
     if (status === null || status === undefined) return
-    sendTelegramNotification(settings.notifications.telegram.chatId, token, basename(status.project.dir) || status.project.dir, status.title, kind)
+    sendTelegramNotification(settings.notifications.telegram.chatId, token, basename(status.project.dir) || status.project.dir, status.title, kind, detail)
   }
 
   /** Петля завершена (loop_state с reason): уведомление с причиной, если чекбокс loopEnd включён. */

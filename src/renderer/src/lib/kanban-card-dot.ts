@@ -12,6 +12,7 @@ export const DOT_LABEL: Record<SessionDot, string> = {
   busy: 'Running',
   waiting: 'Waiting for subagents',
   idle: 'Unread turns',
+  error: 'Error',
 }
 
 export const DOT_CLASS: Record<SessionDot, string> = {
@@ -20,6 +21,7 @@ export const DOT_CLASS: Record<SessionDot, string> = {
   busy: 'busy',
   waiting: 'waiting',
   idle: 'idle',
+  error: 'error',
 }
 
 /** Класс бейджа-счётчика свёрнутой колонки для статуса задачи. */
@@ -29,9 +31,10 @@ export const BADGE_CLASS: Record<SessionDot, string> = {
   busy: 'busy',
   waiting: 'waiting',
   idle: 'green',
+  error: 'red',
 }
 
-const PRIORITY: Record<SessionDot, number> = { confirm: 5, question: 4, busy: 3, waiting: 2, idle: 1 }
+const PRIORITY: Record<SessionDot, number> = { confirm: 5, question: 4, busy: 3, waiting: 2, idle: 1, error: 4 }
 
 export interface CardDotInputs {
   active: SessionRow[]

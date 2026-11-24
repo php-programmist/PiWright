@@ -8,7 +8,7 @@ export const NOTIFY_KIND_TEXT: Record<RemoteNotifyKind, string> = {
   turnEnd: 'ход завершён',
   permission: 'просит разрешение на команду',
   question: 'нужен ответ',
-  error: 'ошибка расширения',
+  error: 'ошибка',
   loopEnd: 'петля завершена'
 }
 

@@ -441,6 +441,10 @@ body {
   background: var(--green);
 }
 
+.proj-badge.red {
+  background: var(--red);
+}
+
 .proj-badge.busy {
   background: var(--blue);
   animation: pulse 1s infinite alternate;
@@ -1242,6 +1246,11 @@ body {
 .dot.error,
 .dot.disconnected {
   background: var(--red);
+}
+
+/* Голое .error (баннер ошибки в чате) даёт точке padding — возвращаем кружок. */
+.dot.error {
+  padding: 0;
 }
 
 @keyframes pulse {
