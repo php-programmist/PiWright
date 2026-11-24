@@ -954,6 +954,116 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
+  it('queueTake returns the picked text and keeps the rest queued while streaming', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          currentChild?.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      if (type === 'clear_queue') return { steering: ['a', 'b'], followUp: ['c'] }
+      if (type === 'steer' || type === 'follow_up') return { disposition: 'queued' }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'streaming')).toBe(true)
+    })
+    const result = await host.queueTake('followUp', 0)
+    expect(result.ok).toBe(true)
+    expect(result.cleared).toEqual({ steering: [], followUp: ['c'] })
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'a')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'b')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'follow_up')).toBe(false)
+    host.dispose()
+  })
+
+  it('queueConvert moves the item to the other queue while streaming', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          currentChild?.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      if (type === 'clear_queue') return { steering: ['a'], followUp: ['c'] }
+      if (type === 'steer' || type === 'follow_up') return { disposition: 'queued' }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'streaming')).toBe(true)
+    })
+    const toSteer = await host.queueConvert('followUp', 0, 'steering')
+    expect(toSteer.ok).toBe(true)
+    expect(toSteer.cleared).toEqual({ steering: [], followUp: [] })
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'a')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'c')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'follow_up')).toBe(false)
+    host.dispose()
+  })
+
+  it('queueConvert steer to followUp re-queues it as follow_up', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          currentChild?.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      if (type === 'clear_queue') return { steering: ['a', 'b'], followUp: [] }
+      if (type === 'steer' || type === 'follow_up') return { disposition: 'queued' }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child])
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'streaming')).toBe(true)
+    })
+    const result = await host.queueConvert('steering', 0, 'followUp')
+    expect(result.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'follow_up' && c['message'] === 'a')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'b')).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'steer' && c['message'] === 'a')).toBe(false)
+    host.dispose()
+  })
+
+  it('queueTake with no running turn returns the whole queue to the composer', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'clear_queue') return { steering: ['a'], followUp: ['c'] }
+      return null
+    })
+    currentChild = child
+    const { host } = makeHost([child])
+    await host.prompt('go')
+    const result = await host.queueTake('steering', 0)
+    expect(result.ok).toBe(true)
+    expect(result.cleared).toEqual({ steering: ['a'], followUp: ['c'] })
+    host.dispose()
+  })
+
   it('editPrompt forks the session at the matched prompt and resends the new text', async () => {
     const entries = {
       entries: [

@@ -46,6 +46,14 @@ function modelKey(model: { provider: string; id: string } | null | undefined): s
   return model ? `${model.provider}/${model.id}` : null
 }
 
+/** Очередь с возвращённым в неё снятым элементом (когда перевставить некуда — нет хода). */
+function withRemoved(remaining: QueueTexts, kind: keyof QueueTexts, removed: string | null): QueueTexts {
+  if (removed === null) return remaining
+  return kind === 'steering'
+    ? { steering: [...remaining.steering, removed], followUp: remaining.followUp }
+    : { steering: remaining.steering, followUp: [...remaining.followUp, removed] }
+}
+
 /** Текст user-сообщения из записи pi (message.content — строка или блоки). */
 function userPromptText(entry: PiJsonObject): string | null {
   if (entry['type'] !== 'message') return null
@@ -661,21 +669,9 @@ export class SessionHost {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
     try {
-      const texts = await this.clearQueue(conn)
-      const list = [...texts[kind]]
-      if (index >= 0 && index < list.length) list.splice(index, 1)
-      const remaining: QueueTexts = {
-        steering: kind === 'steering' ? list : texts.steering,
-        followUp: kind === 'followUp' ? list : texts.followUp
-      }
+      const { remaining } = await this.spliceQueue(conn, kind, index)
       if (!this.streaming) return { ok: true, error: null, cleared: remaining }
-      const failed: string[] = []
-      for (const text of remaining.steering) {
-        if (!(await this.requeue(conn, 'steer', text))) failed.push(text)
-      }
-      for (const text of remaining.followUp) {
-        if (!(await this.requeue(conn, 'follow_up', text))) failed.push(text)
-      }
+      const failed = await this.requeueAll(conn, remaining)
       return {
         ok: true,
         error: null,
@@ -684,6 +680,64 @@ export class SessionHost {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  }
+
+  /** Снять элемент очереди в поле ввода (редактирование): остальные остаются в очереди,
+   *  снятый текст возвращается в cleared. Без хода — вся очередь в cleared. */
+  async queueTake(kind: keyof QueueTexts, index: number): Promise<PromptResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    try {
+      const { removed, remaining } = await this.spliceQueue(conn, kind, index)
+      if (!this.streaming || removed === null) return { ok: true, error: null, cleared: withRemoved(remaining, kind, removed) }
+      const failed = await this.requeueAll(conn, remaining)
+      return {
+        ok: true,
+        error: null,
+        cleared: { steering: [...failed, ...(kind === 'steering' ? [removed] : [])], followUp: kind === 'followUp' ? [removed] : [] }
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /** Перевод элемента в другую очередь (followUp ↔ steering): остальные остаются на месте,
+   *  элемент перепостановляется командой целевой очереди. Без хода — вся очередь в cleared. */
+  async queueConvert(kind: keyof QueueTexts, index: number, toKind: keyof QueueTexts): Promise<PromptResult> {
+    const conn = this.conn
+    if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    try {
+      const { removed, remaining } = await this.spliceQueue(conn, kind, index)
+      if (!this.streaming || removed === null) return { ok: true, error: null, cleared: withRemoved(remaining, kind, removed) }
+      const failed = await this.requeueAll(conn, remaining)
+      if (!(await this.requeue(conn, toKind === 'steering' ? 'steer' : 'follow_up', removed))) failed.push(removed)
+      return { ok: true, error: null, cleared: { steering: failed, followUp: [] } }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /** clear_queue + удаление элемента kind[index]; remaining — очередь без него. */
+  private async spliceQueue(conn: PiConnection, kind: keyof QueueTexts, index: number): Promise<{ removed: string | null; remaining: QueueTexts }> {
+    const texts = await this.clearQueue(conn)
+    const list = [...texts[kind]]
+    let removed: string | null = null
+    if (index >= 0 && index < list.length) removed = list.splice(index, 1)[0] ?? null
+    return {
+      removed,
+      remaining: { steering: kind === 'steering' ? list : texts.steering, followUp: kind === 'followUp' ? list : texts.followUp }
+    }
+  }
+
+  private async requeueAll(conn: PiConnection, texts: QueueTexts): Promise<string[]> {
+    const failed: string[] = []
+    for (const text of texts.steering) {
+      if (!(await this.requeue(conn, 'steer', text))) failed.push(text)
+    }
+    for (const text of texts.followUp) {
+      if (!(await this.requeue(conn, 'follow_up', text))) failed.push(text)
+    }
+    return failed
   }
 
   private async clearQueue(conn: PiConnection): Promise<QueueTexts> {

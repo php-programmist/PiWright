@@ -703,6 +703,10 @@ export interface PiWrightApi {
   queueClear(hostId: string): Promise<PromptResult>
   /** Убрать один элемент очереди: clear_queue + повторная постановка остальных (при ходе). */
   queueRemove(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
+  /** Снять элемент очереди в поле ввода (редактирование): остальные остаются в очереди. */
+  queueTake(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
+  /** Перевести элемент в другую очередь (followUp ↔ steering). */
+  queueConvert(hostId: string, kind: keyof QueueTexts, index: number, toKind: keyof QueueTexts): Promise<PromptResult>
   /** Отложенный промпт (очередь сессий): запланировать отправку в целевую сессию. */
   schedulePrompt(input: SchedulePromptInput): Promise<PromptResult>
   /** Список отложенных промптов (переживает перезапуск, JSON в userData). */
@@ -862,6 +866,8 @@ export const LOOP_GET_CHANNEL = 'loop:get'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
+export const SESSION_QUEUE_TAKE_CHANNEL = 'session:queue-take'
+export const SESSION_QUEUE_CONVERT_CHANNEL = 'session:queue-convert'
 export const SESSION_SCHEDULE_CHANNEL = 'session:schedule'
 export const SESSION_SCHEDULED_LIST_CHANNEL = 'session:scheduled-list'
 export const SESSION_SCHEDULED_CANCEL_CHANNEL = 'session:scheduled-cancel'

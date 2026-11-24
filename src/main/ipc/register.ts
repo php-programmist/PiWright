@@ -78,6 +78,8 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
+  SESSION_QUEUE_TAKE_CHANNEL,
+  SESSION_QUEUE_CONVERT_CHANNEL,
   SESSION_SCHEDULE_CHANNEL,
   SESSION_SCHEDULED_CANCEL_CHANNEL,
   SESSION_SCHEDULED_LIST_CHANNEL,
@@ -585,6 +587,28 @@ export function registerIpc(
       return { ok: false, error: 'Invalid queue index' }
     }
     return h.queueRemove(kind, index)
+  })
+
+  ipcMain.handle(SESSION_QUEUE_TAKE_CHANNEL, (_event, hostId: unknown, kind: unknown, index: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found' }
+    if (kind !== 'steering' && kind !== 'followUp') return { ok: false, error: 'Unknown queue kind' }
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return { ok: false, error: 'Invalid queue index' }
+    }
+    return h.queueTake(kind, index)
+  })
+
+  ipcMain.handle(SESSION_QUEUE_CONVERT_CHANNEL, (_event, hostId: unknown, kind: unknown, index: unknown, toKind: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found' }
+    if ((kind !== 'steering' && kind !== 'followUp') || (toKind !== 'steering' && toKind !== 'followUp')) {
+      return { ok: false, error: 'Unknown queue kind' }
+    }
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
+      return { ok: false, error: 'Invalid queue index' }
+    }
+    return h.queueConvert(kind, index, toKind)
   })
 
   ipcMain.handle(SESSION_SCHEDULE_CHANNEL, (_event, input: unknown) => {

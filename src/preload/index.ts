@@ -87,6 +87,8 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
+  SESSION_QUEUE_TAKE_CHANNEL,
+  SESSION_QUEUE_CONVERT_CHANNEL,
   SESSION_SCHEDULE_CHANNEL,
   SESSION_SCHEDULED_CANCEL_CHANNEL,
   SESSION_SCHEDULED_LIST_CHANNEL,
@@ -184,6 +186,10 @@ const api: PiWrightApi = {
   queueClear: (hostId: string) => ipcRenderer.invoke(SESSION_QUEUE_CLEAR_CHANNEL, hostId),
   queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>
     ipcRenderer.invoke(SESSION_QUEUE_REMOVE_CHANNEL, hostId, kind, index),
+  queueTake: (hostId: string, kind: keyof QueueTexts, index: number) =>
+    ipcRenderer.invoke(SESSION_QUEUE_TAKE_CHANNEL, hostId, kind, index),
+  queueConvert: (hostId: string, kind: keyof QueueTexts, index: number, toKind: keyof QueueTexts) =>
+    ipcRenderer.invoke(SESSION_QUEUE_CONVERT_CHANNEL, hostId, kind, index, toKind),
   schedulePrompt: (input: SchedulePromptInput) => ipcRenderer.invoke(SESSION_SCHEDULE_CHANNEL, input),
   scheduledList: () => ipcRenderer.invoke(SESSION_SCHEDULED_LIST_CHANNEL),
   scheduledCancel: (id: string) => ipcRenderer.invoke(SESSION_SCHEDULED_CANCEL_CHANNEL, id),

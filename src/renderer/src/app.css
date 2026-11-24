@@ -2177,6 +2177,30 @@ pre.code-block {
   color: var(--text);
 }
 
+.queue-act {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.queue-act:hover {
+  color: var(--text);
+}
+
+.queue-convert {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 0 6px;
+}
+
 .todo-panel summary {
   padding: 5px 14px;
   cursor: pointer;
