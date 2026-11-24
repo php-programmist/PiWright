@@ -1,6 +1,7 @@
-/** Просмотр диффа — контент вкладки проекта (вкладками управляет TabBar): стрелки листают
- *  открытые дифф-вкладки (новые не открывают), переключение unified/side-by-side. */
-import { useEffect, useMemo, useRef, useState } from 'react'
+/** Просмотр диффа — контент вкладки проекта (вкладками управляет TabBar): стрелки (кнопки
+ *  и клавиши ↑/↓) листают файлы контекста — у коммита файлы коммита, у рабочей копии изменённые
+ *  файлы статуса — открывая недостающие вкладки; переключение unified/side-by-side. */
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DiffEditor } from '../../components/DiffEditor'
 import { useGitStore } from '../../stores/git'
 import { tabId, useTabsStore } from '../../stores/tabs'
@@ -16,6 +17,7 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
   const diff = useGitStore((s) => s.diff)
   const diffLoading = useGitStore((s) => s.diffLoading)
   const [sideBySide, setSideBySide] = useState(true)
+  const [contextFiles, setContextFiles] = useState<string[] | null>(null)
   const loadedRef = useRef(false)
 
   useEffect(() => {
@@ -39,18 +41,54 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
     }
   }, [selectedPath, diffLoading, tab, path, commitHash])
 
-  const allTabs = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey]?.tabs : undefined))
-  const diffTabs = useMemo(() => (allTabs ?? []).filter((x) => x.kind === 'diff'), [allTabs])
+  // Список файлов контекста для листания стрелками: у коммита — файлы коммита,
+  // у рабочей копии — изменённые файлы статуса.
+  useEffect(() => {
+    let cancelled = false
+    if (commitHash !== undefined) {
+      void window.piwright.gitCommitFiles(tab.project, commitHash).then((r) => {
+        if (!cancelled) setContextFiles(r.ok ? r.files.map((f) => f.path) : null)
+      })
+    } else {
+      void window.piwright.gitStatus(tab.project).then((r) => {
+        if (!cancelled) setContextFiles(r.ok && r.status !== null ? r.status.entries.map((e) => e.path) : null)
+      })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [tab.project, commitHash])
 
-  const step = (delta: number): void => {
-    if (diffTabs.length < 2) return
-    const index = diffTabs.findIndex((x) => x.path === path)
-    const next = index < 0 ? 0 : (index + delta + diffTabs.length) % diffTabs.length
-    const target = diffTabs[next]
-    useTabsStore.getState().setActive(target.project, tabId(target))
-    if (target.hash !== undefined) void useGitStore.getState().openCommitFile(target.project, target.hash, target.path ?? '')
-    else void useGitStore.getState().openFile(target.project, target.path ?? '')
-  }
+  const step = useCallback(
+    (delta: number): void => {
+      if (contextFiles === null || contextFiles.length < 2) return
+      const index = contextFiles.indexOf(path)
+      if (index < 0) return
+      const nextPath = contextFiles[(index + delta + contextFiles.length) % contextFiles.length]
+      const git = useGitStore.getState()
+      if (commitHash !== undefined) {
+        useTabsStore.getState().openTab(tab.project, { kind: 'diff', path: nextPath, hash: commitHash })
+        void git.openCommitFile(tab.project, commitHash, nextPath)
+      } else {
+        useTabsStore.getState().openTab(tab.project, { kind: 'diff', path: nextPath })
+        void git.openFile(tab.project, nextPath)
+      }
+    },
+    [contextFiles, path, commitHash, tab.project]
+  )
+
+  // Клавиши ↑/↓ листают диффы, пока фокус не внутри Monaco/поля ввода (там стрелки — курсор).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      if (e.target instanceof Element && e.target.closest('.monaco-editor, input, textarea, select')) return
+      e.preventDefault()
+      step(e.key === 'ArrowDown' ? 1 : -1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [step])
 
   return (
     <div className="diff-overlay">
