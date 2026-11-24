@@ -130,13 +130,13 @@ const RU: Record<string, string> = {
   'stopped by user': 'остановлена пользователем',
   'Stop': 'Стоп',
   'thinking level': 'Уровень мышления',
-  'thinking off': 'Выкл.',
-  'thinking minimal': 'Мин.',
-  'thinking low': 'Низк.',
-  'thinking medium': 'Средн.',
-  'thinking high': 'Выс.',
-  'thinking xhigh': 'О.выс.',
-  'thinking max': 'Макс.',
+  'off': 'Выкл.',
+  'minimal': 'Мин.',
+  'low': 'Низк.',
+  'medium': 'Средн.',
+  'high': 'Выс.',
+  'xhigh': 'О.выс.',
+  'max': 'Макс.',
   'In: {in} · Out: {out}': 'Вход: {in} · Выход: {out}',
   'Read from cache: {read} ({hit}%)': 'Из кэша: {read} ({hit}%)',
   'Fresh: {in} · Written to cache: {write}': 'Свежие: {in} · Записано в кэш: {write}',
@@ -344,7 +344,7 @@ const RU: Record<string, string> = {
   'Export all (JSON)': 'Экспортировать все (JSON)',
   'Theme deleted': 'Тема удалена',
   '{imported} imported, {skipped} replaced': 'импортировано {imported}, заменено {skipped}',
-  'Kanban themes explanation':
+  'A theme sets column accents and card tinting. Custom themes live in kanban-themes.json in the settings folder; import accepts a single theme, an array of themes, or { version, themes }.':
     'Тема задаёт акценты колонок и тонировку карточек. Пользовательские темы — в kanban-themes.json в папке настроек; импорт принимает одну тему, массив тем или { version, themes }.',
 
   // Настройки — General

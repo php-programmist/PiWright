@@ -82,7 +82,7 @@ export function KanbanThemeSection({
         </button>
         {message !== null && <span className="kanban-theme-message">{message}</span>}
       </div>
-      <div className="panel-hint">{t('Kanban themes explanation')}</div>
+      <div className="panel-hint">{t('A theme sets column accents and card tinting. Custom themes live in kanban-themes.json in the settings folder; import accepts a single theme, an array of themes, or { version, themes }.')}</div>
     </section>
   )
 }

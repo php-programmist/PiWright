@@ -1,16 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useT } from '../lib/i18n'
 
-const LEVEL_KEYS: Record<string, string> = {
-  off: 'thinking off',
-  minimal: 'thinking minimal',
-  low: 'thinking low',
-  medium: 'thinking medium',
-  high: 'thinking high',
-  xhigh: 'thinking xhigh',
-  max: 'thinking max'
-}
-
 function BarsIcon({ filled }: { filled: number }) {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
@@ -61,7 +51,7 @@ export function ThinkingLevelControl({ levels, current, onChange }: Props) {
 
   const last = levels.length - 1
   const index = current !== null ? levels.indexOf(current) : -1
-  const label = current !== null ? t(LEVEL_KEYS[current] ?? current) : t('thinking level')
+  const label = current !== null ? t(current) : t('thinking level')
   const filled = index <= 0 ? 0 : Math.round((index / Math.max(1, last)) * 3)
   const percent = index <= 0 ? 0 : last > 0 ? (index / last) * 100 : 0
   const chipLeft = Math.min(88, Math.max(12, percent))
@@ -95,7 +85,7 @@ export function ThinkingLevelControl({ levels, current, onChange }: Props) {
           <div className="thinking-ticks">
             {levels.map((level, i) => (
               <span key={level} className={i === index ? 'active' : ''}>
-                {t(LEVEL_KEYS[level] ?? level)}
+                {t(level)}
               </span>
             ))}
           </div>
