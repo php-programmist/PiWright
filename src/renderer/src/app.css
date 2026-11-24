@@ -2935,8 +2935,7 @@ pre.code-block {
 }
 
 .branch-sub {
-  left: auto;
-  right: calc(100% + 4px);
+  left: calc(100% + 4px);
 }
 
 .branch-item {
