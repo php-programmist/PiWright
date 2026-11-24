@@ -22,7 +22,7 @@ interface GitLogState {
   filesLoading: boolean
   /** Поиск: подстрока сообщения или префикс хэша (пустая строка — без поиска). */
   query: string
-  /** Фильтр ветки: null — текущий HEAD, allBranches — все ветки (--all). */
+  /** Фильтр ветки: null — текущий HEAD, allBranches — все ветки (дефолт, как в PHPStorm). */
   branch: string | null
   allBranches: boolean
   /** Локальные + remote-tracking ветки для выпадающего фильтра. */
@@ -73,7 +73,7 @@ function resetState(): Pick<
     filesLoading: false,
     query: '',
     branch: null,
-    allBranches: false,
+    allBranches: true,
     branches: []
   }
 }

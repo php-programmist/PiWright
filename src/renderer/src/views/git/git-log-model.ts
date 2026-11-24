@@ -13,16 +13,23 @@ export interface LaneRow {
   nextLanes: (string | null)[]
   /** Кривые из точки коммита к дорожкам родителей: индексы дорожек в nextLanes. */
   edges: number[]
+  /** Дорожки, сходящиеся в точку коммита сверху (дети из других дорожек), кроме row.lane. */
+  inLanes: number[]
 }
 
 /** Раскладка дорожек: идём от новых к старым, точка коммита — в дорожке, где ждут его hash
  *  (иначе первая свободная/новая). Первая дорожка после строки — первый родитель, остальные
- *  родители — существующая дорожка с их hash или новая дорожка (ветвление). */
+ *  родители — существующая дорожка с их hash или новая дорожка (ветвление). Если коммита ждут
+ *  несколько дорожек (дети из боковых веток), точка — в первой, остальные сходятся в неё сверху. */
 export function computeLanes(entries: LaneInput[]): LaneRow[] {
   const rows: LaneRow[] = []
   let lanes: (string | null)[] = []
   for (const entry of entries) {
-    let lane = lanes.indexOf(entry.hash)
+    const matches: number[] = []
+    lanes.forEach((h, i) => {
+      if (h === entry.hash) matches.push(i)
+    })
+    let lane = matches.length > 0 ? matches[0]! : -1
     if (lane < 0) {
       lane = lanes.findIndex((x) => x === null)
       if (lane < 0) {
@@ -32,6 +39,8 @@ export function computeLanes(entries: LaneInput[]): LaneRow[] {
     }
     const nextLanes = [...lanes]
     const edges: number[] = []
+    const inLanes = matches.slice(1)
+    for (const m of inLanes) nextLanes[m] = null
     if (entry.parents.length > 0) {
       // Первый родитель наследует дорожку коммита, остальные — существующая дорожка с их hash или новая.
       nextLanes[lane] = entry.parents[0]!
@@ -52,7 +61,7 @@ export function computeLanes(entries: LaneInput[]): LaneRow[] {
       nextLanes[lane] = null
     }
     lanes = nextLanes
-    rows.push({ lane, nextLanes, edges })
+    rows.push({ lane, nextLanes, edges, inLanes })
   }
   return rows
 }

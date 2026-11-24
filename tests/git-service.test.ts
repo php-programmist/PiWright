@@ -359,6 +359,22 @@ describe('GitService log filters and commit actions', () => {
     expect(main.entries.some((e) => e.subject === 'only-on-filter-branch')).toBe(false)
   })
 
+  it('log with all shows side branches and skips stash', async () => {
+    run('git checkout -q -b side-branch')
+    run('git commit -q --allow-empty -m only-on-side-branch')
+    run('git checkout -q main')
+    const headOnly = await git.log(project, 0)
+    expect(headOnly.entries.some((e) => e.subject === 'only-on-side-branch')).toBe(false)
+    const all = await git.log(project, 0, { all: true })
+    expect(all.entries.some((e) => e.subject === 'only-on-side-branch')).toBe(true)
+    writeFileSync(join(dir, 'a.txt'), 'stashed')
+    run('git stash -q')
+    const noStash = await git.log(project, 0, { all: true })
+    expect(noStash.entries.some((e) => e.subject.startsWith('WIP on'))).toBe(false)
+    run('git stash pop -q')
+    run('git checkout -q -- a.txt')
+  })
+
   it('branches with all includes remote-tracking refs', async () => {
     const all = await git.branches(project, true)
     expect(all.branches).toContain('origin/main')

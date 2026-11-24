@@ -300,7 +300,7 @@ export interface GitLogFilter {
   query?: string
   /** Имя ветки (локальной или origin/...); null/undefined — текущий HEAD. */
   branch?: string | null
-  /** Все ветки (--all); перекрывает branch. */
+  /** Все ветки (локальные, remote-tracking, теги); перекрывает branch. */
   all?: boolean
 }
 

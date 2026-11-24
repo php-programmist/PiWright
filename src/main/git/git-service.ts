@@ -292,7 +292,8 @@ export class GitService {
       '--date-order',
       '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e'
     ]
-    if (filter?.all === true) args.push('--all')
+    // Все ветки: globs вместо --all — исключает stash/notes, HEAD — на случай detached.
+    if (filter?.all === true) args.push('--glob=refs/heads', '--glob=refs/remotes', '--glob=refs/tags', 'HEAD')
     else if (filter?.branch) args.push(filter.branch)
     if (query.length > 0) args.push('-i', '--fixed-strings', '--grep', query)
     const result = await this.run(project, args)

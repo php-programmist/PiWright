@@ -59,10 +59,21 @@ function LaneGraph({ row, maxLanes }: { row: LaneRow; maxLanes: number }): React
         strokeWidth={1.5}
       />
     ))
+  // Сходящиеся ветки: линия ребёнка сверху входит в точку этого коммита и заканчивается.
+  const ins = row.inLanes.map((source, i) => (
+    <path
+      key={`i${i}:${source}`}
+      d={`M ${x(source)} 0 C ${x(source)} ${midY}, ${x(row.lane)} ${midY}, ${x(row.lane)} ${midY}`}
+      fill="none"
+      stroke={laneColor(source)}
+      strokeWidth={1.5}
+    />
+  ))
   return (
     <svg width={width} height={ROW_HEIGHT} className="gitlog-graph" aria-hidden="true">
       {lines}
       {curves}
+      {ins}
       <circle cx={x(row.lane)} cy={midY} r={3.5} fill={laneColor(row.lane)} />
     </svg>
   )

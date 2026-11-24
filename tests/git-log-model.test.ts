@@ -51,6 +51,20 @@ describe('computeLanes', () => {
     expect(rows[1]?.lane).toBe(0)
     expect(rows[2]?.lane).toBe(1)
   })
+
+  it('side branches converge into the shared parent dot', () => {
+    // два ребёнка base в разных дорожках — оба сходятся в точку base
+    const rows = computeLanes([
+      { hash: 'x', parents: ['base'] },
+      { hash: 'y', parents: ['base'] },
+      { hash: 'base', parents: [] }
+    ])
+    expect(rows[0]?.lane).toBe(0)
+    expect(rows[1]?.lane).toBe(1)
+    expect(rows[2]?.lane).toBe(0)
+    expect(rows[2]?.inLanes).toEqual([1])
+    expect(rows[2]?.nextLanes).toEqual([null, null])
+  })
 })
 
 describe('laneColor', () => {
