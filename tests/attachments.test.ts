@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, removeAttachmentRef, sanitizeAttachmentName } from '../src/shared/attachments'
+import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, removeAttachmentRef, sanitizeAttachmentName, splitAttachmentRefs } from '../src/shared/attachments'
 import { putAttachment, readAttachmentImages } from '../src/main/attachments/attachments'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
@@ -28,7 +28,25 @@ describe('shared attachments helpers', () => {
     expect(sanitizeAttachmentName('../evil.png')).toBe('__evil.png')
     expect(sanitizeAttachmentName('my shot (1).png')).toBe('my_shot__1_.png')
     expect(sanitizeAttachmentName('')).toBe('attachment')
-    expect(attachmentRef('a.png')).toBe('@.pi/attachments/a.png')
+    expect(attachmentRef(projectDir, 'a.png')).toBe('@.pi/attachments/a.png')
+  })
+
+  it('ref from a worktree session points to the repo root', () => {
+    const wtDir = join(projectDir, '.pi', 'worktrees', 'demo')
+    expect(attachmentRef(wtDir, 'a.png')).toBe('@../../.pi/attachments/a.png')
+  })
+
+  it('splitAttachmentRefs splits text into text and ref segments', () => {
+    expect(splitAttachmentRefs('no refs')).toEqual([{ kind: 'text', text: 'no refs' }])
+    expect(splitAttachmentRefs('look @.pi/attachments/a.png here')).toEqual([
+      { kind: 'text', text: 'look ' },
+      { kind: 'ref', ref: '@.pi/attachments/a.png', name: 'a.png' },
+      { kind: 'text', text: ' here' }
+    ])
+    expect(splitAttachmentRefs('@../../.pi/attachments/b.png')).toEqual([
+      { kind: 'ref', ref: '@../../.pi/attachments/b.png', name: 'b.png' }
+    ])
+    expect(splitAttachmentRefs('@.pi/other/c.png')).toEqual([{ kind: 'text', text: '@.pi/other/c.png' }])
   })
 
   it('base64FromBytes round-trips binary', () => {
@@ -45,7 +63,7 @@ describe('shared attachments helpers', () => {
   })
 
   it('removeAttachmentRef drops the last occurrence with one adjacent space', () => {
-    const ref = attachmentRef('a.png')
+    const ref = attachmentRef(projectDir, 'a.png')
     expect(removeAttachmentRef(`look ${ref} at this`, ref)).toBe('look at this')
     expect(removeAttachmentRef(`${ref} only`, ref)).toBe('only')
     expect(removeAttachmentRef(`only ${ref}`, ref)).toBe('only')
@@ -80,6 +98,21 @@ describe('putAttachment', () => {
     const res = await putAttachment(project(), 'notes.txt', 'aGk=')
     expect(res.isImage).toBe(false)
     expect(res.dataUrl).toBe('')
+  })
+
+  it('worktree sessions store attachments in the repo root', async () => {
+    const wtDir = join(projectDir, '.pi', 'worktrees', 'demo')
+    await fs.mkdir(wtDir, { recursive: true })
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const res = await putAttachment({ kind: 'native', dir: wtDir }, 'shot.png', png.toString('base64'))
+    expect(res.ok).toBe(true)
+    expect(res.ref).toBe('@../../.pi/attachments/shot.png')
+    const saved = await fs.readFile(join(projectDir, '.pi', 'attachments', 'shot.png'))
+    expect(saved).toEqual(png)
+    await expect(fs.readFile(join(wtDir, '.pi', 'attachments', 'shot.png'))).rejects.toThrow()
+    const gitignore = await fs.readFile(join(projectDir, '.gitignore'), 'utf8')
+    expect(gitignore).toContain('.pi/attachments/')
+    await expect(fs.readFile(join(wtDir, '.gitignore'), 'utf8')).rejects.toThrow()
   })
 })
 

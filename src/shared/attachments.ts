@@ -1,4 +1,5 @@
 /** Вложения промпта: mime по расширению и безопасное имя файла. Порт `PiSession.imageMimeTypeForExtension` + `Attachments.kt`. */
+import { splitWorktreeHostDir } from './worktree'
 
 /** Картинки, которые pi умеет передать модели; остальное — файл-ссылкой в тексте. */
 export function imageMimeTypeForExtension(ext: string): string | null {
@@ -31,9 +32,29 @@ export function sanitizeAttachmentName(name: string): string {
   return cleaned.length > 0 ? cleaned : 'attachment'
 }
 
-/** Ссылка в тексте промпта — pi читает файл своим инструментом (`@file` в RPC-режиме — текстом). */
-export function attachmentRef(name: string): string {
-  return `@.pi/attachments/${name}`
+/** Ссылка в тексте промпта — pi читает файл своим инструментом (`@file` в RPC-режиме — текстом).
+ *  Вложения всегда лежат в общей папке корня репо `<root>/.pi/attachments/`; сессия в worktree
+ *  (`<root>/.pi/worktrees/<name>`) имеет cwd внутри worktree — ref выходит на два уровня вверх. */
+export function attachmentRef(projectDir: string, name: string): string {
+  return splitWorktreeHostDir(projectDir) !== null ? `@../../.pi/attachments/${name}` : `@.pi/attachments/${name}`
+}
+
+export type AttachmentSegment = { kind: 'text'; text: string } | { kind: 'ref'; ref: string; name: string }
+
+const ATTACHMENT_REF_RE = /@((?:\.\.\/)*\.pi\/attachments\/)([A-Za-z0-9._-]+)/g
+
+/** Текст промпта → сегменты «текст / ref вложения» для рендера превью в чате. */
+export function splitAttachmentRefs(text: string): AttachmentSegment[] {
+  const segments: AttachmentSegment[] = []
+  let last = 0
+  for (const m of text.matchAll(ATTACHMENT_REF_RE)) {
+    const idx = m.index ?? 0
+    if (idx > last) segments.push({ kind: 'text', text: text.slice(last, idx) })
+    segments.push({ kind: 'ref', ref: m[0], name: m[2] })
+    last = idx + m[0].length
+  }
+  if (last < text.length) segments.push({ kind: 'text', text: text.slice(last) })
+  return segments
 }
 
 /** Байты → base64 (paste картинки в renderer; чанками — лимит arg-стека String.fromCharCode). */

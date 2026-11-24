@@ -70,7 +70,7 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
         )}
         {loaded &&
           entries.slice(feed.windowStart).map((entry) => (
-            <EntryView key={entry.id} entry={entry} onAnswer={noopAnswer} />
+            <EntryView key={entry.id} entry={entry} project={project} onAnswer={noopAnswer} />
           ))}
         <div ref={bottomRef} />
       </main>

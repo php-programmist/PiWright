@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
+import { Lightbox } from '../../components/Lightbox'
 import { QueuePanel } from '../../components/QueuePanel'
 import { ScheduledPanel } from '../../components/ScheduledPanel'
 import { TodoPanel } from '../../components/TodoPanel'
@@ -15,7 +16,7 @@ import { useFeedWindow } from './useFeedWindow'
 import { useSessionsStore } from '../../stores/sessions'
 import { useTabsStore, parentTabKey } from '../../stores/tabs'
 import { cacheHitOf } from '../../../../shared/agent-events'
-import { base64FromBytes, removeAttachmentRef } from '../../../../shared/attachments'
+import { base64FromBytes, isImageFilePath, removeAttachmentRef, splitAttachmentRefs } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
 import { formatCompactDuration } from '../../lib/duration'
@@ -24,7 +25,7 @@ import { sameProjectDir, splitWorktreeHostDir } from '../../../../shared/worktre
 import { slashTokenOf, filterSlashCommands } from '../../../../shared/slash-commands'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 import type { PiSlashCommand } from '../../../../shared/protocol-types'
-import type { AttachmentResult, PromptBehavior, QueueTexts, ScheduledTrigger } from '../../../../shared/ipc-contracts'
+import type { AttachmentResult, ProjectEntry, PromptBehavior, QueueTexts, ScheduledTrigger } from '../../../../shared/ipc-contracts'
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
@@ -48,10 +49,10 @@ export interface TextEntry {
   text: string
 }
 
-function EntryViewBase({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
+function EntryViewBase({ entry, project, onAnswer, onEdit, onFork }: { entry: Entry; project: ProjectEntry | null; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
-      return <UserMessage entry={entry} onEdit={onEdit} />
+      return <UserMessage entry={entry} project={project} onEdit={onEdit} />
     case 'text':
       return <AssistantMessage entry={entry} onFork={onFork} />
     case 'thinking':
@@ -90,7 +91,7 @@ function EntryViewBase({ entry, onAnswer, onEdit, onFork }: { entry: Entry; onAn
 /** Ре-рендер записи только при смене её объекта или колбэков: стриминг меняет лишь открытую запись. */
 export const EntryView = memo(
   EntryViewBase,
-  (a, b) => a.entry === b.entry && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork
+  (a, b) => a.entry === b.entry && a.project === b.project && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork
 )
 
 export function ChatThinkingSummary({ tps }: { tps?: number | null }): React.JSX.Element {
@@ -127,8 +128,47 @@ function AssistantMessage({ entry, onFork }: { entry: TextEntry; onFork?: (entry
   )
 }
 
-/** Пузырь пользователя; карандаш по ховеру открывает инлайн-редактор (порт MessageActions из jb-pi). */
-function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: UserEntry, newText: string) => void }): React.JSX.Element {
+/** Превью вложения-картинки в сообщении пользователя: грузится из общей папки корня репо
+ *  (`<root>/.pi/attachments/`, у worktree-сессий — из корня, не из worktree); клик — Lightbox.
+ *  Пока не загрузилось или файл исчез — показываем текстовый ref. */
+function UserAttachmentImage({ project, name, fallback }: { project: ProjectEntry | null; name: string; fallback: string }): React.JSX.Element {
+  const [url, setUrl] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(false)
+  useEffect(() => {
+    if (project === null) return
+    let cancelled = false
+    const baseDir = splitWorktreeHostDir(project.dir)?.root ?? project.dir
+    void window.piwright.filesReadImage({ ...project, dir: baseDir }, `.pi/attachments/${name}`).then((r) => {
+      if (!cancelled) setUrl(r.ok ? r.dataUrl : '')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [project, name])
+  if (url === null || url.length === 0) return <span className="user-attachment-ref">{fallback}</span>
+  return (
+    <>
+      <img
+        className="user-attachment"
+        src={url}
+        alt={name}
+        title={name}
+        draggable={false}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setZoom(true)
+        }}
+      />
+      {zoom && <Lightbox src={url} alt={name} onClose={() => setZoom(false)} />}
+    </>
+  )
+}
+
+/** Пузырь пользователя; карандаш по ховеру открывает инлайн-редактор (порт MessageActions из jb-pi).
+ *  Ref-ы вложений-картинок рендерятся миниатюрами, остальные ref-ы — текстом. */
+function UserMessage({ entry, project, onEdit }: { entry: UserEntry; project: ProjectEntry | null; onEdit?: (entry: UserEntry, newText: string) => void }): React.JSX.Element {
   const t = useT()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(entry.text)
@@ -168,7 +208,17 @@ function UserMessage({ entry, onEdit }: { entry: UserEntry; onEdit?: (entry: Use
   }
   return (
     <div className="user-entry">
-      <div className="user-message">{entry.text}</div>
+      <div className="user-message">
+        {splitAttachmentRefs(entry.text).map((seg, i) =>
+          seg.kind === 'text' ? (
+            <span key={i}>{seg.text}</span>
+          ) : isImageFilePath(seg.name) ? (
+            <UserAttachmentImage key={i} project={project} name={seg.name} fallback={seg.ref} />
+          ) : (
+            <span key={i}>{seg.ref}</span>
+          )
+        )}
+      </div>
       {onEdit !== undefined && (
         <button
           className="msg-action"
@@ -968,6 +1018,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           <EntryView
             key={entry.id}
             entry={entry}
+            project={project}
             onAnswer={stableAnswer}
             onEdit={streaming ? undefined : stableEdit}
             onFork={streaming ? undefined : stableFork}

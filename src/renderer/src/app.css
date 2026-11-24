@@ -1326,6 +1326,19 @@ body {
   white-space: pre-wrap;
 }
 
+/* Превью вложения-картинки в сообщении пользователя (клик — Lightbox). */
+.user-attachment {
+  display: block;
+  max-width: 220px;
+  max-height: 160px;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  margin: 4px 0;
+  cursor: zoom-in;
+}
+
 .msg-action {
   border: none;
   background: transparent;
