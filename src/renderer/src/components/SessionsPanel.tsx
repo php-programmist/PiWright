@@ -385,7 +385,7 @@ function ProjectRow({ row, query }: { row: import('../stores/sessions').ProjectR
         </span>
       </div>
       {!expanded && unreadCount + busyCount + attentionCount > 0 && (
-        <div className="project-badges">
+        <div className="project-badges" onClick={() => toggleExpanded(key)}>
           {unreadCount > 0 && <span className="proj-badge green" title={t('Unread turns')}>{unreadCount}</span>}
           {busyCount > 0 && <span className="proj-badge busy" title={t('Working')}>{busyCount}</span>}
           {attentionCount > 0 && <span className="proj-badge attention" title={t('Need your answer')}>{attentionCount}</span>}
