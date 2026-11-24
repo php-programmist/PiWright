@@ -21,12 +21,15 @@
 
 - Streaming chat with pi over RPC, markdown rendering with syntax highlighting
 - Collapsible tool-call blocks (optional single-line mode), nested subagent tool calls as a tree
-- **Steer** and queued messages: send follow-ups mid-turn or queue them for the next turn
+- **Steer** and queued messages: send follow-ups mid-turn or queue them for the next turn; convert a queued message between steer and follow-up, pull it back into the composer to edit
+- **Scheduled prompts**: right-click Send to run a prompt after another session's turn ends or at a set time, with loop iterations and exit condition; cancel from the Scheduled panel
+- Live tok/s during streaming, turn timer, per-bucket context token breakdown popover
 - **Prompt editing with fork**: edit a sent prompt and fork the session from that point, after any agent reply
 - **Built-in `/loop`**: run the agent in iterations with an exit condition, `loop_stop` tool, loop flags in session names and icons
 - Interactive question cards (ask_question) with options, free-text answers and multi-select
 - Todo widget pinned above the chat, live context-usage indicator with color grading and cache stats
-- Paste images and attach files (copied to `.pi/attachments`, referenced with `@`)
+- Paste images and attach files (copied to `.pi/attachments` in the repo root so worktree sessions share them and survive worktree removal), with image previews and lightbox in the chat feed
+- Resizable composer: auto-growing prompt field, drag handle on the top edge, double-click to reset
 - Session history with subagent sessions nested under their parent, unread dots and busy badges per project; rename sessions via dialog, search across history
 - Live tok/s during streaming, turn timer, per-bucket context token breakdown popover
 - Copy button on code blocks, view-diff button for write tool blocks, full command shown when a tool block is expanded
@@ -35,23 +38,26 @@
 
 ### Kanban
 
-- Kanban boards in a right-rail panel: columns, drag-and-drop cards, card modal with properties rail and activity feed
+- Kanban boards in a right-rail panel as a task tree: board → columns → tasks with theme accents, counters and collapsible columns; card modal with properties rail and activity feed
+- Session status dots on cards (busy, waiting for answer, unread turn) survive session close until the card is opened; live board updates without manual refresh
 - Card comments with images and clickable session/commit chips; agent tools for cards, columns and workflow — the agent picks tasks, moves them and reports via comments
 - Board themes (built-in + custom via Appearance manager, JSON import/export)
 - Durable board storage: cross-process file locking, atomic writes, corrupt-file quarantine
 
 ### Projects and backends
 
-- Multiple projects in a sidebar, each with its own sessions, git repo and settings
+- Multiple projects in a sidebar, each with its own sessions, git repo and settings; drag to reorder projects
+- Project and branch in the app header (IDE style): project switcher, branch popup, ahead/behind arrows with automatic fetch
 - Two pi backends: native Windows and WSL (per-project choice, auto-detection)
 - Git worktree support: create, reuse and delete worktrees, sessions grouped under the project
 
 ### Git panel
 
 - Status with color-coded files (modified / staged / untracked / deleted) grouped into a folder tree
-- **Git Log dock**: PHPStorm-style branch graph with paginated history
-- Stage / unstage / commit, unified and split diffs
-- Branch popup in IDE style: search, create, checkout, rename, delete
+- **Git Log dock**: PHPStorm-style branch graph with side branches shown by default, converging lanes, search by message or hash, branch filter
+- Commit context menu: cherry-pick, checkout revision, reset soft/mixed/hard, revert, edit commit message, squash, drop commit, interactive rebase from here, new branch/tag
+- Stage / unstage / commit, unified and split diffs; arrow keys step through the files of a commit diff
+- Branch popup in IDE style: search, create, checkout, rename, delete, pin branches to the top
 
 ![Git Log dock with branch graph](docs/screenshots/git-log-dock.png)
 
@@ -77,7 +83,7 @@
 
 ### Notifications and remote access
 
-- Sound notifications for completed turns, questions and errors (system sounds or custom wav)
+- Sound notifications for completed turns, questions and errors (system sounds or custom wav), with a play button to preview the selected sound
 - Telegram bot notifications with per-event checkboxes and per-session toggle
 - Remote control from a phone: built-in WebSocket bridge with PIN auth (static PIN option) serves the web UI — session list, chat with images, abort, dialog answers, session creation; web UI follows the app language, failed server start retries with backoff
 
@@ -91,8 +97,9 @@
 - **Search Everywhere** overlay on double Shift
 - Resizable/collapsible projects sidebar, new-session and new-worktree buttons in the tab bar
 - Dark and light themes, adjustable chat font size
+- Settings in the application File menu (Ctrl+,)
 - English and Russian UI
-- Configurable send key (Enter / Ctrl+Enter), model/thinking selector placement
+- Configurable send key (Enter / Ctrl+Enter), Enter by default; model/thinking selector placement
 
 ![Kanban board as a project tab](docs/screenshots/kanban-board.png)
 
