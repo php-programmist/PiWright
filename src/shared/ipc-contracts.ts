@@ -824,6 +824,7 @@ export interface PiWrightApi {
   modelsList(backend: BackendMode): Promise<ModelsListResult>
   modelsSave(backend: BackendMode, doc: unknown): Promise<ModelsOpResult>
   modelsReveal(backend: BackendMode): Promise<ModelsOpResult>
+ modelsRefresh(): Promise<void>
   mcpList(project: ProjectEntry, scope: McpScope): Promise<McpListResult>
   mcpSave(project: ProjectEntry, scope: McpScope, servers: McpServerEntry[]): Promise<McpOpResult>
   mcpProbe(project: ProjectEntry, scope: McpScope, name: string): Promise<McpProbeResult>
@@ -955,6 +956,7 @@ export const REMOTE_SHARE_SESSION_CHANNEL = 'remote:share-session'
 export const MODELS_LIST_CHANNEL = 'models:list'
 export const MODELS_SAVE_CHANNEL = 'models:save'
 export const MODELS_REVEAL_CHANNEL = 'models:reveal'
+export const MODELS_REFRESH_CHANNEL = 'models:refresh'
 export const MCP_LIST_CHANNEL = 'mcp:list'
 export const MCP_SAVE_CHANNEL = 'mcp:save'
 export const MCP_PROBE_CHANNEL = 'mcp:probe'

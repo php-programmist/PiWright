@@ -84,6 +84,12 @@ export class PiHost {
     return this.catalogs.has(kind)
   }
 
+  /** Перечитать каталог моделей на всех живых сессиях — после правки models.json (фокус окна).
+   *  Кэш catalogs обновляется сам через onStatus в listener'ах. */
+  async refreshCatalogs(): Promise<void> {
+    await Promise.all([...this.hosts.values()].map((h) => h.refreshModelCatalog()))
+  }
+
   /** Первый непустой каталог из кэша хендшейков — remote-диалогу создания до подъёма сессий. */
   cachedCatalog(): { models: PiModelInfo[]; thinkingLevels: string[] } | null {
     for (const catalog of this.catalogs.values()) {

@@ -70,6 +70,7 @@ import {
   MCP_SAVE_CHANNEL,
   MODELS_LIST_CHANNEL,
   MODELS_REVEAL_CHANNEL,
+  MODELS_REFRESH_CHANNEL,
   MODELS_SAVE_CHANNEL,
   REMOTE_CHECK_PORT_CHANNEL,
   REMOTE_RETRY_CHANNEL,
@@ -1122,6 +1123,8 @@ export function registerIpc(
     if (backend !== 'native' && backend !== 'wsl') return { ok: false, error: 'Invalid request' }
     return revealModelsFile(backend, settings.get())
   })
+
+  ipcMain.handle(MODELS_REFRESH_CHANNEL, () => piHost.refreshCatalogs())
 
   ipcMain.handle(MCP_LIST_CHANNEL, async (_event, project: unknown, scope: unknown) => {
     if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project')) {

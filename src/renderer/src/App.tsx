@@ -63,6 +63,19 @@ export function App(): React.JSX.Element {
     applyAppearance(theme, chatFontSize)
   }, [theme, chatFontSize])
 
+  // Правка models.json вне приложения: вернулись в окно — перечитать каталог моделей у живых сессий.
+  useEffect(() => {
+    const refreshModels = (): void => {
+      if (document.visibilityState === 'visible') void window.piwright.modelsRefresh().catch(() => {})
+    }
+    window.addEventListener('focus', refreshModels)
+    document.addEventListener('visibilitychange', refreshModels)
+    return () => {
+      window.removeEventListener('focus', refreshModels)
+      document.removeEventListener('visibilitychange', refreshModels)
+    }
+  }, [])
+
   // Тема канбана: своя палитра колонок/карточек в CSS-переменных; при выключенном канбане — системные цвета.
   const kanbanEnabled = settings?.kanbanEnabled ?? false
   const kanbanThemeId = settings?.kanbanTheme ?? KANBAN_DEFAULT_THEME_ID

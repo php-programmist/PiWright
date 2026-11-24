@@ -17,10 +17,11 @@ import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from './
 import { ensureAskExtension } from './ask-extension'
 import { ensureSessionToolsExtension } from './session-tools-extension'
 import { ensureLoopStopExtension } from './loop-stop-extension'
+import { ensureModelsRefreshExtension, MODELS_REFRESH_COMMAND } from './models-refresh-extension'
 import { ensureKanbanExtension } from './kanban-extension'
 import { ensureSubagentBridgeExtension } from './subagent-bridge-extension'
 import { readAttachmentImages } from '../attachments/attachments'
-import { runHandshake, decodeSessionTokens, decodeCommands, dataObject } from './handshake'
+import { runHandshake, decodeSessionTokens, decodeCommands, decodeModel, dataObject } from './handshake'
 import { fallbackTitle, generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
@@ -81,6 +82,7 @@ function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Pr
   const extensions = [
     ensureAskExtension(project, settings),
     ensureSessionToolsExtension(project, settings),
+    ensureModelsRefreshExtension(project, settings),
     ensureSubagentBridgeExtension(project, settings),
     ...(settings.loopsEnabled ? [ensureLoopStopExtension(project, settings)] : []),
     ...(settings.kanbanEnabled ? [ensureKanbanExtension(project, settings)] : [])
@@ -870,6 +872,34 @@ export class SessionHost {
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  /** Перечитать каталог моделей — после ручной правки models.json. pi держит каталог в памяти:
+   *  снапшот `get_available_models` обновляет только `ModelRegistry.refresh()`, дёргаем его
+   *  сервисной командой вшитого расширения, затем забираем свежий снапшот и пушим статус
+   *  (заодно освежается кэш каталога в PiHost). */
+  async refreshModelCatalog(): Promise<void> {
+    const conn = this.conn
+    if (conn === null || !conn.running || this.handshake === null) return
+    try {
+      // Без команды в списке не шлём: неизвестный `/command` pi передал бы модели как обычный промпт.
+      if (this.handshake.commands.some((c) => c.name === MODELS_REFRESH_COMMAND)) {
+        const refreshResponse = await conn.request('prompt', { message: `/${MODELS_REFRESH_COMMAND}` })
+        if (!refreshResponse.success) return
+      }
+      const modelsRaw = dataObject(await conn.request('get_available_models'))['models']
+      if (!Array.isArray(modelsRaw)) return
+      const models: PiModelInfo[] = []
+      for (const entry of modelsRaw) {
+        if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue
+        const decoded = decodeModel(entry as PiJsonObject)
+        if (decoded !== null) models.push(decoded)
+      }
+      this.handshake = { ...this.handshake, models }
+      this.status(this.lastState)
+    } catch {
+      // Процесс мог уйти — рестарт пройдёт через обычный путь с новым хендшейком.
     }
   }
 
