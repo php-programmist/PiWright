@@ -19,6 +19,13 @@ import {
   FILES_WRITE_CHANNEL,
   GIT_BRANCHES_CHANNEL,
   GIT_BRANCH_DELETE_CHANNEL,
+  GIT_CHERRY_PICK_CHANNEL,
+  GIT_REVERT_CHANNEL,
+  GIT_RESET_CHANNEL,
+  GIT_TAG_CREATE_CHANNEL,
+  GIT_DROP_COMMIT_CHANNEL,
+  GIT_EDIT_MESSAGE_CHANNEL,
+  GIT_SQUASH_INTO_CHANNEL,
   GIT_BRANCH_RENAME_CHANNEL,
   GIT_CHECKOUT_CHANNEL,
   GIT_COMMIT_CHANNEL,
@@ -115,7 +122,7 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -166,6 +173,16 @@ function host(piHost: PiHost, hostId: unknown): SessionHost | null {
 
 function isPathList(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((p) => typeof p === 'string' && p.length > 0)
+}
+
+function parseLogFilter(value: unknown): GitLogFilter | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const raw = value as Record<string, unknown>
+  const filter: GitLogFilter = {}
+  if (typeof raw['query'] === 'string' && raw['query'].length > 0) filter.query = raw['query']
+  if (typeof raw['branch'] === 'string' && raw['branch'].length > 0) filter.branch = raw['branch']
+  if (raw['all'] === true) filter.all = true
+  return Object.keys(filter).length > 0 ? filter : undefined
 }
 
 function isProfileId(value: unknown): value is TerminalProfileId {
@@ -594,9 +611,10 @@ export function registerIpc(
     return git.push(project)
   })
 
-  ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown, page: unknown) => {
+  ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown, page: unknown, filter: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', entries: [], hasMore: false }
-    return git.log(project, typeof page === 'number' && Number.isInteger(page) && page >= 0 ? page : 0)
+    const parsed = parseLogFilter(filter)
+    return git.log(project, typeof page === 'number' && Number.isInteger(page) && page >= 0 ? page : 0, parsed)
   })
 
   ipcMain.handle(GIT_COMMIT_FILES_CHANNEL, async (_event, project: unknown, hash: unknown) => {
@@ -618,9 +636,9 @@ export function registerIpc(
     return git.generateCommitMessage(project)
   })
 
-  ipcMain.handle(GIT_BRANCHES_CHANNEL, async (_event, project: unknown) => {
+  ipcMain.handle(GIT_BRANCHES_CHANNEL, async (_event, project: unknown, all: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', branches: [] }
-    return git.branches(project)
+    return git.branches(project, all === true)
   })
 
   ipcMain.handle(GIT_CHECKOUT_CHANNEL, async (_event, project: unknown, name: unknown, create: unknown, startPoint: unknown) => {
@@ -640,6 +658,48 @@ export function registerIpc(
   ipcMain.handle(GIT_BRANCH_DELETE_CHANNEL, async (_event, project: unknown, name: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string') return { ok: false, error: 'Invalid request' }
     return git.deleteBranch(project, name)
+  })
+
+  ipcMain.handle(GIT_CHERRY_PICK_CHANNEL, async (_event, project: unknown, hash: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
+    return git.cherryPick(project, hash)
+  })
+
+  ipcMain.handle(GIT_REVERT_CHANNEL, async (_event, project: unknown, hash: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
+    return git.revertCommit(project, hash)
+  })
+
+  ipcMain.handle(GIT_RESET_CHANNEL, async (_event, project: unknown, hash: unknown, mode: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
+    if (mode !== 'soft' && mode !== 'mixed' && mode !== 'hard') return { ok: false, error: 'Invalid request' }
+    return git.resetBranch(project, hash, mode)
+  })
+
+  ipcMain.handle(GIT_TAG_CREATE_CHANNEL, async (_event, project: unknown, name: unknown, hash: unknown) => {
+    if (!isProjectEntry(project) || typeof name !== 'string' || typeof hash !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.tagCreate(project, name, hash)
+  })
+
+  ipcMain.handle(GIT_DROP_COMMIT_CHANNEL, async (_event, project: unknown, hash: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
+    return git.dropCommit(project, hash)
+  })
+
+  ipcMain.handle(GIT_EDIT_MESSAGE_CHANNEL, async (_event, project: unknown, hash: unknown, message: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string' || typeof message !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.editCommitMessage(project, hash, message)
+  })
+
+  ipcMain.handle(GIT_SQUASH_INTO_CHANNEL, async (_event, project: unknown, hash: unknown, message: unknown) => {
+    if (!isProjectEntry(project) || typeof hash !== 'string' || typeof message !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.squashInto(project, hash, message)
   })
 
   ipcMain.handle(FILES_LIST_CHANNEL, async (_event, project: unknown, dir: unknown) => {

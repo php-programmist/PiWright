@@ -294,6 +294,16 @@ export interface GitLogResult extends GitOpResult {
   hasMore: boolean
 }
 
+/** Фильтр страницы лога: подстрока сообщения (или префикс хэша) и/или ветка. */
+export interface GitLogFilter {
+  /** Подстрока сообщения без регистра; 4+ hex-символа дополнительно ищутся как префикс хэша. */
+  query?: string
+  /** Имя ветки (локальной или origin/...); null/undefined — текущий HEAD. */
+  branch?: string | null
+  /** Все ветки (--all); перекрывает branch. */
+  all?: boolean
+}
+
 export interface GitCommitFileDiffResult extends GitOpResult {
   original: string
   modified: string
@@ -319,7 +329,7 @@ export interface WorktreeRemoveResult {
   uncommitted: boolean
 }
 
-/** Локальные ветки репозитория (`git branch --list`). */
+/** Локальные ветки репозитория (`git branch --list`; all — плюс remote-tracking). */
 export interface GitBranchesResult extends GitOpResult {
   branches: string[]
 }
@@ -654,18 +664,32 @@ export interface PiWrightApi {
   gitUnstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
-  gitLog(project: ProjectEntry, page?: number): Promise<GitLogResult>
+  gitLog(project: ProjectEntry, page?: number, filter?: GitLogFilter): Promise<GitLogResult>
   /** Список изменённых файлов коммита (diff против первого родителя). */
   gitCommitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult>
   /** Дифф файла в коммите: original = <hash>^:<path>, modified = <hash>:<path>. */
   gitCommitFileDiff(project: ProjectEntry, hash: string, path: string): Promise<GitCommitFileDiffResult>
-  gitBranches(project: ProjectEntry): Promise<GitBranchesResult>
+  gitBranches(project: ProjectEntry, all?: boolean): Promise<GitBranchesResult>
   /** create — `git checkout -b <name> [startPoint]` (создать и переключиться), иначе `git checkout <name>`. */
   gitCheckout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult>
   /** `git branch -m <oldName> <newName>`. */
   gitBranchRename(project: ProjectEntry, oldName: string, newName: string): Promise<GitOpResult>
   /** `git branch -d <name>` (безопасное удаление; неслитая ветка — ошибка git). */
   gitBranchDelete(project: ProjectEntry, name: string): Promise<GitOpResult>
+  /** `git cherry-pick <hash>` в текущую ветку. */
+  gitCherryPick(project: ProjectEntry, hash: string): Promise<GitOpResult>
+  /** `git revert --no-edit <hash>` — обратный коммит поверх HEAD. */
+  gitRevert(project: ProjectEntry, hash: string): Promise<GitOpResult>
+  /** `git reset --<mode> <hash>`; mode — soft|mixed|hard. */
+  gitReset(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<GitOpResult>
+  /** `git tag <name> <hash>`. */
+  gitTagCreate(project: ProjectEntry, name: string, hash: string): Promise<GitOpResult>
+  /** Выкинуть коммит из истории: `git rebase --autostash --onto <hash>^ <hash>`. */
+  gitDropCommit(project: ProjectEntry, hash: string): Promise<GitOpResult>
+  /** Новое сообщение коммита: HEAD — `commit --amend --only`, глубже — rebase -i reword. */
+  gitEditCommitMessage(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
+  /** Уплотнить коммит в родительский с новым сообщением (rebase -i squash). */
+  gitSquashInto(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   /** `git worktree add` (существующий worktree/ветка переиспользуются); dir — для новой сессии. */
   worktreeCreate(project: ProjectEntry, name: string): Promise<WorktreeCreateResult>
@@ -793,6 +817,13 @@ export const GIT_BRANCHES_CHANNEL = 'git:branches'
 export const GIT_CHECKOUT_CHANNEL = 'git:checkout'
 export const GIT_BRANCH_RENAME_CHANNEL = 'git:branch-rename'
 export const GIT_BRANCH_DELETE_CHANNEL = 'git:branch-delete'
+export const GIT_CHERRY_PICK_CHANNEL = 'git:cherry-pick'
+export const GIT_REVERT_CHANNEL = 'git:revert'
+export const GIT_RESET_CHANNEL = 'git:reset'
+export const GIT_TAG_CREATE_CHANNEL = 'git:tag-create'
+export const GIT_DROP_COMMIT_CHANNEL = 'git:drop-commit'
+export const GIT_EDIT_MESSAGE_CHANNEL = 'git:edit-message'
+export const GIT_SQUASH_INTO_CHANNEL = 'git:squash-into'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const WORKTREE_CREATE_CHANNEL = 'worktree:create'
 export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'

@@ -20,11 +20,24 @@ interface GitLogState {
   selectedHash: string | null
   files: GitCommitFileEntry[]
   filesLoading: boolean
+  /** Поиск: подстрока сообщения или префикс хэша (пустая строка — без поиска). */
+  query: string
+  /** Фильтр ветки: null — текущий HEAD, allBranches — все ветки (--all). */
+  branch: string | null
+  allBranches: boolean
+  /** Локальные + remote-tracking ветки для выпадающего фильтра. */
+  branches: string[]
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Догрузить следующую страницу (если есть); возвращает true — что-то догрузилось. */
   loadMore: (project: ProjectEntry) => Promise<boolean>
   select: (project: ProjectEntry, hash: string | null) => Promise<void>
+  /** Установить поисковый запрос и перезагрузить первую страницу. */
+  setQuery: (project: ProjectEntry, query: string) => Promise<void>
+  /** Установить фильтр веток и перезагрузить первую страницу. */
+  setBranchFilter: (project: ProjectEntry, branch: string | null, all: boolean) => Promise<void>
+  /** Подгрузить список веток для фильтра (локальные + remote-tracking). */
+  loadBranches: (project: ProjectEntry) => Promise<void>
   toggleOpen: () => void
   setHeight: (height: number) => void
   setError: (error: string | null) => void
@@ -32,7 +45,20 @@ interface GitLogState {
 
 function resetState(): Pick<
   GitLogState,
-  'projectKey' | 'entries' | 'loading' | 'error' | 'page' | 'hasMore' | 'loadingMore' | 'selectedHash' | 'files' | 'filesLoading'
+  | 'projectKey'
+  | 'entries'
+  | 'loading'
+  | 'error'
+  | 'page'
+  | 'hasMore'
+  | 'loadingMore'
+  | 'selectedHash'
+  | 'files'
+  | 'filesLoading'
+  | 'query'
+  | 'branch'
+  | 'allBranches'
+  | 'branches'
 > {
   return {
     projectKey: null,
@@ -44,7 +70,11 @@ function resetState(): Pick<
     loadingMore: false,
     selectedHash: null,
     files: [],
-    filesLoading: false
+    filesLoading: false,
+    query: '',
+    branch: null,
+    allBranches: false,
+    branches: []
   }
 }
 
@@ -63,7 +93,12 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const result = await window.piwright.gitLog(project, 0)
+    const { query, branch, allBranches } = get()
+    const result = await window.piwright.gitLog(project, 0, {
+      query: query.length > 0 ? query : undefined,
+      branch,
+      all: allBranches
+    })
     set((state) => ({
       loading: false,
       entries: result.entries,
@@ -77,7 +112,12 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
     const state = get()
     if (projectKey(project) !== state.projectKey || !state.hasMore || state.loadingMore || state.loading) return false
     set({ loadingMore: true })
-    const result = await window.piwright.gitLog(project, state.page + 1)
+    const { query, branch, allBranches } = get()
+    const result = await window.piwright.gitLog(project, state.page + 1, {
+      query: query.length > 0 ? query : undefined,
+      branch,
+      all: allBranches
+    })
     const stale = projectKey(project) !== get().projectKey
     if (stale) return false
     set((prev) => {
@@ -106,6 +146,26 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
         ? { filesLoading: false, files: result.ok ? result.files : [], error: result.ok ? state.error : result.error }
         : state
     )
+  },
+
+  setQuery: async (project, query) => {
+    if (projectKey(project) !== get().projectKey || get().query === query) return
+    set({ query })
+    await get().refresh(project)
+  },
+
+  setBranchFilter: async (project, branch, all) => {
+    if (projectKey(project) !== get().projectKey) return
+    if (get().branch === branch && get().allBranches === all) return
+    set({ branch, allBranches: all })
+    await get().refresh(project)
+  },
+
+  loadBranches: async (project) => {
+    if (projectKey(project) !== get().projectKey) return
+    const result = await window.piwright.gitBranches(project, true)
+    if (projectKey(project) !== get().projectKey) return
+    if (result.ok) set({ branches: result.branches })
   },
 
   toggleOpen: () => set((state) => ({ open: !state.open })),

@@ -319,3 +319,172 @@ describe('GitService with a nested repository (bug 8)', () => {
     expect(log).toContain('nested commit')
   })
 })
+
+describe('GitService log filters and commit actions', () => {
+  function revParse(ref = 'HEAD'): string {
+    return execSync(`git rev-parse ${ref}`, { cwd: dir, encoding: 'utf8' }).trim()
+  }
+
+  function commitFile(name: string, content: string, message: string): void {
+    writeFileSync(join(dir, name), content)
+    run('git add .')
+    run(`git commit -q -m "${message}"`)
+  }
+
+  it('log filters by message substring, case-insensitive', async () => {
+    commitFile('needle.txt', 'x', 'UniqueNeedle in message')
+    const result = await git.log(project, 0, { query: 'uniqueneedle' })
+    expect(result.entries.length).toBe(1)
+    expect(result.entries[0]?.subject).toContain('UniqueNeedle')
+  })
+
+  it('log resolves a hash prefix into the commit', async () => {
+    const hash = revParse()
+    const result = await git.log(project, 0, { query: hash.slice(0, 8) })
+    expect(result.entries[0]?.hash).toBe(hash)
+  })
+
+  it('log with an unknown hash prefix returns grep results only', async () => {
+    const result = await git.log(project, 0, { query: 'deadbeef' })
+    expect(result.entries.every((e) => !e.hash.startsWith('deadbeef'))).toBe(true)
+  })
+
+  it('log filters by branch', async () => {
+    run('git checkout -q -b filter-branch')
+    run('git commit -q --allow-empty -m only-on-filter-branch')
+    run('git checkout -q main')
+    const filtered = await git.log(project, 0, { branch: 'filter-branch' })
+    expect(filtered.entries[0]?.subject).toBe('only-on-filter-branch')
+    const main = await git.log(project, 0, { branch: 'main' })
+    expect(main.entries.some((e) => e.subject === 'only-on-filter-branch')).toBe(false)
+  })
+
+  it('branches with all includes remote-tracking refs', async () => {
+    const all = await git.branches(project, true)
+    expect(all.branches).toContain('origin/main')
+    const local = await git.branches(project)
+    expect(local.branches).not.toContain('origin/main')
+  })
+
+  it('cherry-pick copies a commit onto the current branch', async () => {
+    run('git checkout -q -b cherry-src')
+    writeFileSync(join(dir, 'cherry.txt'), 'picked')
+    run('git add .')
+    run('git commit -q -m cherry-me')
+    const picked = revParse()
+    run('git checkout -q main')
+    writeFileSync(join(dir, 'main-move.txt'), 'm')
+    run('git add .')
+    run('git commit -q -m main-moved')
+    expect((await git.cherryPick(project, picked)).ok).toBe(true)
+    const log = await git.log(project)
+    expect(log.entries[0]?.subject).toBe('cherry-me')
+    expect(log.entries[0]?.hash).not.toBe(picked)
+  })
+
+  it('cherry-pick rejects an invalid hash', async () => {
+    expect((await git.cherryPick(project, 'drop table;')).ok).toBe(false)
+  })
+
+  it('revert creates an inverse commit', async () => {
+    commitFile('revert.txt', 'data', 'add-revert-file')
+    const target = revParse()
+    expect((await git.revertCommit(project, target)).ok).toBe(true)
+    const log = await git.log(project)
+    expect(log.entries[0]?.subject).toContain('Revert')
+    expect(log.entries[0]?.subject).toContain('add-revert-file')
+  })
+
+  it('reset moves the branch with soft/mixed/hard modes', async () => {
+    commitFile('r1.txt', '1', 'reset-base')
+    const base = revParse()
+    commitFile('r2.txt', '2', 'reset-target')
+    const target = revParse()
+
+    expect((await git.resetBranch(project, base, 'soft')).ok).toBe(true)
+    let status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'r2.txt')).toMatchObject({ index: 'A' })
+
+    expect((await git.resetBranch(project, base, 'mixed')).ok).toBe(true)
+    status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'r2.txt')).toMatchObject({ index: '.', untracked: true })
+
+    expect((await git.resetBranch(project, target, 'hard')).ok).toBe(true)
+    status = await git.status(project)
+    expect(status.status?.entries).toEqual([])
+    expect(revParse()).toBe(target)
+  })
+
+  it('reset rejects an invalid mode and hash', async () => {
+    expect((await git.resetBranch(project, 'zz', 'hard')).ok).toBe(false)
+    expect((await git.resetBranch(project, revParse(), 'weird' as 'hard')).ok).toBe(false)
+  })
+
+  it('tagCreate makes a tag and rejects bad names', async () => {
+    const head = revParse()
+    expect((await git.tagCreate(project, 'v-test-tag', head)).ok).toBe(true)
+    const tags = execSync('git tag --list', { cwd: dir, encoding: 'utf8' })
+    expect(tags).toContain('v-test-tag')
+    expect((await git.tagCreate(project, 'bad name', head)).ok).toBe(false)
+    expect((await git.tagCreate(project, '-dash', head)).ok).toBe(false)
+  })
+
+  it('dropCommit removes a middle commit from the branch', async () => {
+    commitFile('d1.txt', '1', 'drop-a')
+    commitFile('d2.txt', '2', 'drop-b')
+    const victim = revParse()
+    commitFile('d3.txt', '3', 'drop-c')
+    expect((await git.dropCommit(project, victim)).ok).toBe(true)
+    const subjects = (await git.log(project, 0)).entries.slice(0, 3).map((e) => e.subject)
+    expect(subjects).toContain('drop-c')
+    expect(subjects).not.toContain('drop-b')
+    expect(subjects).toContain('drop-a')
+  }, 30_000)
+
+  it('dropCommit refuses the root commit', async () => {
+    const root = execSync('git rev-list --max-parents=0 HEAD', { cwd: dir, encoding: 'utf8' }).trim()
+    expect((await git.dropCommit(project, root)).ok).toBe(false)
+  })
+
+  it('editCommitMessage amends HEAD without touching the index', async () => {
+    writeFileSync(join(dir, 'staged.txt'), 's')
+    run('git add .')
+    const head = revParse()
+    expect((await git.editCommitMessage(project, head, 'amended-head-message')).ok).toBe(true)
+    const log = await git.log(project)
+    expect(log.entries[0]?.subject).toBe('amended-head-message')
+    const status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'staged.txt')).toMatchObject({ index: 'A' })
+    run('git reset -q')
+    rmSync(join(dir, 'staged.txt'), { force: true })
+  })
+
+  it('editCommitMessage rejects an empty message', async () => {
+    expect((await git.editCommitMessage(project, revParse(), '   ')).ok).toBe(false)
+  })
+
+  it('editCommitMessage rewords a non-HEAD commit via rebase', async () => {
+    commitFile('w1.txt', '1', 'reword-base')
+    const base = revParse()
+    commitFile('w2.txt', '2', 'reword-top')
+    expect((await git.editCommitMessage(project, base, 'reworded-base')).ok).toBe(true)
+    const subjects = (await git.log(project, 0)).entries.slice(0, 2).map((e) => e.subject)
+    expect(subjects).toEqual(['reword-top', 'reworded-base'])
+  }, 30_000)
+
+  it('squashInto merges a commit into its parent with a new message', async () => {
+    commitFile('s1.txt', '1', 'squash-parent')
+    commitFile('s2.txt', '2', 'squash-child')
+    const child = revParse()
+    expect((await git.squashInto(project, child, 'squashed-combined')).ok).toBe(true)
+    const subjects = (await git.log(project, 0)).entries.slice(0, 2).map((e) => e.subject)
+    expect(subjects[0]).toBe('squashed-combined')
+    expect(subjects).not.toContain('squash-parent')
+    expect(subjects).not.toContain('squash-child')
+  }, 30_000)
+
+  it('squashInto refuses the root commit', async () => {
+    const root = execSync('git rev-list --max-parents=0 HEAD', { cwd: dir, encoding: 'utf8' }).trim()
+    expect((await git.squashInto(project, root, 'x')).ok).toBe(false)
+  })
+})

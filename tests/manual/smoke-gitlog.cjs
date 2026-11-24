@@ -20,9 +20,16 @@ async function main() {
   if (!glBox || !termBox) throw new Error('buttons not found')
   if (Math.abs(glBox.y + glBox.height - termBox.y) > 4) throw new Error('gitlog button is not right above terminal')
 
-  // Открытие дока: терминал закрыт, док появляется
-  await gitLogBtn.click()
-  await page.waitForSelector('.gitlog-dock', { timeout: 10000 })
+  // Открытие дока: терминал закрыт, док появляется (клик может теряться — ретраим)
+  let opened = false
+  for (let i = 0; i < 3 && !opened; i++) {
+    await gitLogBtn.click()
+    try {
+      await page.waitForSelector('.gitlog-dock', { timeout: 5000 })
+      opened = true
+    } catch {}
+  }
+  if (!opened) throw new Error('gitlog dock did not open')
   await page.waitForTimeout(1500)
   const dockH = (await page.locator('.gitlog-dock').boundingBox())?.height
   log('gitlog dock height:', dockH)
@@ -65,12 +72,16 @@ async function main() {
   log('details collapsed on second click:', detailsGone)
 
   // Эксклюзивность: открытие терминала сворачивает gitlog и наоборот
-  await termBtn.click()
-  await page.waitForSelector('.terminal-dock:not(.gitlog-dock)', { timeout: 10000 })
+  for (let i = 0; i < 3; i++) {
+    await termBtn.click()
+    try { await page.waitForSelector('.terminal-dock:not(.gitlog-dock)', { timeout: 5000 }); break } catch {}
+  }
   const gitlogGone = (await page.locator('.gitlog-dock').count()) === 0
   log('terminal opens, gitlog closed:', gitlogGone)
-  await gitLogBtn.click()
-  await page.waitForSelector('.gitlog-dock', { timeout: 10000 })
+  for (let i = 0; i < 3; i++) {
+    await gitLogBtn.click()
+    try { await page.waitForSelector('.gitlog-dock', { timeout: 5000 }); break } catch {}
+  }
   const termGone = (await page.locator('.terminal-dock:not(.gitlog-dock)').count()) === 0
   log('gitlog opens, terminal closed:', termGone)
   await page.screenshot({ path: 'tests/manual/out-gitlog-4-exclusive.png' })

@@ -2,15 +2,17 @@
  *  wsl — `wsl.exe -d <distro> --cd <wslCwd> --exec bash -lic 'git …'` (порт схемы спавна
  *  `exec/WslShell.kt`). Сообщение коммита генерирует одноразовый `PiConnection` с
  *  `--no-session` (файл сессии не создаётся, история не засоряется). */
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
   GitBranchesResult,
   GitCommitFileDiffResult,
   GitCommitFilesResult,
   GitFileDiffResult,
+  GitLogFilter,
   GitLogResult,
   GitMessageResult,
   GitOpResult,
@@ -41,6 +43,8 @@ const PUSH_TIMEOUT_MS = 120_000
 const GEN_TIMEOUT_MS = 240_000
 export const GIT_LOG_PAGE_SIZE = 50
 const BINARY_PLACEHOLDER = '(binary file)'
+const HASH_RE = /^[0-9a-f]{4,40}$/i
+const RESET_MODES = new Set(['soft', 'mixed', 'hard'])
 
 interface ExecResult {
   code: number
@@ -69,11 +73,17 @@ export class GitService {
 
   /** Прогон git на стороне бэкенда: native — прямой spawn, wsl — bash -lic внутри дистрибутива.
    *  cwd — рабочий каталог git (по умолчанию каталог проекта; вложенные репо — их подкаталог). */
-  private async exec(project: ProjectEntry, args: string[], timeoutMs: number, cwd = project.dir): Promise<ExecResult> {
+  private async exec(
+    project: ProjectEntry,
+    args: string[],
+    timeoutMs: number,
+    cwd = project.dir,
+    env?: NodeJS.ProcessEnv
+  ): Promise<ExecResult> {
     const settings = this.getSettings()
     let child: ChildProcess
     if (project.kind === 'native') {
-      child = spawn('git', args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn('git', args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
     } else {
       const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
       if (distro === undefined) throw new Error('No WSL distro available. Set it in settings.')
@@ -120,9 +130,15 @@ export class GitService {
     })
   }
 
-  private async run(project: ProjectEntry, args: string[], timeoutMs = GIT_TIMEOUT_MS, cwd?: string): Promise<ExecResult> {
+  private async run(
+    project: ProjectEntry,
+    args: string[],
+    timeoutMs = GIT_TIMEOUT_MS,
+    cwd?: string,
+    env?: NodeJS.ProcessEnv
+  ): Promise<ExecResult> {
     try {
-      return await this.exec(project, args, timeoutMs, cwd)
+      return await this.exec(project, args, timeoutMs, cwd, env)
     } catch (err) {
       return { code: -1, stdout: '', stderr: err instanceof Error ? err.message : String(err) }
     }
@@ -262,8 +278,11 @@ export class GitService {
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  /** Страница лога для дока истории: page считается с 0, порядок по датам. */
-  async log(project: ProjectEntry, page = 0): Promise<GitLogResult> {
+  /** Страница лога для дока истории: page считается с 0, порядок по датам. Фильтр — подстрока
+   *  сообщения (--grep, без регистра) и/или ветка; query из 4+ hex-символов дополнительно
+   *  резолвится как префикс хэша и такой коммит добавляется в начало первой страницы. */
+  async log(project: ProjectEntry, page = 0, filter?: GitLogFilter): Promise<GitLogResult> {
+    const query = filter?.query?.trim() ?? ''
     const args = [
       'log',
       '--skip',
@@ -273,11 +292,36 @@ export class GitService {
       '--date-order',
       '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e'
     ]
+    if (filter?.all === true) args.push('--all')
+    else if (filter?.branch) args.push(filter.branch)
+    if (query.length > 0) args.push('-i', '--fixed-strings', '--grep', query)
     const result = await this.run(project, args)
     if (result.code !== 0) return { ok: true, error: null, entries: [], hasMore: false }
     const entries = parseLogRich(result.stdout)
     const hasMore = entries.length > GIT_LOG_PAGE_SIZE
-    return { ok: true, error: null, entries: entries.slice(0, GIT_LOG_PAGE_SIZE), hasMore }
+    const pageEntries = entries.slice(0, GIT_LOG_PAGE_SIZE)
+    if (page === 0 && query.length >= 4 && HASH_RE.test(query)) {
+      const known = pageEntries.map((e) => e.hash)
+      const alreadyShown = known.some((h) => h.startsWith(query.toLowerCase()))
+      if (!alreadyShown) {
+        const resolved = await this.run(project, ['rev-parse', '--verify', `${query}^{commit}`])
+        if (resolved.code === 0) {
+          const hash = resolved.stdout.trim()
+          if (!known.includes(hash)) {
+            const one = await this.run(project, [
+              'log',
+              '-n',
+              '1',
+              '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e',
+              hash
+            ])
+            const [entry] = one.code === 0 ? parseLogRich(one.stdout) : []
+            if (entry !== undefined) pageEntries.unshift(entry)
+          }
+        }
+      }
+    }
+    return { ok: true, error: null, entries: pageEntries.slice(0, GIT_LOG_PAGE_SIZE), hasMore }
   }
 
   /** Изменённые файлы коммита: diff против первого родителя (merge — только первая ветка),
@@ -322,10 +366,16 @@ export class GitService {
     }
   }
 
-  async branches(project: ProjectEntry): Promise<GitBranchesResult> {
-    const result = await this.run(project, ['branch', '--list', '--format=%(refname:short)'])
+  async branches(project: ProjectEntry, all = false): Promise<GitBranchesResult> {
+    const args = all
+      ? ['branch', '--all', '--format=%(refname:short)']
+      : ['branch', '--list', '--format=%(refname:short)']
+    const result = await this.run(project, args)
     if (result.code !== 0) return { ok: false, error: errorOf(result, ['branch']), branches: [] }
-    const branches = result.stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+    const branches = result.stdout
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && l !== 'HEAD')
     return { ok: true, error: null, branches }
   }
 
@@ -356,6 +406,162 @@ export class GitService {
     const args = ['branch', '-d', trimmed]
     const result = await this.run(project, args)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async cherryPick(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+    if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
+    const args = ['cherry-pick', hash]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async revertCommit(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+    if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
+    const args = ['revert', '--no-edit', hash]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async resetBranch(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<GitOpResult> {
+    if (!HASH_RE.test(hash) || !RESET_MODES.has(mode)) return { ok: false, error: 'Invalid request' }
+    const args = ['reset', `--${mode}`, hash]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  async tagCreate(project: ProjectEntry, name: string, hash: string): Promise<GitOpResult> {
+    const trimmed = name.trim()
+    if (trimmed.length === 0 || /\s/.test(trimmed) || trimmed.startsWith('-')) {
+      return { ok: false, error: 'Invalid tag name' }
+    }
+    if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
+    const args = ['tag', trimmed, hash]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Выкинуть коммит из истории текущей ветки: rebase --onto <hash>^ <hash> (без редактора).
+   *  Конфликты не разрешаем автоматически — ошибка git уходит в UI, пользователь разбирается сам. */
+  async dropCommit(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+    if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
+    const resolved = full.stdout.trim()
+    if (!(await this.hasParent(project, resolved))) return { ok: false, error: 'Root commit cannot be dropped' }
+    const args = ['rebase', '--autostash', '--onto', `${resolved}^`, resolved]
+    const result = await this.run(project, args)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Новое сообщение коммита: HEAD — `commit --amend --only` (индекс не трогается),
+   *  более старый — неинтерактивный rebase -i с reword целевого коммита. */
+  async editCommitMessage(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult> {
+    const trimmed = message.trim()
+    if (!HASH_RE.test(hash) || trimmed.length === 0) return { ok: false, error: 'Invalid request' }
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
+    const resolved = full.stdout.trim()
+    const head = await this.run(project, ['rev-parse', 'HEAD'])
+    if (head.code === 0 && head.stdout.trim() === resolved) {
+      const args = ['commit', '--amend', '--only', '-m', message]
+      const result = await this.run(project, args)
+      return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['commit']) }
+    }
+    if (!(await this.hasParent(project, resolved))) {
+      return { ok: false, error: 'Cannot reword the root commit' }
+    }
+    return await this.rebaseEdit(project, 'reword', resolved, message)
+  }
+
+  /** Уплотнить коммит в родительский с новым сообщением: rebase -i от родителя родителя,
+   *  pick родителя + squash цели. Родитель должен сам иметь родителя (не быть корнем). */
+  async squashInto(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult> {
+    const trimmed = message.trim()
+    if (!HASH_RE.test(hash) || trimmed.length === 0) return { ok: false, error: 'Invalid request' }
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
+    const resolved = full.stdout.trim()
+    if (!(await this.hasParent(project, resolved))) {
+      return { ok: false, error: 'Root commit has no parent to squash into' }
+    }
+    const parent = (await this.run(project, ['rev-parse', `${resolved}^`])).stdout.trim()
+    if (!(await this.hasParent(project, parent))) {
+      return { ok: false, error: 'Cannot squash into the root commit' }
+    }
+    return await this.rebaseEdit(project, 'squash', resolved, message)
+  }
+
+  private async hasParent(project: ProjectEntry, resolved: string): Promise<boolean> {
+    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', resolved])
+    if (parents.code !== 0) return false
+    return parents.stdout.trim().split(/\s+/).filter((t) => t.length > 0).length > 1
+  }
+
+  /** Неинтерактивный `git rebase -i`: sequence.editor помечает целевой коммит (reword/squash),
+   *  core.editor подставляет готовое сообщение из файла. native — node-скрипты через
+   *  process.execPath (ELECTRON_RUN_AS_NODE), wsl — sed/cp с временным файлом в каталоге проекта. */
+  private async rebaseEdit(
+    project: ProjectEntry,
+    verb: 'reword' | 'squash',
+    hash: string,
+    message: string
+  ): Promise<GitOpResult> {
+    const short = hash.slice(0, 7)
+    const args: string[] = []
+    const cleanup: string[] = []
+    let env: NodeJS.ProcessEnv | undefined
+    try {
+      if (project.kind === 'native') {
+        const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        const msgPath = join(tmpdir(), `piwright-msg-${stamp}.txt`)
+        const seqPath = join(tmpdir(), `piwright-seq-${stamp}.js`)
+        const editorPath = join(tmpdir(), `piwright-editor-${stamp}.js`)
+        const seqScript = [
+          "const fs = require('fs')",
+          'const [short, verb, file] = process.argv.slice(2)',
+          "let text = fs.readFileSync(file, 'utf8')",
+          "text = text.replace(new RegExp('^pick (' + short + '[0-9a-f]*)', 'm'), verb + ' $1')",
+          "fs.writeFileSync(file, text)",
+          ''
+        ].join('\n')
+        const editorScript = [
+          "const fs = require('fs')",
+          'const [src, dst] = process.argv.slice(2)',
+          'fs.copyFileSync(src, dst)',
+          ''
+        ].join('\n')
+        await writeFile(msgPath, message, 'utf8')
+        await writeFile(seqPath, seqScript, 'utf8')
+        await writeFile(editorPath, editorScript, 'utf8')
+        cleanup.push(msgPath, seqPath, editorPath)
+        const execPath = process.execPath.replace(/\\/g, '/')
+        const seqCmd = `"${execPath}" "${seqPath.replace(/\\/g, '/')}" ${short} ${verb}`
+        const editorCmd = `"${execPath}" "${editorPath.replace(/\\/g, '/')}" "${msgPath.replace(/\\/g, '/')}"`
+        args.push('-c', `sequence.editor=${seqCmd}`, '-c', `core.editor=${editorCmd}`)
+        env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+      } else {
+        const msgName = '.piwright-rebase-msg.tmp'
+        await writeFile(join(project.dir, msgName), message, 'utf8')
+        cleanup.push(join(project.dir, msgName))
+        args.push(
+          '-c',
+          `sequence.editor=sed -i "s/^pick \\(${short}[0-9a-f]*\\)/${verb} \\1/"`,
+          '-c',
+          `core.editor=cp ${msgName}`
+        )
+      }
+      args.push('rebase', '--autostash', '-i', verb === 'squash' ? `${hash}^^` : `${hash}^`)
+      const result = await this.run(project, args, GIT_TIMEOUT_MS, undefined, env)
+      return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['rebase']) }
+    } finally {
+      for (const path of cleanup) {
+        try {
+          await unlink(path)
+        } catch {
+          // файла уже нет
+        }
+      }
+    }
   }
 
   private async worktreeRepoRoot(project: ProjectEntry): Promise<string | null> {

@@ -3876,6 +3876,67 @@ pre.code-block {
   color: var(--text);
 }
 
+.gitlog-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gitlog-search {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 3px 20px 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  width: 190px;
+}
+
+.gitlog-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.gitlog-search-clear {
+  position: absolute;
+  right: 2px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.gitlog-search-clear:hover {
+  color: var(--text);
+}
+
+.gitlog-branch-select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 170px;
+  padding: 2px 4px;
+}
+
+.gitlog-menu {
+  max-height: 72vh;
+  overflow-y: auto;
+  min-width: 230px;
+  width: max-content;
+}
+
+.gitlog-menu .project-menu-item {
+  text-align: left;
+  white-space: nowrap;
+}
+
 .gitlog-body {
   flex: 1;
   min-height: 0;
