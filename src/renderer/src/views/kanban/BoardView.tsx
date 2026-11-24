@@ -250,11 +250,21 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [moveCardsFrom])
 
-  const reload = (): void => {
+  const reload = useCallback((): void => {
     void window.piwright.kanbanBoardGet(tab.project, boardId ?? '').then((result) => {
-      if (result.ok) setBoard(result.board)
+      if (result.ok && result.board !== null) setBoard(result.board)
     })
-  }
+  }, [tab.project, boardId])
+
+  // Агент пишет на диск через pi-расширение напрямую — живое обновление доски (точки статусов,
+  // новые карточки) только поллингом; во время DnD не трогаем.
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (dragCardRef.current === null) reload()
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [reload])
 
   const apply = (result: KanbanMutationResult): void => {
     if (!result.ok) {

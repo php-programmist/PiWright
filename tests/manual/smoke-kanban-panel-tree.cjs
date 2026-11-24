@@ -162,6 +162,40 @@ async function main() {
     const tree2 = page.locator('.kanban-tree-board', { hasText: BOARD })
     check('persist: backlog still collapsed', (await tree2.locator('.kanban-tree-card').count()) === 0)
 
+    // развернуть Backlog обратно для живой проверки
+    await tree2.locator('.kanban-tree-col', { hasText: 'Backlog' }).locator('.expand').evaluate((el) => el.click())
+    await page.waitForTimeout(600)
+
+    // живое обновление: агент пишет на диск напрямую (IPC без UI) — дерево и вкладка доски
+    // подхватывают изменения поллингом, без кликов
+    const live = await page.evaluate(async (name) => {
+      const s = await window.piwright.getSettings()
+      for (const project of s.projects ?? []) {
+        const boards = await window.piwright.kanbanBoards(project)
+        if (!boards.ok) continue
+        const board = boards.boards.find((x) => x.name === name)
+        if (board === undefined) continue
+        const created = await window.piwright.kanbanCardCreate(project, board.id, { title: 'SMOKE-LIVE' })
+        if (!created.ok || created.board === null) return `card err: ${created.error}`
+        const cardId = created.board.cards[created.board.cards.length - 1].id
+        const commented = await window.piwright.kanbanCardComment(project, board.id, {
+          cardId,
+          text: 'live',
+          session: { id: 's-live', title: 'Live session' },
+        })
+        return commented.ok ? true : `comment err: ${commented.error}`
+      }
+      return 'board not found in any project'
+    }, BOARD)
+    check('live: card+comment written via IPC', live === true)
+    if (live !== true) log('live write result:', live)
+    await page.waitForTimeout(6000)
+    check('live: tree shows new task without reload', (await tree.locator('.kanban-tree-card', { hasText: 'SMOKE-LIVE' }).count()) === 1)
+    if ((await tree.locator('.kanban-tree-card', { hasText: 'SMOKE-LIVE' }).count()) !== 1) {
+      log('live debug: tree cards =', await tree.locator('.kanban-tree-card').allTextContents())
+      log('live debug: backlog expanded chevron =', await tree.locator('.kanban-tree-col', { hasText: 'Backlog' }).locator('.expand').textContent())
+    }
+
     // скриншот панели с деревом
     await tree2.locator('.kanban-tree-col', { hasText: 'Backlog' }).locator('.expand').evaluate((el) => el.click())
     await page.waitForTimeout(800)

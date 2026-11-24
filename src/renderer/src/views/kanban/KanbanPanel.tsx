@@ -259,6 +259,16 @@ export function KanbanPanel(): React.JSX.Element {
     useKanbanStore.getState().setProject(project)
   }, [project])
 
+  // Агент мутирует доску через pi-расширение напрямую (мимо renderer) — summary и дерево
+  // задачи свежие только поллингом; rev в summary перезапускает загрузку дерева.
+  useEffect(() => {
+    if (project === null) return
+    const timer = window.setInterval(() => {
+      void useKanbanStore.getState().refresh(project)
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [project])
+
   useEffect(() => {
     if (menuBoardId === null) return
     const onDown = (e: MouseEvent): void => {
