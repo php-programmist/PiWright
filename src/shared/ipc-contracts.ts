@@ -169,7 +169,8 @@ export type ScheduledTrigger =
   | { kind: 'after'; sourceHostId: string; sourceTitle: string }
   | { kind: 'at'; atEpochMs: number }
 
-/** Отложенный промпт (очередь сессий): уйдет в целевую сессию по триггеру. */
+/** Отложенный промпт (очередь сессий): уйдет в целевую сессию по триггеру.
+ *  loop != null — после отправки стартовать петлю (как обычная отправка с галкой «Петля»). */
 export interface ScheduledPrompt {
   id: string
   targetHostId: string
@@ -181,6 +182,7 @@ export interface ScheduledPrompt {
   model: string | null
   thinkingLevel: string | null
   trigger: ScheduledTrigger
+  loop: { maxIterations: number; exitCondition: string } | null
   createdAt: number
 }
 
@@ -191,6 +193,7 @@ export interface SchedulePromptInput {
   model?: string | null
   thinkingLevel?: string | null
   trigger: ScheduledTrigger
+  loop?: { maxIterations: number; exitCondition: string } | null
 }
 
 export interface ScheduledListResult {

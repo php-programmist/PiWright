@@ -217,13 +217,23 @@ function parseScheduleInput(value: unknown): SchedulePromptInput | null {
   } else {
     return null
   }
+  let loop: { maxIterations: number; exitCondition: string } | null = null
+  const rawLoop = v['loop']
+  if (rawLoop !== null && rawLoop !== undefined) {
+    if (typeof rawLoop !== 'object' || Array.isArray(rawLoop)) return null
+    const l = rawLoop as Record<string, unknown>
+    if (typeof l['maxIterations'] !== 'number' || !Number.isInteger(l['maxIterations']) || l['maxIterations'] < 1 || l['maxIterations'] > 999) return null
+    if (typeof l['exitCondition'] !== 'string') return null
+    loop = { maxIterations: l['maxIterations'], exitCondition: l['exitCondition'] }
+  }
   return {
     targetHostId: v['targetHostId'],
     text: v['text'],
     images: isPathList(v['images']) ? v['images'] : [],
     model: typeof v['model'] === 'string' ? v['model'] : null,
     thinkingLevel: typeof v['thinkingLevel'] === 'string' ? v['thinkingLevel'] : null,
-    trigger
+    trigger,
+    loop
   }
 }
 

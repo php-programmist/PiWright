@@ -111,6 +111,26 @@ async function main() {
   if (!/after|после/i.test(badge)) throw new Error('after badge missing: ' + badge)
   await page.locator('.scheduled-panel .queue-remove').first().click()
   await page.waitForTimeout(600)
+
+  // 5b. Элемент с петлёй — бейдж содержит ⟳ и число итераций
+  await page.evaluate(async (hostId) => {
+    const r = await window.piwright.schedulePrompt({
+      targetHostId: hostId,
+      text: 'loop smoke item',
+      trigger: { kind: 'after', sourceHostId: hostId, sourceTitle: 'Smoke Source' },
+      loop: { maxIterations: 3, exitCondition: 'when smoke passes' }
+    })
+    if (!r.ok) throw new Error('schedulePrompt loop failed: ' + r.error)
+  }, info.hostId)
+  await page.waitForSelector('.scheduled-panel', { timeout: 5000 })
+  const loopBadge = (await page.locator('.scheduled-panel .queue-badge').first().textContent()) ?? ''
+  log('loop badge:', loopBadge)
+  if (!loopBadge.includes('⟳') || !loopBadge.includes('3')) throw new Error('loop badge missing ⟳ 3: ' + loopBadge)
+  const loopRow = (await page.locator('.scheduled-panel .queue-row').first().getAttribute('title')) ?? ''
+  if (!loopRow.includes('when smoke passes')) throw new Error('loop exit condition missing in row title: ' + loopRow)
+  await page.screenshot({ path: 'tests/manual/out-scheduled-loop.png' })
+  await page.locator('.scheduled-panel .queue-remove').first().click()
+  await page.waitForTimeout(600)
   const finalCount = await page.evaluate(async () => (await window.piwright.scheduledList()).items.length)
   if (finalCount !== 0) throw new Error('item not cancelled: ' + finalCount)
 

@@ -592,16 +592,19 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   }
 
   // Отложенная отправка: текст и картинки из композера, настройки — текущие цели (фиксируются при планировании).
+  // Галка «Петля» уходит в элемент: при срабатывании петля стартует так же, как при обычной отправке.
   const schedulePrompt = async (trigger: ScheduledTrigger): Promise<void> => {
     const text = input.trim()
     if (text.length === 0 || activeHostId === null) return
+    const startingLoop = !streaming && loopsEnabled && loopEnabled && !loopActive
     const ok = await useScheduledStore.getState().schedule({
       targetHostId: activeHostId,
       text,
       images: pendingImages.map((img) => img.name),
       model: status.model,
       thinkingLevel: status.thinkingLevel,
-      trigger
+      trigger,
+      loop: startingLoop ? { maxIterations: loopMax, exitCondition: loopExit.trim() } : null
     })
     if (ok) {
       setInput('')

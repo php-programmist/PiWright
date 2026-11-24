@@ -104,6 +104,7 @@ app.whenReady().then(() => {
     (buffer) => safeStorage.decryptString(buffer)
   )
   const sendStatus = (status: PiStatus): void => {
+    scheduledService?.onStatus(status)
     mainWindow?.webContents.send(PI_STATUS_CHANNEL, {
       ...status,
       telegram: bridge?.telegramEnabledFor(status.hostId) ?? false,
@@ -122,9 +123,6 @@ app.whenReady().then(() => {
       }
     }
   )
-  scheduledService = new ScheduleService(join(app.getPath('userData'), 'scheduled-prompts.json'), piHost, () => {
-    mainWindow?.webContents.send(SCHEDULED_CHANGED_CHANNEL)
-  })
   const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
@@ -140,6 +138,15 @@ app.whenReady().then(() => {
     const createdStatus = piHost?.get(createdHostId)?.lastStatus()
     if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
   }, undefined, undefined, (project) => git.worktreeMergeBase(project))
+  scheduledService = new ScheduleService(
+    join(app.getPath('userData'), 'scheduled-prompts.json'),
+    piHost,
+    loopController,
+    () => settings.get(),
+    () => {
+      mainWindow?.webContents.send(SCHEDULED_CHANGED_CHANNEL)
+    }
+  )
   const staticPin = settings.get().notifications.remote.staticPin
   const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
   bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)

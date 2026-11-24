@@ -1,12 +1,16 @@
 /** Очередь отложенных промптов (очередь сессий): отправка в целевую сессию после хода
  *  сессии-источника или в заданное время. Переживает перезапуск — JSON в userData
  *  (атомарная запись tmp+rename, как в SettingsService). Триггер — turn_end источника
- *  в main-процессе (fan-out рядом с LoopController), renderer для срабатывания не нужен. */
+ *  в main-процессе (fan-out рядом с LoopController), renderer для срабатывания не нужен.
+ *  Элемент с loop: после отправки стартует петля (LoopController.start до prompt —
+ *  контроллер должен увидеть turn_start первого хода). Занятая цель откладывает отправку
+ *  до ready: followUp-ход петля не видит (external turn) — петля встанет только на свой ход. */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { PiEventMessage, ScheduledPrompt, SchedulePromptInput } from '../../shared/ipc-contracts'
+import type { PiEventMessage, PiStatus, ScheduledPrompt, SchedulePromptInput, Settings } from '../../shared/ipc-contracts'
 import type { PiHost } from '../pi/pi-host'
+import type { LoopController } from '../pi/loop-controller'
 
 interface ScheduleFile {
   version: 1
@@ -19,10 +23,14 @@ const MAX_TIMEOUT = 2 ** 31 - 1
 export class ScheduleService {
   private items: ScheduledPrompt[] = []
   private timers = new Map<string, NodeJS.Timeout>()
+  /** Элементы, чья отправка отложена до готовности занятой цели (id → targetHostId). */
+  private deferred = new Map<string, string>()
 
   constructor(
     private readonly filePath: string,
     private readonly piHost: PiHost,
+    private readonly loops: LoopController,
+    private readonly getSettings: () => Settings,
     private readonly onChange: () => void
   ) {
     this.load()
@@ -45,6 +53,7 @@ export class ScheduleService {
       model: input.model ?? null,
       thinkingLevel: input.thinkingLevel ?? null,
       trigger: input.trigger,
+      loop: input.loop ?? null,
       createdAt: Date.now()
     }
     this.items.push(item)
@@ -63,6 +72,7 @@ export class ScheduleService {
   forgetHost(hostId: string): void {
     const before = this.items.length
     this.items = this.items.filter((i) => i.targetHostId !== hostId && !(i.trigger.kind === 'after' && i.trigger.sourceHostId === hostId))
+    for (const [id, target] of this.deferred) if (target === hostId) this.deferred.delete(id)
     if (this.items.length !== before) {
       this.persist()
       this.onChange()
@@ -75,6 +85,15 @@ export class ScheduleService {
     if (message.event.type !== 'turn_end' || message.event.check === true) return
     const due = this.items.filter((i) => i.trigger.kind === 'after' && i.trigger.sourceHostId === message.hostId)
     if (due.length === 0) return
+    void this.fireAll(due)
+  }
+
+  /** Статусы сессий: готовность занятой цели с отложенной отправкой — пора стрелять. */
+  onStatus(status: PiStatus): void {
+    if (status.state !== 'ready') return
+    const due = this.items.filter((i) => this.deferred.get(i.id) === status.hostId)
+    if (due.length === 0) return
+    for (const item of due) this.deferred.delete(item.id)
     void this.fireAll(due)
   }
 
@@ -113,26 +132,43 @@ export class ScheduleService {
   private async fireAll(due: ScheduledPrompt[]): Promise<void> {
     for (const item of due) {
       if (this.items.find((i) => i.id === item.id) === undefined) continue
+      const target = this.piHost.get(item.targetHostId)
+      if (target === null) {
+        this.remove(item.id)
+        continue
+      }
+      // Занятая цель: followUp-ход петля не видит (turn_start external) — откладываем до ready.
+      if (item.loop !== null && target.streaming) {
+        this.deferred.set(item.id, item.targetHostId)
+        continue
+      }
       this.remove(item.id)
-      await this.fire(item)
+      await this.fire(item, target)
     }
   }
 
-  private async fire(item: ScheduledPrompt): Promise<void> {
-    const target = this.piHost.get(item.targetHostId)
-    if (target === null) return
+  private async fire(item: ScheduledPrompt, target: NonNullable<ReturnType<PiHost['get']>>): Promise<void> {
     // Настройки применяются только простаивающей цели: set_model/set_thinking_level на живом
     // ходе непредсказуемы; занятая цель получает промпт как followUp с текущими настройками.
     if (!target.streaming) {
       if (item.model !== null) await target.setModel(item.model)
       if (item.thinkingLevel !== null) await target.setThinkingLevel(item.thinkingLevel)
     }
-    await target.prompt(item.text, item.images, target.streaming ? 'followUp' : undefined)
+    // Петля поднимается до отправки: prompt резолвится уже после agent_start первого хода,
+    // и контроллер не увидел бы его начала (та же последовательность, что в ChatView.send).
+    const existingLoop = this.loops.get(item.targetHostId)
+    const startingLoop = item.loop !== null && this.getSettings().loopsEnabled && (existingLoop === null || !existingLoop.active)
+    if (startingLoop && item.loop !== null) {
+      this.loops.start(item.targetHostId, item.text, item.loop.maxIterations, item.loop.exitCondition)
+    }
+    const result = await target.prompt(item.text, item.images, target.streaming ? 'followUp' : undefined)
+    if (!result.ok && startingLoop) this.loops.stop(item.targetHostId)
   }
 
   private remove(id: string): boolean {
     const before = this.items.length
     this.items = this.items.filter((i) => i.id !== id)
+    this.deferred.delete(id)
     const timer = this.timers.get(id)
     if (timer !== undefined) {
       clearTimeout(timer)
@@ -156,7 +192,7 @@ export class ScheduleService {
       return
     }
     if (!Array.isArray(items)) return
-    this.items = items.filter(isScheduledPrompt)
+    this.items = items.filter(isScheduledPrompt).map((i) => ({ ...i, loop: i.loop ?? null }))
     for (const item of this.items) this.arm(item)
     // Просроченные за время простоя приложения — отправляем сразу (как отложенные в Telegram).
     const overdue = this.items.filter((i) => i.trigger.kind === 'at' && i.trigger.atEpochMs <= Date.now())
@@ -180,7 +216,19 @@ function isScheduledPrompt(value: unknown): value is ScheduledPrompt {
   const trigger = v['trigger']
   if (trigger === null || typeof trigger !== 'object') return false
   const t = trigger as Record<string, unknown>
-  if (t['kind'] === 'after') return typeof t['sourceHostId'] === 'string' && typeof t['sourceTitle'] === 'string'
-  if (t['kind'] === 'at') return typeof t['atEpochMs'] === 'number' && Number.isFinite(t['atEpochMs'])
-  return false
+  if (t['kind'] === 'after') {
+    if (typeof t['sourceHostId'] !== 'string' || typeof t['sourceTitle'] !== 'string') return false
+  } else if (t['kind'] === 'at') {
+    if (typeof t['atEpochMs'] !== 'number' || !Number.isFinite(t['atEpochMs'])) return false
+  } else {
+    return false
+  }
+  const loop = v['loop']
+  if (loop !== null && loop !== undefined) {
+    if (typeof loop !== 'object') return false
+    const l = loop as Record<string, unknown>
+    if (typeof l['maxIterations'] !== 'number' || !Number.isFinite(l['maxIterations'])) return false
+    if (typeof l['exitCondition'] !== 'string') return false
+  }
+  return true
 }
