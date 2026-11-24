@@ -401,6 +401,7 @@ const RU: Record<string, string> = {
   'Error': 'Ошибка',
   'empty = off (wav / aif / aiff / au)': 'Пусто = выкл (wav / aif / aiff / au)',
   'Choose audio file': 'Выбрать аудиофайл',
+  'Play sound': 'Проиграть звук',
   'Bot token': 'Токен бота',
   'Token saved — type to replace': 'Токен сохранён — введите новый',
   'Asks permission (confirm)': 'Запрашивает разрешение (confirm)',

@@ -27,6 +27,11 @@ async function play(path: string): Promise<void> {
   }
 }
 
+/** Превью выбранного звука из настроек. */
+export function previewSound(path: string): void {
+  void play(path)
+}
+
 /** Событие сессии → звук (настройки могут быть ещё не загружены — тогда тишина). */
 export function playNotificationSound(hostId: string, kind: 'completion' | 'await' | 'error', sounds: NotificationSounds | undefined, muted: boolean): void {
   if (sounds === undefined || muted) return

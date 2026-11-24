@@ -3,6 +3,7 @@ import { ModelsTab } from './ModelsTab'
 import { KanbanThemeSection } from './KanbanThemeSection'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
+import { previewSound } from '../../lib/sounds'
 import type { TFunc } from '../../lib/i18n'
 import type { NotificationSounds, Settings, Theme, UiLanguage } from '../../../../shared/ipc-contracts'
 
@@ -525,6 +526,16 @@ function NotificationsTab({
               />
               <button className="ghost" title={t('Choose audio file')} onClick={() => void browseSound(key)}>
                 …
+              </button>
+              <button
+                className="ghost"
+                title={t('Play sound')}
+                disabled={sounds[key].trim().length === 0}
+                onClick={() => previewSound(sounds[key])}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden style={{ display: 'block' }}>
+                  <path d="M8 5v14l11-7z" />
+                </svg>
               </button>
             </span>
           </label>
