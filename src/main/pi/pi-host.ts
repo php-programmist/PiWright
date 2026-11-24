@@ -84,6 +84,14 @@ export class PiHost {
     return this.catalogs.has(kind)
   }
 
+  /** Первый непустой каталог из кэша хендшейков — remote-диалогу создания до подъёма сессий. */
+  cachedCatalog(): { models: PiModelInfo[]; thinkingLevels: string[] } | null {
+    for (const catalog of this.catalogs.values()) {
+      if (catalog.models.length > 0) return catalog
+    }
+    return null
+  }
+
   get(hostId: string): SessionHost | null {
     return this.hosts.get(hostId) ?? null
   }

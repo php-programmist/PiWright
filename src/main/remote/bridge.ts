@@ -3,7 +3,7 @@
  *  вкладки IDE → SessionHost из PiHost, EDT → прямые вызовы (однопоточный main). */
 import { basename } from 'node:path'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { PiJsonObject } from '../../shared/protocol-types'
+import type { PiJsonObject, PiModelInfo } from '../../shared/protocol-types'
 import type { Settings } from '../../shared/ipc-contracts'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY } from '../../shared/todo'
 import type { SessionHost } from '../pi/session-host'
@@ -422,6 +422,9 @@ export class RemoteBridge {
     remote.sockets.push(socket)
     remote.unread = false
     socket.send(JSON.stringify(attachedFrame(remote.id, remote.title, remote.projectName, remote.host.telegramEnabled, this.getSettings().loopsEnabled)))
+    // Открытие сессии с телефона = открытие вкладки на ПК (sessions:open): ленивая сессия
+    // поднимается, иначе снапшот и статус модели недоступны.
+    void remote.host.ensureStarted().catch(() => {})
     void this.sendSnapshot(socket, remote)
     socket.send(JSON.stringify(todosFrame(remoteTodos(widgetLinesOf(remote)))))
     const loopInfo = this.loops?.get(remote.host.id)
@@ -514,6 +517,13 @@ export class RemoteBridge {
     const behavior = frameString(frame, 'behavior')
     if (behavior !== null) command['streamingBehavior'] = behavior
     if (images.blocks.length > 0) command['images'] = images.blocks
+    // sendRemoteLine — сырой stdin без подъёма: ленивая сессия молча съела бы промпт.
+    try {
+      await remote.host.ensureStarted()
+    } catch (err) {
+      socket.send(JSON.stringify(errorFrame(err instanceof Error ? err.message : 'failed to start the session')))
+      return
+    }
     remote.host.sendRemoteLine(JSON.stringify(command))
     this.startLoopFromPrompt(socket, remote, frame, text)
   }
@@ -593,15 +603,11 @@ export class RemoteBridge {
     }
     const host = this.piHost.create(project)
     if (request.name !== 'New Chat') void host.rename(request.name)
-    if (request.model !== null || request.thinking !== null) {
-      void host
-        .ensureStarted()
-        .then(async () => {
-          if (request.model !== null) await host.setModel(request.model)
-          if (request.thinking !== null) await host.setThinkingLevel(request.thinking)
-        })
-        .catch(() => {})
-    }
+    // С телефона сессию сразу открывают и пишут промпт — поднимаем сразу, без выбора
+    // модели/thinking тоже (setModel/setThinkingLevel до подъёма применятся в хендшейке).
+    if (request.model !== null) void host.setModel(request.model)
+    if (request.thinking !== null) void host.setThinkingLevel(request.thinking)
+    void host.ensureStarted().catch(() => {})
     this.sharedHostIds.add(host.id)
     this.syncSessions()
     this.broadcastSessions()
@@ -612,21 +618,45 @@ export class RemoteBridge {
   private async sendCatalog(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
     const requestId = frameString(frame, 'id')
     const status = this.piHost.statuses().find((s) => s.models.length > 0) ?? null
-    if (status === null) {
-      socket.send(JSON.stringify(errorFrame('no live session with a model catalog')))
+    if (status !== null) {
+      this.sendCatalogFrom(socket, status.models, status.thinkingLevels, status.model, status.thinkingLevel, requestId)
       return
     }
-    socket.send(
-      JSON.stringify(
-        catalogFrame(
-          status.models.map(catalogModelOf),
-          status.thinkingLevels,
-          status.model,
-          status.thinkingLevel,
-          requestId
-        )
-      )
+    const cached = this.piHost.cachedCatalog()
+    if (cached !== null) {
+      this.sendCatalogFrom(socket, cached.models, cached.thinkingLevels, null, null, requestId)
+      return
+    }
+    // Свежий старт приложения: живых статусов и кэша нет — поднимаем расшаренную сессию
+    // ради хендшейка (проект из запроса предпочитается).
+    const requested = frameString(frame, 'project')
+    const candidates = [...this.sessions.values()].sort(
+      (a, b) => Number(b.projectName === requested) - Number(a.projectName === requested)
     )
+    for (const remote of candidates) {
+      try {
+        await remote.host.ensureStarted()
+      } catch {
+        continue
+      }
+      const started = remote.host.lastStatus?.() ?? null
+      if (started !== null && started.models.length > 0) {
+        this.sendCatalogFrom(socket, started.models, started.thinkingLevels, started.model, started.thinkingLevel, requestId)
+        return
+      }
+    }
+    socket.send(JSON.stringify(errorFrame('no live session with a model catalog')))
+  }
+
+  private sendCatalogFrom(
+    socket: RemoteSocket,
+    models: PiModelInfo[],
+    thinkingLevels: string[],
+    defaultModel: string | null,
+    defaultThinking: string | null,
+    requestId: string | null
+  ): void {
+    socket.send(JSON.stringify(catalogFrame(models.map(catalogModelOf), thinkingLevels, defaultModel, defaultThinking, requestId)))
   }
 
   // ------------------------------------------------------------ pi → phone

@@ -181,7 +181,6 @@ let loopInfo = null;
 let loopMax = 20;
 const loopEnabledBySession = new Map();
 let lastSessions = [];
-let catalogWaiter = null;
 // Модели из последнего catalog-кадра: уровни thinking берутся от выбранной модели, а не из общего списка.
 let catalogModels = [];
 // Общий список уровней из кадра — относится к текущей модели живой сессии; подстраховка для кэша
@@ -1578,15 +1577,15 @@ function openCreateDialog() {
   createForm.reset();
   fillProjectSelect();
   resetCatalogSelects();
-  catalogWaiter = onCatalog;
-  send({ type: "catalog" });
+  const frame = { type: "catalog" };
+  if (createProject.value) frame.project = createProject.value;
+  send(frame);
   createOverlay.hidden = false;
   createName.focus();
 }
 
 function closeCreateDialog() {
   createOverlay.hidden = true;
-  catalogWaiter = null;
 }
 
 /** Селект проектов: показывается, только когда remote-вкладки в нескольких проектах. */

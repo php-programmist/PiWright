@@ -4,7 +4,7 @@ import { RemoteAuth } from '../src/main/remote/auth'
 import type { SessionHost } from '../src/main/pi/session-host'
 import type { PiHost } from '../src/main/pi/pi-host'
 import type { LoopController } from '../src/main/pi/loop-controller'
-import type { PiResponse } from '../src/shared/protocol-types'
+import type { PiResponse, PiModelInfo } from '../src/shared/protocol-types'
 import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { RemoteSocket } from '../src/main/remote/ws'
@@ -34,6 +34,7 @@ function fakeHost(
     remoteTaps: [] as ((line: string) => void)[],
     sentLines: [] as string[],
     respondUiCalls: [] as unknown[],
+    ensureStarted: vi.fn(() => Promise.resolve()),
     addRemoteTap(tap: (line: string) => void) {
       host.remoteTaps.push(tap)
     },
@@ -62,9 +63,13 @@ function fakeHost(
   return host as unknown as SessionHost
 }
 
-function fakePiHost(hosts: SessionHost[]): PiHost {
+function fakePiHost(
+  hosts: SessionHost[],
+  catalog: { models: PiModelInfo[]; thinkingLevels: string[] } | null = null
+): PiHost {
   return {
-    statuses: () => hosts.map((h) => ({ hostId: (h as unknown as { id: string }).id, project })),
+    statuses: () => hosts.map((h) => ({ hostId: (h as unknown as { id: string }).id, project, models: [], thinkingLevels: [] })),
+    cachedCatalog: () => catalog,
     get: (hostId: string) => hosts.find((h) => (h as unknown as { id: string }).id === hostId) ?? null,
     create: (proj: ProjectEntry) => {
       const created = fakeHost()
@@ -86,15 +91,25 @@ function fakeLoops(): LoopController {
   } as unknown as LoopController
 }
 
-function bridgeWith(hosts: SessionHost[], loops?: LoopController, settings?: Partial<Settings>): { bridge: RemoteBridge; auth: RemoteAuth } {
+function bridgeWith(
+  hosts: SessionHost[],
+  loops?: LoopController,
+  settings?: Partial<Settings>,
+  catalog: { models: PiModelInfo[]; thinkingLevels: string[] } | null = null
+): { bridge: RemoteBridge; auth: RemoteAuth } {
   const auth = new RemoteAuth('123456')
   const getSettings = (): Settings => ({ ...DEFAULT_SETTINGS, ...settings })
-  return { bridge: new RemoteBridge(getSettings, fakePiHost(hosts), auth, null, loops), auth }
+  return { bridge: new RemoteBridge(getSettings, fakePiHost(hosts, catalog), auth, null, loops), auth }
 }
 
 /** Мост с расшаренной первой сессией (шаринг теперь явный — глобус в шапке чата). */
-function sharedBridge(hosts: SessionHost[], loops?: LoopController, settings?: Partial<Settings>): { bridge: RemoteBridge; auth: RemoteAuth } {
-  const created = bridgeWith(hosts, loops, settings)
+function sharedBridge(
+  hosts: SessionHost[],
+  loops?: LoopController,
+  settings?: Partial<Settings>,
+  catalog: { models: PiModelInfo[]; thinkingLevels: string[] } | null = null
+): { bridge: RemoteBridge; auth: RemoteAuth } {
+  const created = bridgeWith(hosts, loops, settings, catalog)
   if (hosts.length > 0) {
     const hostId = (hosts[0] as unknown as { id: string }).id
     expect(created.bridge.setSharedByHost(hostId, true)).toBe(true)
@@ -166,7 +181,7 @@ describe('RemoteBridge', () => {
     expect(snapshot?.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: 'hi' }] }])
   })
 
-  it('phone prompt is forwarded with rewritten id; response is routed back with original id', () => {
+  it('phone prompt is forwarded with rewritten id; response is routed back with original id', async () => {
     const host = fakeHost()
     const { bridge } = sharedBridge([host])
     const remote = [...bridge['sessions'].values()][0]
@@ -175,6 +190,7 @@ describe('RemoteBridge', () => {
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
     socket.lines.length = 0
     bridge['onText'](socket, JSON.stringify({ type: 'prompt', id: 'p1', text: 'hello' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     const sent = (host as unknown as { sentLines: string[] }).sentLines
     expect(sent).toHaveLength(1)
     const forwarded = JSON.parse(sent[0]) as { type: string; id: string; message: string }
@@ -183,8 +199,10 @@ describe('RemoteBridge', () => {
     expect(forwarded.message).toBe('hello')
 
     remote.tap(JSON.stringify({ type: 'response', id: 'web-7-p1', success: true, command: 'prompt' }))
-    const response = JSON.parse(socket.lines[0]) as { type: string; id: string }
-    expect(response.id).toBe('p1')
+    const response = socket.lines
+      .map((l) => JSON.parse(l) as { type: string; id: string })
+      .find((f) => f.type === 'response')
+    expect(response?.id).toBe('p1')
   })
 
   it('events broadcast to attached sockets, agent_start updates status to busy', () => {
@@ -354,6 +372,94 @@ describe('RemoteBridge', () => {
     expect(socket.lines.map((l) => JSON.parse(l) as { type: string }).some((f) => f.type === 'attached')).toBe(true)
   })
 
+  it('create_session поднимает ленивую сессию даже без выбора модели/thinking', async () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const socket = fakeSocket(9)
+    bridge['onOpen'](socket)
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'create_session' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const created = [...bridge['sessions'].values()].find((r) => (r.host as unknown as { id: string }).id === 'host-2')
+    expect(created).toBeDefined()
+    expect((created!.host as unknown as { ensureStarted: ReturnType<typeof vi.fn> }).ensureStarted).toHaveBeenCalledTimes(1)
+  })
+
+  it('attach поднимает ленивую сессию (аналог sessions:open на ПК)', () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    expect((host as unknown as { ensureStarted: ReturnType<typeof vi.fn> }).ensureStarted).toHaveBeenCalledTimes(1)
+  })
+
+  it('prompt к ленивой сессии сначала поднимает процесс, потом шлёт кадр', async () => {
+    const host = fakeHost()
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(7)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'hello' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect((host as unknown as { ensureStarted: ReturnType<typeof vi.fn> }).ensureStarted).toHaveBeenCalled()
+    expect((host as unknown as { sentLines: string[] }).sentLines).toHaveLength(1)
+  })
+
+  it('prompt при неудачном старте — error frame с причиной, в stdin ничего не уходит', async () => {
+    const host = fakeHost()
+    ;(host as unknown as { ensureStarted: () => Promise<void> }).ensureStarted = () => Promise.reject(new Error('backend down'))
+    const { bridge } = sharedBridge([host])
+    const remote = [...bridge['sessions'].values()][0]
+    const socket = fakeSocket(7)
+    bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
+    socket.lines.length = 0
+    bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'hello' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect((host as unknown as { sentLines: string[] }).sentLines).toHaveLength(0)
+    const error = socket.lines.map((l) => JSON.parse(l) as { type: string; message: string }).find((f) => f.type === 'error')
+    expect(error).toMatchObject({ type: 'error', message: 'backend down' })
+  })
+
+  it('catalog без живых статусов берётся из кэша хендшейков', async () => {
+    const model: PiModelInfo = { provider: 'anthropic', id: 'claude', name: 'Claude', contextWindow: 200000, imageInput: true, thinkingLevels: ['off', 'high'] }
+    const { bridge } = sharedBridge([fakeHost()], undefined, undefined, { models: [model], thinkingLevels: ['off', 'high'] })
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'catalog', id: 'c1' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const frame = JSON.parse(socket.lines[0]) as { type: string; models: { key: string }[]; thinkingLevels: string[] }
+    expect(frame).toMatchObject({ type: 'catalog', thinkingLevels: ['off', 'high'] })
+    expect(frame.models[0]?.key).toBe('anthropic/claude')
+  })
+
+  it('catalog без кэша поднимает расшаренную сессию ради хендшейка', async () => {
+    const model: PiModelInfo = { provider: 'anthropic', id: 'claude', name: 'Claude', contextWindow: 200000, imageInput: true, thinkingLevels: ['off'] }
+    const host = fakeHost()
+    ;(host as unknown as { lastStatus: () => unknown }).lastStatus = () => ({
+      models: [model],
+      thinkingLevels: ['off'],
+      model: 'anthropic/claude',
+      thinkingLevel: 'off'
+    })
+    const { bridge } = sharedBridge([host])
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'catalog' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect((host as unknown as { ensureStarted: ReturnType<typeof vi.fn> }).ensureStarted).toHaveBeenCalledTimes(1)
+    const frame = JSON.parse(socket.lines[0]) as { type: string; models: unknown[]; defaultModel: string | null }
+    expect(frame).toMatchObject({ type: 'catalog', defaultModel: 'anthropic/claude' })
+    expect(frame.models).toHaveLength(1)
+  })
+
+  it('catalog без статусов, кэша и расшаренных сессий — error frame', async () => {
+    const { bridge } = bridgeWith([])
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'catalog' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'error', message: 'no live session with a model catalog' })
+  })
+
   it('unshare с телефона снимает флаг Remote — сессия не возвращается в список', async () => {
     const host = fakeHost()
     const { bridge } = sharedBridge([host])
@@ -379,7 +485,7 @@ describe('RemoteBridge', () => {
     expect(JSON.parse(socket.lines[1])).toMatchObject({ type: 'error', message: 'unknown frame type' })
   })
 
-  it('prompt with loop field starts the loop when the setting is on', () => {
+  it('prompt with loop field starts the loop when the setting is on', async () => {
     const host = fakeHost()
     const loops = fakeLoops()
     const { bridge } = sharedBridge([host], loops, { loopsEnabled: true })
@@ -388,11 +494,12 @@ describe('RemoteBridge', () => {
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
     socket.lines.length = 0
     bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5, exit: 'when done' } }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(loops.start).toHaveBeenCalledWith('host-1', 'do it', 5, 'when done')
-    expect(socket.lines).toHaveLength(0)
+    expect(socket.lines.map((l) => JSON.parse(l) as { type: string }).filter((f) => f.type === 'error')).toHaveLength(0)
   })
 
-  it('prompt with loop field without exit starts the loop with an empty exit condition', () => {
+  it('prompt with loop field without exit starts the loop with an empty exit condition', async () => {
     const host = fakeHost()
     const loops = fakeLoops()
     const { bridge } = sharedBridge([host], loops, { loopsEnabled: true })
@@ -401,11 +508,12 @@ describe('RemoteBridge', () => {
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
     socket.lines.length = 0
     bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5 } }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(loops.start).toHaveBeenCalledWith('host-1', 'do it', 5, '')
-    expect(socket.lines).toHaveLength(0)
+    expect(socket.lines.map((l) => JSON.parse(l) as { type: string }).filter((f) => f.type === 'error')).toHaveLength(0)
   })
 
-  it('prompt with loop field is rejected when loops are disabled', () => {
+  it('prompt with loop field is rejected when loops are disabled', async () => {
     const host = fakeHost()
     const loops = fakeLoops()
     const { bridge } = sharedBridge([host], loops)
@@ -414,8 +522,10 @@ describe('RemoteBridge', () => {
     bridge['onText'](socket, JSON.stringify({ type: 'attach', id: remote.id }))
     socket.lines.length = 0
     bridge['onText'](socket, JSON.stringify({ type: 'prompt', text: 'do it', loop: { max: 5, exit: 'when done' } }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
     expect(loops.start).not.toHaveBeenCalled()
-    expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'error', message: 'Loops are disabled in settings' })
+    const error = socket.lines.map((l) => JSON.parse(l) as { type: string; message: string }).find((f) => f.type === 'error')
+    expect(error).toMatchObject({ type: 'error', message: 'Loops are disabled in settings' })
   })
 
   it('loop_stop and loop_set_remaining reach the controller with the host id', () => {
