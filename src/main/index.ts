@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron'
-import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
+import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { FileService } from './files/file-service'
@@ -10,6 +10,7 @@ import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { LoopController } from './pi/loop-controller'
+import { ScheduleService } from './schedule/schedule-service'
 import { SettingsService } from './settings/settings'
 import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
@@ -28,6 +29,7 @@ let terminalService: TerminalService | null = null
 let bridge: RemoteBridge | null = null
 let hub: NotificationHub | null = null
 let loopController: LoopController | null = null
+let scheduledService: ScheduleService | null = null
 let windowStatePath = ''
 
 // Смоук-режим: окно вне всех мониторов, чтобы не красть фокус. Без этих переключателей
@@ -114,11 +116,15 @@ app.whenReady().then(() => {
       onStatus: sendStatus,
       onEvent: (message) => {
         loopController?.onEvent(message)
+        scheduledService?.onEvent(message)
         mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
         hub?.onEvent(message)
       }
     }
   )
+  scheduledService = new ScheduleService(join(app.getPath('userData'), 'scheduled-prompts.json'), piHost, () => {
+    mainWindow?.webContents.send(SCHEDULED_CHANGED_CHANNEL)
+  })
   const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {
     mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
@@ -151,7 +157,7 @@ app.whenReady().then(() => {
       bridge?.applySettings(next)
       rebuildMenu()
     }
-  })
+  }, scheduledService)
   startAutoUpdater(() => settings.get().updateUrl)
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg)
@@ -166,6 +172,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   piHost?.disposeAll()
+  scheduledService?.dispose()
   fileService?.dispose()
   terminalService?.disposeAll()
 })

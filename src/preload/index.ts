@@ -87,6 +87,10 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
+  SESSION_SCHEDULE_CHANNEL,
+  SESSION_SCHEDULED_CANCEL_CHANNEL,
+  SESSION_SCHEDULED_LIST_CHANNEL,
+  SCHEDULED_CHANGED_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
  PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
@@ -135,6 +139,7 @@ import type {
   ForkSessionResult,
   PromptBehavior,
   QueueTexts,
+  SchedulePromptInput,
   Settings,
   TerminalProfileId
 } from '../shared/ipc-contracts'
@@ -179,6 +184,9 @@ const api: PiWrightApi = {
   queueClear: (hostId: string) => ipcRenderer.invoke(SESSION_QUEUE_CLEAR_CHANNEL, hostId),
   queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>
     ipcRenderer.invoke(SESSION_QUEUE_REMOVE_CHANNEL, hostId, kind, index),
+  schedulePrompt: (input: SchedulePromptInput) => ipcRenderer.invoke(SESSION_SCHEDULE_CHANNEL, input),
+  scheduledList: () => ipcRenderer.invoke(SESSION_SCHEDULED_LIST_CHANNEL),
+  scheduledCancel: (id: string) => ipcRenderer.invoke(SESSION_SCHEDULED_CANCEL_CHANNEL, id),
   sessionCommands: (hostId: string) => ipcRenderer.invoke(SESSION_COMMANDS_CHANNEL, hostId),
   contextBreakdown: (hostId: string) => ipcRenderer.invoke(SESSION_CONTEXT_BREAKDOWN_CHANNEL, hostId),
   setModel: (hostId: string, key: string) => ipcRenderer.invoke(SESSION_SET_MODEL_CHANNEL, hostId, key),
@@ -280,6 +288,7 @@ const api: PiWrightApi = {
   termResize: (id: string, cols: number, rows: number) => ipcRenderer.send(TERM_RESIZE_CHANNEL, id, cols, rows),
   onPiEvent: (cb) => subscribe(PI_EVENT_CHANNEL, cb),
   onMenuSettings: (cb) => subscribe(APP_MENU_SETTINGS_CHANNEL, cb),
+  onScheduledChanged: (cb) => subscribe(SCHEDULED_CHANGED_CHANNEL, cb),
   onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb),
   onFilesChanged: (cb) => subscribe(FILES_CHANGED_CHANNEL, cb),
   onTermData: (cb) => subscribe(TERM_DATA_CHANNEL, cb),

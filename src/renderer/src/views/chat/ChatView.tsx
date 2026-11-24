@@ -3,11 +3,13 @@ import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
 import { QueuePanel } from '../../components/QueuePanel'
+import { ScheduledPanel } from '../../components/ScheduledPanel'
 import { TodoPanel } from '../../components/TodoPanel'
 import { ToolBlock } from '../../components/ToolBlock'
 import { ThinkingLevelControl } from '../../components/ThinkingLevelControl'
 import { ContextBreakdownControl } from '../../components/ContextBreakdownControl'
 import { useChatStore, atBottomMap, draftMap, loopExitMap, pendingImagesMap } from '../../stores/chat'
+import { useScheduledStore } from '../../stores/scheduled'
 import type { Entry, HostChat, PendingImage } from '../../stores/chat'
 import { useFeedWindow } from './useFeedWindow'
 import { useSessionsStore } from '../../stores/sessions'
@@ -22,7 +24,7 @@ import { sameProjectDir, splitWorktreeHostDir } from '../../../../shared/worktre
 import { slashTokenOf, filterSlashCommands } from '../../../../shared/slash-commands'
 import type { DialogAnswer } from '../../../../shared/agent-events'
 import type { PiSlashCommand } from '../../../../shared/protocol-types'
-import type { AttachmentResult, PromptBehavior, QueueTexts } from '../../../../shared/ipc-contracts'
+import type { AttachmentResult, PromptBehavior, QueueTexts, ScheduledTrigger } from '../../../../shared/ipc-contracts'
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
@@ -336,6 +338,23 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const worktree = project !== null ? splitWorktreeHostDir(project.dir) : null
 
+  // Отложенные промпты (очередь сессий): меню ПКМ по Send + панель в футере.
+  const [schedMenuOpen, setSchedMenuOpen] = useState(false)
+  const [schedAt, setSchedAt] = useState('')
+  const schedMenuRef = useRef<HTMLDivElement | null>(null)
+  const sessionRows = useSessionsStore((s) => s.active)
+  const scheduledItems = useScheduledStore((s) => s.items)
+  const busySessions = useMemo(() => sessionRows.filter((r) => r.state === 'streaming' || r.state === 'waiting'), [sessionRows])
+  const scheduledForHost = useMemo(() => scheduledItems.filter((i) => i.targetHostId === activeHostId), [scheduledItems, activeHostId])
+  useEffect(() => {
+    if (!schedMenuOpen) return
+    const onDown = (e: MouseEvent): void => {
+      if (schedMenuRef.current !== null && !schedMenuRef.current.contains(e.target as Node)) setSchedMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [schedMenuOpen])
+
   const activeHostRef = useRef(activeHostId ?? '')
   useEffect(() => {
     activeHostRef.current = activeHostId ?? ''
@@ -495,6 +514,31 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       return
     }
     restoreCleared(result.cleared)
+  }
+
+  // Отложенная отправка: текст и картинки из композера, настройки — текущие цели (фиксируются при планировании).
+  const schedulePrompt = async (trigger: ScheduledTrigger): Promise<void> => {
+    const text = input.trim()
+    if (text.length === 0 || activeHostId === null) return
+    const ok = await useScheduledStore.getState().schedule({
+      targetHostId: activeHostId,
+      text,
+      images: pendingImages.map((img) => img.name),
+      model: status.model,
+      thinkingLevel: status.thinkingLevel,
+      trigger
+    })
+    if (ok) {
+      setInput('')
+      setPendingImages([])
+      setSchedAt('')
+      setSchedMenuOpen(false)
+    }
+  }
+  const scheduleAt = (): void => {
+    const at = new Date(schedAt).getTime()
+    if (!Number.isFinite(at)) return
+    void schedulePrompt({ kind: 'at', atEpochMs: at })
   }
 
   const insertAttachmentRef = (ref: string): void => {
@@ -808,6 +852,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
       </header>
       {status.error !== null && <div className="error">{status.error}</div>}
       {queuedCount > 0 && <QueuePanel queue={queue} onRemove={(kind, index) => void removeQueued(kind, index)} onClearAll={() => void clearQueue()} />}
+      <ScheduledPanel items={scheduledForHost} onCancel={(id) => void useScheduledStore.getState().cancel(id)} />
       {todoItems.length > 0 && <TodoPanel items={todoItems} />}
       <main className="transcript" ref={transcriptRef} onScroll={feed.handleScroll}>
         {visibleEntries.map((entry) => (
@@ -970,9 +1015,39 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             {t('Steer')}
           </button>
         )}
-        <button onClick={() => void send()} disabled={input.trim().length === 0}>
-          {t('Send')}
-        </button>
+        <div className="send-wrap" onContextMenu={(e) => {
+          if (input.trim().length === 0) return
+          e.preventDefault()
+          setSchedMenuOpen(true)
+        }}>
+          <button onClick={() => void send()} disabled={input.trim().length === 0}>
+            {t('Send')}
+          </button>
+          {schedMenuOpen && (
+            <div className="sched-menu" ref={schedMenuRef}>
+              <div className="sched-menu-title">{t('Run after…')}</div>
+              {busySessions.length === 0 && <div className="sched-menu-empty">{t('No sessions with a running turn')}</div>}
+              {busySessions.map((r) => (
+                <button key={r.hostId} type="button" className="sched-item" onClick={() => void schedulePrompt({ kind: 'after', sourceHostId: r.hostId, sourceTitle: r.title })}>
+                  <span className="sched-name">{r.title}</span>
+                  <span className="sched-desc">{r.project.dir}</span>
+                </button>
+              ))}
+              <div className="sched-menu-title">{t('Send at…')}</div>
+              <div className="sched-time-row">
+                <input
+                  type="datetime-local"
+                  className="sched-time"
+                  value={schedAt}
+                  onChange={(e) => setSchedAt(e.target.value)}
+                />
+                <button type="button" className="sched-apply" disabled={schedAt === ''} onClick={scheduleAt}>
+                  {t('OK')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </footer>
     </>
   )

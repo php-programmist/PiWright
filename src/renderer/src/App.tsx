@@ -28,6 +28,7 @@ import { parentTabKey, tabId, useTabsStore, useCenterProject } from './stores/ta
 import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
 import { useKanbanStore } from './stores/kanban'
+import { useScheduledStore } from './stores/scheduled'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { closeSessionAndSweepWorktree } from './lib/worktree-cleanup'
 import { applyAppearance, applyKanbanTheme } from './lib/appearance'
@@ -230,6 +231,8 @@ export function App(): React.JSX.Element {
       useTerminalStore.getState().applyExit(message.id, message.code)
     })
     const offMenuSettings = window.piwright.onMenuSettings(() => useSessionsStore.getState().openSettings())
+    const offScheduled = window.piwright.onScheduledChanged(() => void useScheduledStore.getState().refresh())
+    void useScheduledStore.getState().refresh()
     void load()
     void window.piwright.getPendingDialogs().then((pending) => {
       for (const p of pending) applyEvent({ hostId: p.hostId, event: { type: 'dialog_open', id: p.id, dialog: p.dialog } })
@@ -241,6 +244,7 @@ export function App(): React.JSX.Element {
       offTermData()
       offTermExit()
       offMenuSettings()
+      offScheduled()
     }
   }, [applyEvent, applyChatStatus, applySessionsStatus, load])
 

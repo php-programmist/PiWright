@@ -164,6 +164,41 @@ export interface QueueTexts {
   followUp: string[]
 }
 
+/** Триггер отложенного промпта: после хода сессии-источника или в конкретное время. */
+export type ScheduledTrigger =
+  | { kind: 'after'; sourceHostId: string; sourceTitle: string }
+  | { kind: 'at'; atEpochMs: number }
+
+/** Отложенный промпт (очередь сессий): уйдет в целевую сессию по триггеру. */
+export interface ScheduledPrompt {
+  id: string
+  targetHostId: string
+  targetTitle: string
+  project: ProjectEntry
+  text: string
+  images: string[]
+  /** Настройки, зафиксированные при планировании; применяются перед отправкой (у занятой цели — пропускаются). */
+  model: string | null
+  thinkingLevel: string | null
+  trigger: ScheduledTrigger
+  createdAt: number
+}
+
+export interface SchedulePromptInput {
+  targetHostId: string
+  text: string
+  images?: string[]
+  model?: string | null
+  thinkingLevel?: string | null
+  trigger: ScheduledTrigger
+}
+
+export interface ScheduledListResult {
+  ok: boolean
+  error: string | null
+  items: ScheduledPrompt[]
+}
+
 export interface ForkSessionResult {
   ok: boolean
   error: string | null
@@ -665,6 +700,14 @@ export interface PiWrightApi {
   queueClear(hostId: string): Promise<PromptResult>
   /** Убрать один элемент очереди: clear_queue + повторная постановка остальных (при ходе). */
   queueRemove(hostId: string, kind: keyof QueueTexts, index: number): Promise<PromptResult>
+  /** Отложенный промпт (очередь сессий): запланировать отправку в целевую сессию. */
+  schedulePrompt(input: SchedulePromptInput): Promise<PromptResult>
+  /** Список отложенных промптов (переживает перезапуск, JSON в userData). */
+  scheduledList(): Promise<ScheduledListResult>
+  /** Отменить отложенную отправку по id. */
+  scheduledCancel(id: string): Promise<PromptResult>
+  /** Изменения списка отложенных (срабатывание/отмена/планирование в любом месте). */
+  onScheduledChanged(cb: () => void): () => void
   /** Живой список slash-команд агента (`get_commands`, включая навыки) для автодополнения; фолбэк — команды хендшейка. */
   sessionCommands(hostId: string): Promise<SessionCommandsResult>
   /** Разбивка токенов контекста активной сессии (ленивая оценка по get_messages). */
@@ -816,6 +859,10 @@ export const LOOP_GET_CHANNEL = 'loop:get'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
+export const SESSION_SCHEDULE_CHANNEL = 'session:schedule'
+export const SESSION_SCHEDULED_LIST_CHANNEL = 'session:scheduled-list'
+export const SESSION_SCHEDULED_CANCEL_CHANNEL = 'session:scheduled-cancel'
+export const SCHEDULED_CHANGED_CHANNEL = 'scheduled:changed'
 export const SESSION_SET_MODEL_CHANNEL = 'session:set-model'
 export const SESSION_COMMANDS_CHANNEL = 'session:commands'
 export const SESSION_CONTEXT_BREAKDOWN_CHANNEL = 'session:context-breakdown'

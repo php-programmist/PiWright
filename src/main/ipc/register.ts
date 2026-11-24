@@ -78,6 +78,9 @@ import {
   SESSION_ABORT_CHANNEL,
   SESSION_QUEUE_CLEAR_CHANNEL,
   SESSION_QUEUE_REMOVE_CHANNEL,
+  SESSION_SCHEDULE_CHANNEL,
+  SESSION_SCHEDULED_CANCEL_CHANNEL,
+  SESSION_SCHEDULED_LIST_CHANNEL,
   SESSIONS_CHOOSE_DIR_CHANNEL,
   PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
@@ -123,7 +126,7 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -134,6 +137,7 @@ import { profileAvailability } from '../terminal/profiles'
 import type { PiHost } from '../pi/pi-host'
 import type { LoopController } from '../pi/loop-controller'
 import type { SessionHost } from '../pi/session-host'
+import type { ScheduleService } from '../schedule/schedule-service'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -191,6 +195,38 @@ function isProfileId(value: unknown): value is TerminalProfileId {
   return value === 'powershell' || value === 'cmd' || value === 'gitbash' || value === 'wsl'
 }
 
+function parseScheduleInput(value: unknown): SchedulePromptInput | null {
+  if (value === null || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  if (typeof v['targetHostId'] !== 'string' || v['targetHostId'].length === 0) return null
+  if (typeof v['text'] !== 'string' || v['text'].trim().length === 0) return null
+  const rawTrigger = v['trigger']
+  if (rawTrigger === null || typeof rawTrigger !== 'object') return null
+  const t = rawTrigger as Record<string, unknown>
+  let trigger: ScheduledTrigger
+  if (t['kind'] === 'after') {
+    if (typeof t['sourceHostId'] !== 'string' || t['sourceHostId'].length === 0) return null
+    trigger = {
+      kind: 'after',
+      sourceHostId: t['sourceHostId'],
+      sourceTitle: typeof t['sourceTitle'] === 'string' ? t['sourceTitle'] : 'Session'
+    }
+  } else if (t['kind'] === 'at') {
+    if (typeof t['atEpochMs'] !== 'number' || !Number.isFinite(t['atEpochMs'])) return null
+    trigger = { kind: 'at', atEpochMs: t['atEpochMs'] }
+  } else {
+    return null
+  }
+  return {
+    targetHostId: v['targetHostId'],
+    text: v['text'],
+    images: isPathList(v['images']) ? v['images'] : [],
+    model: typeof v['model'] === 'string' ? v['model'] : null,
+    thinkingLevel: typeof v['thinkingLevel'] === 'string' ? v['thinkingLevel'] : null,
+    trigger
+  }
+}
+
 export interface NotificationServices {
   tokenStore: TelegramTokenStore
   bridge: RemoteBridge
@@ -207,7 +243,8 @@ export function registerIpc(
   loops: LoopController,
   kanban: KanbanService,
   kanbanThemes: KanbanThemeService,
-  notifications?: NotificationServices
+  notifications?: NotificationServices,
+  scheduled?: ScheduleService
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
@@ -406,7 +443,10 @@ export function registerIpc(
   })
 
   ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown) => {
-    if (typeof hostId === 'string') loops.forget(hostId)
+    if (typeof hostId === 'string') {
+      loops.forget(hostId)
+      scheduled?.forgetHost(hostId)
+    }
     piHost.close(typeof hostId === 'string' ? hostId : '')
     return { ok: true, error: null }
   })
@@ -535,6 +575,25 @@ export function registerIpc(
       return { ok: false, error: 'Invalid queue index' }
     }
     return h.queueRemove(kind, index)
+  })
+
+  ipcMain.handle(SESSION_SCHEDULE_CHANNEL, (_event, input: unknown) => {
+    if (scheduled === undefined) return { ok: false, error: 'Scheduler is not available' }
+    const parsed = parseScheduleInput(input)
+    if (parsed === null) return { ok: false, error: 'Invalid schedule request' }
+    return scheduled.schedule(parsed)
+  })
+
+  ipcMain.handle(SESSION_SCHEDULED_LIST_CHANNEL, () =>
+    scheduled === undefined
+      ? { ok: false, error: 'Scheduler is not available', items: [] }
+      : { ok: true, error: null, items: scheduled.list() }
+  )
+
+  ipcMain.handle(SESSION_SCHEDULED_CANCEL_CHANNEL, (_event, id: unknown) => {
+    if (scheduled === undefined) return { ok: false, error: 'Scheduler is not available' }
+    if (typeof id !== 'string' || id.length === 0) return { ok: false, error: 'Invalid schedule request' }
+    return scheduled.cancel(id)
   })
 
   ipcMain.handle(SESSION_COMMANDS_CHANNEL, (_event, hostId: unknown) => {
