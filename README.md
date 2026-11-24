@@ -1,10 +1,24 @@
 # PiWright
 
-Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi) — a native Windows app (Electron + React) that turns pi into a full IDE-like workspace: chat sessions, projects, git, file editor and terminal in one window.
+![Release](https://img.shields.io/github/v/release/php-programmist/PiWright)
+![License](https://img.shields.io/github/license/php-programmist/PiWright)
+![Platform](https://img.shields.io/badge/platform-Windows-blue)
+
+**PiWright** is an open-source desktop GUI for the [pi coding agent](https://github.com/earendil-works/pi) — a native Windows app (Electron + React) that turns pi into a full IDE-like workspace: AI chat, agent-driven kanban, git branch graph, Monaco editor, terminal and remote access from your phone — in one window.
+
+## Highlights
+
+- **Windows + WSL** — two pi backends, native and WSL, auto-detection per project
+- **Agent-driven kanban** — the agent picks tasks, moves cards, reports via comments
+- **Everything in one window** — chat, git branch graph, diffs, editor, terminal
+- **Remote access** — Telegram notifications and a PIN-protected web UI from a phone
+
+---
 
 ## Features
 
 ### Chat
+
 - Streaming chat with pi over RPC, markdown rendering with syntax highlighting
 - Collapsible tool-call blocks (optional single-line mode), nested subagent tool calls as a tree
 - **Steer** and queued messages: send follow-ups mid-turn or queue them for the next turn
@@ -20,17 +34,20 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 ![Chat with todo widget and tool calls](docs/screenshots/chat.png)
 
 ### Kanban
+
 - Kanban boards in a right-rail panel: columns, drag-and-drop cards, card modal with properties rail and activity feed
 - Card comments with images and clickable session/commit chips; agent tools for cards, columns and workflow — the agent picks tasks, moves them and reports via comments
 - Board themes (built-in + custom via Appearance manager, JSON import/export)
 - Durable board storage: cross-process file locking, atomic writes, corrupt-file quarantine
 
 ### Projects and backends
+
 - Multiple projects in a sidebar, each with its own sessions, git repo and settings
 - Two pi backends: native Windows and WSL (per-project choice, auto-detection)
 - Git worktree support: create, reuse and delete worktrees, sessions grouped under the project
 
 ### Git panel
+
 - Status with color-coded files (modified / staged / untracked / deleted) grouped into a folder tree
 - **Git Log dock**: PHPStorm-style branch graph with paginated history
 - Stage / unstage / commit, unified and split diffs
@@ -39,23 +56,27 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 ![Git Log dock with branch graph](docs/screenshots/git-log-dock.png)
 
 ### Files and editor
+
 - File browser with Monaco editor, soft wrap toggle
 - Markdown files: Obsidian-style live preview — click a block to edit the source, everything else renders
 
 ![Markdown live preview in the file tab](docs/screenshots/files-markdown.png)
 
 ### Terminal
+
 - Docked terminal at the bottom (node-pty / ConPTY, native and WSL)
 - Multiple tabs, renameable, restored after restart; cmd profile, copy selection to clipboard
 
 ![Terminal dock](docs/screenshots/terminal.png)
 
 ### Models, MCP and skills
+
 - Manage pi providers and models (`models.json`) for both backends: add, edit, copy between backends
 - MCP servers: user-level and per-project, enable/disable, exposure toggles, JSON import, live connection check
 - Skills: user-level and per-project directories with toggles
 
 ### Notifications and remote access
+
 - Sound notifications for completed turns, questions and errors (system sounds or custom wav)
 - Telegram bot notifications with per-event checkboxes and per-session toggle
 - Remote control from a phone: built-in WebSocket bridge with PIN auth (static PIN option) serves the web UI — session list, chat with images, abort, dialog answers, session creation; web UI follows the app language, failed server start retries with backoff
@@ -65,6 +86,7 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 ![Chat over the remote web UI](docs/screenshots/remote-chat.png)
 
 ### Interface
+
 - Project tabs: sessions, files, diffs, kanban boards, MCP and skills open as tabs in a single window; MRU tab restore on close and Ctrl+Tab switcher, type icons per tab
 - **Search Everywhere** overlay on double Shift
 - Resizable/collapsible projects sidebar, new-session and new-worktree buttons in the tab bar
@@ -85,17 +107,13 @@ Desktop workbench for the [pi coding agent](https://github.com/earendil-works/pi
 ## Installation
 
 Download the latest installer from [Releases](https://github.com/php-programmist/PiWright/releases/latest). The app checks this feed for updates automatically (configurable in Settings → Launch → Update feed URL).
-
 ## Building from source
-
 ```sh
 npm install
 npm run build          # compile to out/
 npm run dist           # build the NSIS installer (release/)
 ```
-
 ## Development
-
 ```sh
 npm install
 npm run dev            # electron-vite dev (window + HMR)
@@ -103,19 +121,13 @@ npm test               # vitest
 npm run typecheck      # tsc (node + web configs)
 npm run lint           # eslint
 ```
-
 ## Settings
-
 App settings live in `%APPDATA%\PiWright\settings.json` and are editable from the in-app settings window: backends, WSL distro, pi path, update feed, appearance, notifications, remote access.
-
 ## Project structure
-
 - `src/main` — Electron main process: pi RPC client, backends (native/WSL), settings, git, files, terminal, MCP, notifications, remote bridge
 - `src/preload` — contextBridge, the only IPC boundary
 - `src/shared` — IPC contracts and pi protocol types, no side effects
 - `src/renderer` — React UI (zustand stores, views)
 - `tests` — vitest
-
 ## License
-
 [MIT](LICENSE)
