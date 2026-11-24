@@ -187,6 +187,8 @@ const RU: Record<string, string> = {
 
   // Git-панель
   'Search branches': 'Поиск веток',
+  'Ahead: {count}': 'Опережение: {count}',
+  'Behind: {count}': 'Отставание: {count}',
   'New branch...': 'Новая ветка...',
   'no branches': 'нет веток',
   'new branch from {name}': 'новая ветка от {name}',

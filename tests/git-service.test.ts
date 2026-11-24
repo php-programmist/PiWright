@@ -503,4 +503,24 @@ describe('GitService log filters and commit actions', () => {
     const root = execSync('git rev-list --max-parents=0 HEAD', { cwd: dir, encoding: 'utf8' }).trim()
     expect((await git.squashInto(project, root, 'x')).ok).toBe(false)
   })
+
+  it('fetch picks up remote commits into behind', async () => {
+    const clone = mkdtempSync(join(tmpdir(), 'piwright-git-clone-'))
+    try {
+      execSync(`git clone -q "${remote}" "${clone}"`, { stdio: 'pipe' })
+      execSync('git config user.email test@test', { cwd: clone, stdio: 'pipe' })
+      execSync('git config user.name test', { cwd: clone, stdio: 'pipe' })
+      writeFileSync(join(clone, 'remote.txt'), 'x')
+      execSync('git add .', { cwd: clone, stdio: 'pipe' })
+      execSync('git commit -q -m from-clone', { cwd: clone, stdio: 'pipe' })
+      execSync('git push -q origin main', { cwd: clone, stdio: 'pipe' })
+      const before = await git.status(project)
+      expect(before.status?.behind).toBe(0)
+      expect((await git.fetch(project)).ok).toBe(true)
+      const after = await git.status(project)
+      expect(after.status?.behind).toBe(1)
+    } finally {
+      rmSync(clone, { recursive: true, force: true })
+    }
+  })
 })

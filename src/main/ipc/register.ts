@@ -35,6 +35,7 @@ import {
   GIT_COMMIT_FILES_CHANNEL,
   GIT_COMMIT_FILE_DIFF_CHANNEL,
   GIT_PUSH_CHANNEL,
+  GIT_FETCH_CHANNEL,
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
   GIT_UNSTAGE_CHANNEL,
@@ -609,6 +610,11 @@ export function registerIpc(
   ipcMain.handle(GIT_PUSH_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
     return git.push(project)
+  })
+
+  ipcMain.handle(GIT_FETCH_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    return git.fetch(project)
   })
 
   ipcMain.handle(GIT_LOG_CHANNEL, async (_event, project: unknown, page: unknown, filter: unknown) => {

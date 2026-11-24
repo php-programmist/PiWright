@@ -664,6 +664,8 @@ export interface PiWrightApi {
   gitUnstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
+  /** `git fetch --quiet` — обновить remote-tracking ref'ы (ahead/behind в статусе). */
+  gitFetch(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry, page?: number, filter?: GitLogFilter): Promise<GitLogResult>
   /** Список изменённых файлов коммита (diff против первого родителя). */
   gitCommitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult>
@@ -810,6 +812,7 @@ export const GIT_STAGE_CHANNEL = 'git:stage'
 export const GIT_UNSTAGE_CHANNEL = 'git:unstage'
 export const GIT_COMMIT_CHANNEL = 'git:commit'
 export const GIT_PUSH_CHANNEL = 'git:push'
+export const GIT_FETCH_CHANNEL = 'git:fetch'
 export const GIT_LOG_CHANNEL = 'git:log'
 export const GIT_COMMIT_FILES_CHANNEL = 'git:commit-files'
 export const GIT_COMMIT_FILE_DIFF_CHANNEL = 'git:commit-file-diff'

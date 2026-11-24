@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { SessionsPanel } from './components/SessionsPanel'
 import { TabBar } from './components/TabBar'
+import { AppHeader } from './components/AppHeader'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
 import { FilesPanel } from './views/files/FilesPanel'
@@ -243,6 +244,7 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
+      <AppHeader />
       <ConfirmDialogHost />
       <RenameDialogHost />
       <TabSwitcherHost />

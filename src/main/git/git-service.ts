@@ -40,6 +40,7 @@ import {
 
 const GIT_TIMEOUT_MS = 30_000
 const PUSH_TIMEOUT_MS = 120_000
+const FETCH_TIMEOUT_MS = 120_000
 const GEN_TIMEOUT_MS = 240_000
 export const GIT_LOG_PAGE_SIZE = 50
 const BINARY_PLACEHOLDER = '(binary file)'
@@ -276,6 +277,12 @@ export class GitService {
     const args = upstream.code === 0 ? ['push'] : ['push', '-u', 'origin', 'HEAD']
     const result = await this.run(project, args, PUSH_TIMEOUT_MS)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Забрать изменения с удалений; ошибки (нет сети/remote) — обычный GitOpResult, не throw. */
+  async fetch(project: ProjectEntry): Promise<GitOpResult> {
+    const result = await this.run(project, ['fetch', '--quiet'], FETCH_TIMEOUT_MS)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['fetch']) }
   }
 
   /** Страница лога для дока истории: page считается с 0, порядок по датам. Фильтр — подстрока
