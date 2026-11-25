@@ -28,7 +28,7 @@
 - **Built-in `/loop`**: run the agent in iterations with an exit condition, `loop_stop` tool, loop flags in session names and icons
 - Interactive question cards (ask_question) with options, free-text answers and multi-select
 - Todo widget pinned above the chat, live context-usage indicator with color grading and cache stats
-- Paste images and attach files (copied to `.pi/attachments` in the repo root so worktree sessions share them and survive worktree removal), with image previews and lightbox in the chat feed
+- Paste images and attach files (copied to `.pi/attachments` in the repo root so worktree sessions share them and survive worktree removal), with image previews and lightbox in the chat feed; click a pending attachment thumbnail to preview it before sending
 - Resizable composer: auto-growing prompt field, drag handle on the top edge, double-click to reset
 - Session history with subagent sessions nested under their parent, unread dots and busy badges per project; rename sessions via dialog, search across history
 - Live tok/s during streaming, turn timer, per-bucket context token breakdown popover
@@ -41,6 +41,8 @@
 - Kanban boards in a right-rail panel as a task tree: board → columns → tasks with theme accents, counters and collapsible columns; card modal with properties rail and activity feed
 - Session status dots on cards (busy, waiting for answer, unread turn) survive session close until the card is opened; live board updates without manual refresh
 - Card comments with images and clickable session/commit chips; agent tools for cards, columns and workflow — the agent picks tasks, moves them and reports via comments
+- Copyable task and session links (card and session tab context menus) that render as clickable chips in the chat, card description and comments — a task chip opens the card, a session chip opens the session
+- A card can open as its own tab with the full card editor, persisted across restarts; cards linked to the current session show as chips in the chat header
 - Board themes (built-in + custom via Appearance manager, JSON import/export)
 - Durable board storage: cross-process file locking, atomic writes, corrupt-file quarantine
 
@@ -78,6 +80,7 @@
 ### Models, MCP and skills
 
 - Manage pi providers and models (`models.json`) for both backends: add, edit, copy between backends
+- Model dropdown re-reads the pi model catalog when opened and after saving models
 - MCP servers: user-level and per-project, enable/disable, exposure toggles, JSON import, live connection check
 - Skills: user-level and per-project directories with toggles
 
@@ -93,7 +96,7 @@
 
 ### Interface
 
-- Project tabs: sessions, files, diffs, kanban boards, MCP and skills open as tabs in a single window; MRU tab restore on close and Ctrl+Tab switcher, type icons per tab
+- Project tabs: sessions, files, diffs, kanban boards and task cards, MCP and skills open as tabs in a single window; MRU tab restore on close and Ctrl+Tab switcher, type icons per tab
 - **Search Everywhere** overlay on double Shift
 - Resizable/collapsible projects sidebar, new-session and new-worktree buttons in the tab bar
 - Dark and light themes, adjustable chat font size
