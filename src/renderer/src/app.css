@@ -844,8 +844,51 @@ body {
   padding: 8px 0;
 }
 
+.changelog-status.dim {
+  font-size: 12px;
+  color: var(--faint);
+  padding-top: 0;
+}
+
 .changelog-status.stale {
   color: var(--warn, #d9a441);
+}
+
+.changelog-md tt {
+  background: var(--input-bg);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.changelog-md h1,
+.changelog-md h2,
+.changelog-md h3 {
+  font-size: 14px;
+  margin: 12px 0 4px;
+}
+
+.changelog-md ul,
+.changelog-md ol {
+  padding-left: 22px;
+  margin: 4px 0;
+}
+
+.changelog-md li {
+  margin: 3px 0;
+}
+
+.changelog-md p {
+  margin: 4px 0;
+}
+
+.changelog-md pre {
+  background: var(--input-bg);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-size: 12px;
 }
 
 .changelog-release {

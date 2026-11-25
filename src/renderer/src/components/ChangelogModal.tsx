@@ -42,8 +42,14 @@ export function ChangelogModal({ onClose }: { onClose: () => void }): React.JSX.
         </div>
         <div className="changelog-body">
           {state === null && <div className="changelog-status">{t('Loading…')}</div>}
-          {state !== null && state.releases.length === 0 && (
-            <div className="changelog-status">{state.error !== null ? t('Failed to load changelog') : t('No releases yet')}</div>
+          {state !== null && state.releases.length === 0 && !state.ok && (
+            <>
+              <div className="changelog-status">{t('Failed to load changelog')}</div>
+              {state.error !== null && <div className="changelog-status dim">{state.error}</div>}
+            </>
+          )}
+          {state !== null && state.releases.length === 0 && state.ok && (
+            <div className="changelog-status">{t('No releases yet')}</div>
           )}
           {state !== null && state.stale && <div className="changelog-status stale">{t('Showing saved copy (offline)')}</div>}
           {state !== null &&
@@ -53,10 +59,14 @@ export function ChangelogModal({ onClose }: { onClose: () => void }): React.JSX.
                   <span className="changelog-version">v{r.version}</span>
                   {r.date.length > 0 && <span className="changelog-date">{r.date}</span>}
                 </div>
-                {r.body.length > 0 && (
-                  <div className="markdown changelog-md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{r.body}</ReactMarkdown>
-                  </div>
+                {r.bodyHtml !== undefined ? (
+                  <div className="markdown changelog-md" dangerouslySetInnerHTML={{ __html: r.bodyHtml }} />
+                ) : (
+                  r.body.length > 0 && (
+                    <div className="markdown changelog-md">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{r.body}</ReactMarkdown>
+                    </div>
+                  )
                 )}
               </section>
             ))}

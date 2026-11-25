@@ -710,8 +710,10 @@ export interface ChangelogRelease {
   version: string
   /** Дата публикации (YYYY-MM-DD). */
   date: string
-  /** Markdown-тело релиза. */
+  /** Markdown-тело релиза (пусто, если заполнено bodyHtml). */
   body: string
+  /** Готовый санитизированный HTML (фолбэк Atom-фида); приоритетнее body. */
+  bodyHtml?: string
 }
 
 export interface ChangelogResult {
