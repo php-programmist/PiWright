@@ -5686,3 +5686,25 @@ pre.code-block {
   fill: var(--muted);
   font-size: 11px;
 }
+
+.stats-totals {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.stats-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-total .stats-dot {
+  width: 9px;
+  height: 9px;
+}

@@ -22,6 +22,8 @@ const METRICS = [
   { key: 'cacheRead', color: 'var(--yellow)' }
 ] as const
 
+const STATS_FIRST_YEAR = 2026
+
 type MetricKey = (typeof METRICS)[number]['key']
 
 function niceMax(v: number): number {
@@ -62,11 +64,21 @@ export function StatsView(): React.JSX.Element {
     () => Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date(2026, i, 1))),
     [locale]
   )
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
+  const years = Array.from(
+    { length: Math.max(1, new Date().getFullYear() - STATS_FIRST_YEAR + 1) },
+    (_, i) => new Date().getFullYear() - i
+  )
 
   const visible = METRICS.filter((m) => metrics[m.key])
   const points = result?.points ?? []
   const hasData = points.some((p) => p.input > 0 || p.output > 0 || p.cacheRead > 0)
+  const full = new Intl.NumberFormat(locale)
+  const totals = { input: 0, output: 0, cacheRead: 0 }
+  for (const p of points) {
+    totals.input += p.input
+    totals.output += p.output
+    totals.cacheRead += p.cacheRead
+  }
 
   return (
     <div
@@ -158,6 +170,16 @@ export function StatsView(): React.JSX.Element {
             </label>
           ))}
         </div>
+        {hasData && visible.length > 0 && (
+          <div className="stats-totals">
+            {visible.map((m) => (
+              <span key={m.key} className="stats-total">
+                <span className="stats-dot" style={{ background: m.color }} />
+                {t(METRIC_LABELS[m.key])}: {full.format(totals[m.key])}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="stats-chart-box">
           {result === null && loading ? (
             <div className="panel-hint">{t('Loading…')}</div>
