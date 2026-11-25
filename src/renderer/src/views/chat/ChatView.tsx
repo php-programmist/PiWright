@@ -1183,6 +1183,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         {pendingZoom !== null && <Lightbox src={pendingZoom.src} alt={pendingZoom.name} onClose={() => setPendingZoom(null)} />}
         <TokenField
           ref={promptRef}
+          project={project}
           value={input}
           placeholder={
             sendOnEnter

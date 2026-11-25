@@ -5509,9 +5509,15 @@ pre.code-block {
 }
 
 /* Живой бейдж токенов-ссылок в полях ввода (TokenField): бэкдроп с тем же текстом
-   лежит поверх textarea, токены выделены чипом; стили textarea копируются в JS. */
+   лежит поверх textarea, токены закрыты бейджем с именем задачи/сессии; стили
+   textarea копируются в JS. */
 .token-field {
   position: relative;
+  --token-badge-bg: var(--bg);
+}
+
+.composer .token-field {
+  --token-badge-bg: var(--input-bg);
 }
 
 .token-field > textarea {
@@ -5530,10 +5536,19 @@ pre.code-block {
   word-break: normal;
 }
 
-.token-chip {
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+.token-slot {
+  position: relative;
+}
+
+/* Бейдж закрывает сырой токен в textarea целиком: ширина = ширине токена (left/right: 0),
+   фон непрозрачный в цвет поля. */
+.token-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--token-badge-bg);
 }
 
 .board-chip.commit {

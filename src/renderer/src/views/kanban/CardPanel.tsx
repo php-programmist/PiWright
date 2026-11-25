@@ -275,6 +275,7 @@ export function CardPanel({
           <div className="board-section-label">{t('Description')}</div>
           <TokenField
             className="board-modal-description"
+            project={project}
             placeholder={t('Description')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -308,6 +309,7 @@ export function CardPanel({
                     <>
                       <TokenField
                         className="board-comment-edit"
+                        project={project}
                         value={editCommentText}
                         autoFocus
                         onChange={(e) => setEditCommentText(e.target.value)}
@@ -421,6 +423,7 @@ export function CardPanel({
         )}
         <TokenField
           className="board-comment-input"
+          project={project}
           placeholder={t('Add comment')}
           value={comment}
           onChange={(e) => setComment(e.target.value)}

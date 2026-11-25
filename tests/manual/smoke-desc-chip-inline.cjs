@@ -1,6 +1,6 @@
-/* Smoke: токен kanban:task: в описании карточки рендерится бейджем прямо в поле ввода
- * (TokenField-бэкдроп), бейдж на первой строке внутри поля. Регрессия c-93510c30
- * (был отдельный strip предпросмотра под textarea — заменён инлайн-бейджем). */
+/* Smoke: токен kanban:task: в описании карточки рендерится бейджем с именем задачи прямо в поле
+ * ввода (TokenField-бэкдроп), бейдж на первой строке внутри поля и непрозрачный (закрывает сырой
+ * токен); Backspace справа от бейджа удаляет токен целиком. Регрессия c-93510c30. */
 const { chromium } = require('playwright-core')
 
 const CDP = process.env.SMOKE_CDP || 'http://localhost:9223'
@@ -81,31 +81,57 @@ const MARK = `smoke-desc-${Date.now()}`
   await p.setViewportSize({ width: 1600, height: 1000 })
   await p.waitForTimeout(400)
 
+  const refTitle = `${MARK} REF`
+  const expectedTitle = refTitle.length > 20 ? `${refTitle.slice(0, 20)}…` : refTitle
   const check = await p.evaluate(() => {
     const ta = document.querySelector('.board-card-modal .board-modal-description')
     if (ta === null) return { found: false }
     const field = ta.closest('.token-field')
     const backdrop = field !== null && field !== undefined ? field.querySelector('.token-backdrop') : null
-    const chip = backdrop !== null && backdrop !== undefined ? backdrop.querySelector('.token-chip') : null
+    const badge = backdrop !== null && backdrop !== undefined ? backdrop.querySelector('.token-badge') : null
     const taRect = ta.getBoundingClientRect()
-    const chipRect = chip !== null && chip !== undefined ? chip.getBoundingClientRect() : null
+    const badgeRect = badge !== null && badge !== undefined ? badge.getBoundingClientRect() : null
     return {
       found: true,
       fieldPresent: field !== null && field !== undefined,
       backdropPresent: backdrop !== null && backdrop !== undefined,
-      chipPresent: chip !== null && chip !== undefined,
-      chipText: chip?.textContent ?? null,
-      chipInsideField: chipRect !== null && chipRect.top >= taRect.top && chipRect.top < taRect.bottom,
-      chipOnFirstLine: chipRect !== null && Math.abs(chipRect.top - taRect.top) < 30,
+      badgePresent: badge !== null && badge !== undefined,
+      badgeText: badge?.textContent ?? null,
+      badgeOpaque: badge !== null && getComputedStyle(badge).backgroundColor !== 'rgba(0, 0, 0, 0)',
+      badgeInsideField: badgeRect !== null && badgeRect.top >= taRect.top && badgeRect.top < taRect.bottom,
+      badgeOnFirstLine: badgeRect !== null && Math.abs(badgeRect.top - taRect.top) < 30,
     }
   })
   console.log('check:', JSON.stringify(check, null, 1))
   if (!check.found || !check.fieldPresent || !check.backdropPresent) throw new Error('TokenField not rendered for description')
-  if (!check.chipPresent) throw new Error('token badge not rendered in description field')
-  if (check.chipText !== `kanban:task:${setup.refId}`) throw new Error('badge text mismatch: ' + check.chipText)
-  if (!check.chipInsideField || !check.chipOnFirstLine) throw new Error('badge misaligned: ' + JSON.stringify(check))
+  if (!check.badgePresent) throw new Error('token badge not rendered in description field')
+  if (check.badgeText !== expectedTitle) throw new Error(`badge text mismatch: ${check.badgeText} expected ${expectedTitle}`)
+  if (!check.badgeOpaque) throw new Error('badge background is not opaque — raw token would show through')
+  if (!check.badgeInsideField || !check.badgeOnFirstLine) throw new Error('badge misaligned: ' + JSON.stringify(check))
 
   await p.screenshot({ path: process.env.TEMP + '\\desc-chip-inline.png' })
+
+  // Backspace при каретке внутри бейджа удаляет токен целиком, каретка остаётся на месте токена.
+  await p.evaluate(() => {
+    const ta = document.querySelector('.board-card-modal .board-modal-description')
+    const tokStart = ta.value.indexOf('kanban:task:')
+    ta.focus()
+    ta.setSelectionRange(tokStart + 5, tokStart + 5)
+  })
+  await p.keyboard.press('Backspace')
+  await p.waitForTimeout(300)
+  const afterBackspace = await p.evaluate(() => {
+    const ta = document.querySelector('.board-card-modal .board-modal-description')
+    return {
+      value: ta.value,
+      caret: ta.selectionStart,
+      badges: document.querySelectorAll('.board-card-modal .token-badge').length,
+    }
+  })
+  console.log('afterBackspace:', JSON.stringify(afterBackspace))
+  if (afterBackspace.value.includes('kanban:task:') || afterBackspace.value.includes(':task:')) throw new Error('Backspace did not remove the whole token: ' + afterBackspace.value)
+  if (afterBackspace.caret !== afterBackspace.value.indexOf('(') + 1) throw new Error('caret is not at the removed token start')
+  if (afterBackspace.badges !== 0) throw new Error('badge still rendered after token removal')
 
   // Cleanup.
   const cleanup = await p.evaluate(async ([mark, refId]) => {
@@ -122,7 +148,7 @@ const MARK = `smoke-desc-${Date.now()}`
   console.log('cleanup deleted:', cleanup)
 
   await b.close()
-  const ok = check.found && check.fieldPresent && check.backdropPresent && check.chipPresent && check.chipInsideField && check.chipOnFirstLine
+  const ok = check.found && check.fieldPresent && check.backdropPresent && check.badgePresent && check.badgeInsideField && check.badgeOnFirstLine && afterBackspace.badges === 0
   console.log(ok ? 'SMOKE PASS' : 'SMOKE FAIL')
   if (!ok) process.exit(1)
 })().catch((e) => {

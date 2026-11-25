@@ -6,7 +6,7 @@ import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 
 /** Токен-ссылка в тексте: kanban:task:c-xxxxxxxx или session:<sessionId>. */
-const LINK_TOKEN_RE = /kanban:task:([A-Za-z0-9-]+)|session:([A-Za-z0-9-]+)/g
+export const LINK_TOKEN_RE = /kanban:task:([A-Za-z0-9-]+)|session:([A-Za-z0-9-]+)/g
 
 export type LinkSegment =
   | { kind: 'text'; text: string }
@@ -41,7 +41,7 @@ export function copyText(text: string): void {
   })
 }
 
-const truncateTitle = (title: string): string => (title.length > 20 ? `${title.slice(0, 20)}…` : title)
+export const truncateTitle = (title: string): string => (title.length > 20 ? `${title.slice(0, 20)}…` : title)
 
 interface TaskRef {
   boardId: string
@@ -50,9 +50,9 @@ interface TaskRef {
 
 const taskRefCache = new Map<string, TaskRef | null>()
 
-/** Чип ссылки на задачу: клик — открыть задачу в отдельной вкладке. */
-function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }): React.JSX.Element {
-  const t = useT()
+/** Ссылка на задачу по id: { boardId, title } | null (не найдена) | undefined (ещё ищем).
+ *  Результат кэшируется на модульном уровне — чипы в ленте и бейджи в полях не дёргают IPC повторно. */
+export function useTaskRef(project: ProjectEntry, taskId: string): TaskRef | null | undefined {
   const cacheKey = `${projectKey(project)}\u0000${taskId}`
   const [ref, setRef] = useState<TaskRef | null | undefined>(() => taskRefCache.get(cacheKey))
   useEffect(() => {
@@ -82,6 +82,13 @@ function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }
       cancelled = true
     }
   }, [cacheKey, project, ref, taskId])
+  return ref
+}
+
+/** Чип ссылки на задачу: клик — открыть задачу в отдельной вкладке. */
+function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }): React.JSX.Element {
+  const t = useT()
+  const ref = useTaskRef(project, taskId)
 
   const open = (): void => {
     if (ref === null || ref === undefined) return
@@ -101,6 +108,35 @@ function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }
       {title}
     </span>
   )
+}
+
+/** Заголовок сессии по id для бейджа в поле ввода: активная сессия → история проекта в сторе →
+ *  IPC-история; не найдена — первые 8 символов id. undefined — ещё резолвим. */
+export function useSessionTitle(project: ProjectEntry, sessionId: string): string | undefined {
+  const [title, setTitle] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      const st = useSessionsStore.getState()
+      const active = st.active.find((r) => r.sessionId === sessionId)
+      if (active !== undefined) {
+        if (!cancelled) setTitle(active.title)
+        return
+      }
+      const inStore = st.projects.flatMap((p) => p.history).find((h) => h.id === sessionId)
+      if (inStore !== undefined) {
+        if (!cancelled) setTitle(inStore.title)
+        return
+      }
+      const history = await window.piwright.sessionHistory(project)
+      if (!cancelled) setTitle(history.find((h) => h.id === sessionId)?.title ?? sessionId.slice(0, 8))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [project, sessionId])
+  return title
 }
 
 interface SessionTaskRef {
