@@ -61,6 +61,12 @@ export const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
       <path d="M3.5 2.5v9M8 2.5v5.5M12.5 2.5v11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   ),
+  task: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3 2.5h10v11H3Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ),
   mcp: (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2.5 2h11v4.5h-11ZM2.5 9.5h11V14h-11Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
@@ -97,6 +103,7 @@ function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
   if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
+  if (tab.kind === 'task') return tab.title ?? t('Task')
   return tab.kind === 'mcp' ? t('MCP servers') : t('Skills')
 }
 
@@ -108,6 +115,7 @@ function typeLabel(kind: MenuState['kind'], t: T): string {
     case 'mcp': return t('MCP servers')
     case 'skills': return t('Skills')
     case 'kanban': return t('Kanban')
+    case 'task': return t('Tasks')
     case 'transcript': return t('Transcripts')
   }
 }
@@ -209,8 +217,8 @@ export function TabBar(): React.JSX.Element | null {
   }
 
   const allTabs = entry?.tabs ?? []
-  const kanbanTabs = allTabs.filter((tab) => tab.kind === 'kanban')
-  const otherTabs = allTabs.filter((tab) => tab.kind !== 'kanban')
+  const kanbanTabs = allTabs.filter((tab) => tab.kind === 'kanban' || tab.kind === 'task')
+  const otherTabs = allTabs.filter((tab) => tab.kind !== 'kanban' && tab.kind !== 'task')
 
   // Порядок для «слева/справа»: канбан, обычные сессии, worktree-сессии, затем остальные вкладки.
   const orderedIds: string[] = kanbanTabs

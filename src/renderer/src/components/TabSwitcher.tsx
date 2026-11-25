@@ -38,6 +38,7 @@ function tabTitle(tab: ProjectTab, t: T): string {
   if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
   if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
+  if (tab.kind === 'task') return tab.title ?? t('Task')
   return tab.kind === 'mcp' ? t('MCP servers') : t('Skills')
 }
 

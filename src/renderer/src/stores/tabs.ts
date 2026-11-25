@@ -32,7 +32,7 @@ export function useCenterProject(): ProjectEntry | null {
   return tab?.project ?? real ?? projectForKey(activeProjectKey)
 }
 
-export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'transcript'
+export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript'
 
 export interface ProjectTab {
   kind: TabKind
@@ -41,9 +41,11 @@ export interface ProjectTab {
   path?: string
   /** diff — хеш коммита (дифф файла в коммите из истории Git). */
   hash?: string
-  /** kanban — id доски. */
+  /** kanban/task — id доски. */
   boardId?: string
-  /** transcript/kanban — заголовок (сессии / доски). */
+  /** task — id карточки. */
+  taskId?: string
+  /** transcript/kanban/task — заголовок (сессии / доски / задачи). */
   title?: string
   /** transcript — полная сводка для TranscriptView. */
   summary?: SessionSummary
@@ -73,9 +75,10 @@ export function mruAlive(entry: MruEntry): boolean {
   return useTabsStore.getState().byProject[entry.key]?.tabs.some((t) => tabId(t) === entry.id) ?? false
 }
 
-export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId'>): string {
+export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId' | 'taskId'>): string {
   if (tab.path === undefined) {
-    return tab.boardId === undefined ? tab.kind : `${tab.kind}\u0000${tab.boardId}`
+    if (tab.boardId === undefined) return tab.kind
+    return tab.taskId === undefined ? `${tab.kind}\u0000${tab.boardId}` : `${tab.kind}\u0000${tab.boardId}\u0000${tab.taskId}`
   }
   return tab.hash === undefined ? `${tab.kind}\u0000${tab.path}` : `${tab.kind}\u0000${tab.path}\u0000${tab.hash}`
 }
@@ -105,7 +108,8 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
             t.path !== undefined ? { kind: t.kind as ProjectTabKind, path: t.path } : { kind: t.kind as ProjectTabKind }
           if (t.hash !== undefined) savedTab.hash = t.hash
           if (t.boardId !== undefined) savedTab.boardId = t.boardId
-          if (t.title !== undefined && t.kind === 'kanban') savedTab.title = t.title
+          if (t.taskId !== undefined) savedTab.taskId = t.taskId
+          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task')) savedTab.title = t.title
           return savedTab
         })
       const index = saved.findIndex((t) => tabId(t) === activeId)
@@ -158,7 +162,7 @@ interface TabsState {
   closeAllOfType: (project: ProjectEntry, kind: TabKind) => void
   closeLeft: (project: ProjectEntry, id: string) => void
   closeRight: (project: ProjectEntry, id: string) => void
-  /** Закрыть канбан-вкладки во всех проектах (при выключенном kanbanEnabled). */
+  /** Закрыть канбан-вкладки (доски и задачи) во всех проектах (при выключенном kanbanEnabled). */
   purgeKanbanTabs: () => void
   forgetProject: (key: string) => void
 }
@@ -218,10 +222,11 @@ export const useTabsStore = create<TabsState>((set, get) => ({
             path: t.path,
             ...(t.hash !== undefined ? { hash: t.hash } : {}),
             ...(t.boardId !== undefined ? { boardId: t.boardId } : {}),
+            ...(t.taskId !== undefined ? { taskId: t.taskId } : {}),
             ...(t.title !== undefined ? { title: t.title } : {})
           }))
           const savedActiveId = snap.activeIndex !== undefined && snap.activeIndex < restored.length ? tabId(restored[snap.activeIndex]) : null
-          const tabs = kanbanOn ? restored : restored.filter((t) => t.kind !== 'kanban')
+          const tabs = kanbanOn ? restored : restored.filter((t) => t.kind !== 'kanban' && t.kind !== 'task')
           entry = { tabs, activeId: savedActiveId !== null && tabs.some((t) => tabId(t) === savedActiveId) ? savedActiveId : null }
         }
       }
@@ -374,7 +379,9 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   purgeKanbanTabs: () => {
     if (useSessionsStore.getState().settings?.kanbanEnabled ?? false) return
     for (const [key, entry] of Object.entries(get().byProject)) {
-      if (entry.tabs.some((t) => t.kind === 'kanban')) get().closeAllOfType(projectForKey(key), 'kanban')
+      for (const kind of ['kanban', 'task'] as const) {
+        if (entry.tabs.some((t) => t.kind === kind)) get().closeAllOfType(projectForKey(key), kind)
+      }
     }
   },
 

@@ -4800,6 +4800,25 @@ pre.code-block {
   height: min(640px, 100%);
 }
 
+/* Вкладка задачи: карточка во всю область вкладки, без рамок модалки. */
+.task-view {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.task-view .board-card-modal {
+  flex: 1;
+  width: auto;
+  max-width: none;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .board-head-danger {
   background: none;
   border: none;

@@ -3,7 +3,6 @@ import type { KanbanSessionRef } from '../../../shared/kanban'
 import type { ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 import { projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
-import { useKanbanStore } from '../stores/kanban'
 import { useLang, useT } from '../lib/i18n'
 
 /** Токен-ссылка в тексте: kanban:task:c-xxxxxxxx или kanban:session:<sessionId>. */
@@ -46,13 +45,12 @@ const truncateTitle = (title: string): string => (title.length > 20 ? `${title.s
 
 interface TaskRef {
   boardId: string
-  boardName: string
   title: string
 }
 
 const taskRefCache = new Map<string, TaskRef | null>()
 
-/** Чип ссылки на задачу: клик — открыть вкладку доски и модалку карточки. */
+/** Чип ссылки на задачу: клик — открыть задачу в отдельной вкладке. */
 function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }): React.JSX.Element {
   const t = useT()
   const cacheKey = `${projectKey(project)}\u0000${taskId}`
@@ -71,7 +69,7 @@ function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }
         const res = await window.piwright.kanbanBoardGet(project, board.id)
         const card = res.ok && res.board !== null ? res.board.cards.find((c) => c.id === taskId) : undefined
         if (card !== undefined) {
-          const found: TaskRef = { boardId: board.id, boardName: board.name, title: card.title }
+          const found: TaskRef = { boardId: board.id, title: card.title }
           taskRefCache.set(cacheKey, found)
           if (!cancelled) setRef(found)
           return
@@ -87,10 +85,7 @@ function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }
 
   const open = (): void => {
     if (ref === null || ref === undefined) return
-    const ts = useTabsStore.getState()
-    ts.setActiveProject(parentTabKey(project))
-    ts.openTab(project, { kind: 'kanban', boardId: ref.boardId, title: ref.boardName })
-    useKanbanStore.getState().setOpenCard(`${projectKey(project)}\u0000${ref.boardId}`, taskId)
+    useTabsStore.getState().openTab(project, { kind: 'task', boardId: ref.boardId, title: ref.title, taskId })
   }
 
   if (ref === null) {

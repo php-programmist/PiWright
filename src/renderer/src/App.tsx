@@ -10,6 +10,7 @@ import { TerminalPanel } from './views/terminal/TerminalPanel'
 import { GitLogPanel } from './views/git/GitLogPanel'
 import { KanbanPanel } from './views/kanban/KanbanPanel'
 import { BoardView } from './views/kanban/BoardView'
+import { TaskView } from './views/kanban/TaskView'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -286,6 +287,8 @@ export function App(): React.JSX.Element {
                   <DiffOverlay key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'kanban' ? (
                   <BoardView key={tabId(activeTab)} tab={activeTab} />
+                ) : activeTab.kind === 'task' ? (
+                  <TaskView key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'mcp' ? (
                   <McpView onClose={closeActiveTab} />
                 ) : activeTab.kind === 'skills' ? (

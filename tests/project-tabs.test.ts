@@ -35,4 +35,29 @@ describe('mergeProjectTabs — kanban', () => {
     const out = mergeProjectTabs({ k: { tabs: [{ kind: 'kanban2', boardId: 'b-1a2b3c4d' }] } })
     expect(out['k']).toBeUndefined()
   })
+
+  it('сохраняет task-вкладку с boardId, taskId и title', () => {
+    const out = mergeProjectTabs({
+      'dir\u0000D:\\proj': {
+        tabs: [{ kind: 'task', boardId: 'b-1a2b3c4d', taskId: 'c-9249e685', title: 'Fix bug' }],
+        activeIndex: 0
+      }
+    })
+    const snap = out['dir\u0000D:\\proj']
+    expect(snap).toBeDefined()
+    expect(snap.tabs[0]).toEqual({ kind: 'task', boardId: 'b-1a2b3c4d', taskId: 'c-9249e685', title: 'Fix bug' })
+  })
+
+  it('отбрасывает task-вкладку без boardId или taskId', () => {
+    const out = mergeProjectTabs({
+      k: {
+        tabs: [
+          { kind: 'task', taskId: 'c-9249e685' },
+          { kind: 'task', boardId: 'b-1a2b3c4d' },
+          { kind: 'task', boardId: 'b-1a2b3c4d', taskId: 'c-9249e685' }
+        ]
+      }
+    })
+    expect(out['k']?.tabs).toEqual([{ kind: 'task', boardId: 'b-1a2b3c4d', taskId: 'c-9249e685' }])
+  })
 })
