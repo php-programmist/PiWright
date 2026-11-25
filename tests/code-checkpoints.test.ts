@@ -18,6 +18,7 @@ async function makeRepo(): Promise<string> {
   git(dir, 'init', '-q')
   git(dir, 'config', 'user.email', 't@t')
   git(dir, 'config', 'user.name', 't')
+  git(dir, 'config', 'core.autocrlf', 'false')
   await writeFile(join(dir, 'a.txt'), 'base\n', 'utf8')
   await writeFile(join(dir, 'b.txt'), 'base\n', 'utf8')
   git(dir, 'add', '.')
