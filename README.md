@@ -90,7 +90,7 @@
 - Telegram bot notifications with per-event checkboxes and per-session toggle
 - Remote control from a phone: built-in WebSocket bridge with PIN auth (static PIN option) serves the web UI — session list, chat with images, abort, dialog answers, session creation; web UI follows the app language, failed server start retries with backoff
 
-![Remote sign-in from a phone](docs/screenshots/remote-login.png)
+![Agent questions on the remote web UI](docs/screenshots/remote-question.png)
 
 ![Chat over the remote web UI](docs/screenshots/remote-chat.png)
 
