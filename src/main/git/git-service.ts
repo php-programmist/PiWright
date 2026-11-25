@@ -2,6 +2,7 @@
  *  wsl — `wsl.exe -d <distro> --cd <wslCwd> --exec bash -lic 'git …'` (порт схемы спавна
  *  `exec/WslShell.kt`). Сообщение коммита генерирует одноразовый `PiConnection` с
  *  `--no-session` (файл сессии не создаётся, история не засоряется). */
+import { randomUUID } from 'node:crypto'
 import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
@@ -25,7 +26,7 @@ import type {
 import { PiConnection } from '../pi/connection'
 import { obj, str } from '../pi/event-translator'
 import { createPiBackend } from '../pi/backends/factory'
-import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath } from '../pi/backends/shell'
+import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath, shellQuote } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 import { buildCommitPrompt, cleanCommitMessage } from './commit-message'
 import { parseLogRich, parseNameStatus, parseStatusOutput } from './porcelain'
@@ -39,6 +40,7 @@ import {
 } from '../../shared/worktree'
 
 const GIT_TIMEOUT_MS = 30_000
+const CHECKPOINT_TIMEOUT_MS = 60_000
 const PUSH_TIMEOUT_MS = 120_000
 const FETCH_TIMEOUT_MS = 120_000
 const GEN_TIMEOUT_MS = 240_000
@@ -69,6 +71,12 @@ export interface WorktreeSyncResult {
   error: string | null
 }
 
+export interface CheckpointCaptureResult {
+  ok: boolean
+  error: string | null
+  sha: string | null
+}
+
 export class GitService {
   constructor(private readonly getSettings: () => Settings) {}
 
@@ -84,12 +92,25 @@ export class GitService {
     const settings = this.getSettings()
     let child: ChildProcess
     if (project.kind === 'native') {
-      child = spawn('git', args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
+      child = spawn('git', args, {
+        cwd,
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: env === undefined ? undefined : { ...process.env, ...env }
+      })
     } else {
       const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
       if (distro === undefined) throw new Error('No WSL distro available. Set it in settings.')
       const wslCwd = await wslPathFor(distro, cwd)
-      child = spawn('wsl.exe', buildWslSpawnArgs(distro, wslCwd, buildBashCommand('git', args)), {
+      // wsl.exe --exec не принимает --env: переменные подставляются префиксом KEY='value' в bash-команду.
+      const envPrefix =
+        env === undefined
+          ? ''
+          : Object.entries(env)
+              .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+              .map(([key, value]) => `${key}=${shellQuote(value)}`)
+              .join(' ') + ' '
+      child = spawn('wsl.exe', buildWslSpawnArgs(distro, wslCwd, envPrefix + buildBashCommand('git', args)), {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       })
@@ -575,6 +596,65 @@ export class GitService {
   private async worktreeRepoRoot(project: ProjectEntry): Promise<string | null> {
     const result = await this.run(project, ['rev-parse', '--show-toplevel'])
     return result.code === 0 ? result.stdout.trim() || null : null
+  }
+
+  /** Снапшот рабочего дерева для чекпоинта (rewind): полный снимок (tracked + untracked, без
+   *  ignored) через временный индекс GIT_INDEX_FILE — dangling tree в объектной базе; индекс,
+   *  stash и рабочий каталог пользователя не трогаются. */
+  async checkpointCapture(project: ProjectEntry): Promise<CheckpointCaptureResult> {
+    const root = await this.worktreeRepoRoot(project)
+    if (root === null) return { ok: false, error: 'Not a git repository', sha: null }
+    const tempIndex = join(tmpdir(), `piwright-ckpt-${randomUUID()}.index`)
+    let indexFile = tempIndex
+    if (project.kind === 'wsl') {
+      const settings = this.getSettings()
+      const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
+      const wslIndex = distro === undefined ? null : await wslPathFor(distro, tempIndex)
+      if (wslIndex === null) return { ok: false, error: 'No WSL distro available. Set it in settings.', sha: null }
+      indexFile = wslIndex
+    }
+    try {
+      const env = { GIT_INDEX_FILE: indexFile }
+      const add = await this.exec(project, ['add', '-A'], CHECKPOINT_TIMEOUT_MS, root, env)
+      if (add.code !== 0) return { ok: false, error: errorOf(add, ['add', '-A']), sha: null }
+      const tree = await this.exec(project, ['write-tree'], CHECKPOINT_TIMEOUT_MS, root, env)
+      if (tree.code !== 0) return { ok: false, error: errorOf(tree, ['write-tree']), sha: null }
+      const sha = tree.stdout.trim()
+      return /^[0-9a-f]{40}$/i.test(sha)
+        ? { ok: true, error: null, sha }
+        : { ok: false, error: 'write-tree returned no tree sha', sha: null }
+    } finally {
+      try {
+        await unlink(tempIndex)
+      } catch {
+        // файла может не быть — не критично
+      }
+    }
+  }
+
+  /** Восстановление рабочего дерева из снапшота чекпоинта: текущее состояние (включая untracked)
+   *  уходит в stash как страховка, затем read-tree -u --reset и mixed reset (индекс — к HEAD). */
+  async checkpointRestore(project: ProjectEntry, sha: string): Promise<GitOpResult> {
+    const root = await this.worktreeRepoRoot(project)
+    if (root === null) return { ok: false, error: 'Not a git repository' }
+    if (!/^[0-9a-f]{40}$/i.test(sha)) return { ok: false, error: 'Invalid checkpoint sha' }
+    const stash = await this.run(
+      project,
+      ['stash', 'push', '-u', '-m', `PiWright rewind backup ${new Date().toISOString()}`],
+      CHECKPOINT_TIMEOUT_MS,
+      root
+    )
+    const stashRefused = `${stash.stdout}\n${stash.stderr}`.toLowerCase().includes('no local changes to save')
+    if (stash.code !== 0 && !stashRefused) return { ok: false, error: errorOf(stash, ['stash', 'push']) }
+    const restore = await this.run(project, ['read-tree', '-u', '--reset', sha], CHECKPOINT_TIMEOUT_MS, root)
+    if (restore.code !== 0) return { ok: false, error: errorOf(restore, ['read-tree']) }
+    // Индекс после read-tree равен снапшоту — возвращаем к HEAD, изменения остаются незастейдженными.
+    const head = await this.run(project, ['rev-parse', '--verify', '-q', 'HEAD'], GIT_TIMEOUT_MS, root)
+    if (head.code === 0) {
+      const reset = await this.run(project, ['reset'], CHECKPOINT_TIMEOUT_MS, root)
+      if (reset.code !== 0) return { ok: false, error: errorOf(reset, ['reset']) }
+    }
+    return OK
   }
 
   /** Хост-каталог worktree для сессий: native — путь как есть, wsl — UNC дистрибутива. */

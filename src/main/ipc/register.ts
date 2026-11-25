@@ -97,6 +97,7 @@ import {
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_EDIT_PROMPT_CHANNEL,
+  SESSION_REWIND_CHANNEL,
   SESSION_FORK_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
@@ -546,6 +547,18 @@ export function registerIpc(
       return { ok: false, error: 'Invalid prompt occurrence' }
     }
     return h.editPrompt(text, occurrence, newText)
+  })
+
+  ipcMain.handle(SESSION_REWIND_CHANNEL, async (_event, hostId: unknown, text: unknown, occurrence: unknown) => {
+    const h = host(piHost, hostId)
+    if (h === null) return { ok: false, error: 'Session not found', codeRestored: null }
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      return { ok: false, error: 'Message is empty', codeRestored: null }
+    }
+    if (typeof occurrence !== 'number' || !Number.isInteger(occurrence) || occurrence < 0) {
+      return { ok: false, error: 'Invalid prompt occurrence', codeRestored: null }
+    }
+    return h.rewind(text, occurrence)
   })
 
   ipcMain.handle(SESSION_FORK_CHANNEL, async (_event, hostId: unknown, userText: unknown, occurrence: unknown) => {

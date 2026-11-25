@@ -3,7 +3,8 @@
  *  Порт жизненного цикла `PiSession`. Реестр хостов — `PiHost`. */
 import { randomUUID } from 'node:crypto'
 import type { DialogAnswer, ExtensionDialog, UiEvent } from '../../shared/agent-events'
-import type { ContextBreakdownResult, DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, Settings } from '../../shared/ipc-contracts'
+import type { ContextBreakdownResult, DialogResult, PiStatus, PromptBehavior, PromptResult, ProjectEntry, QueueTexts, RewindResult, Settings } from '../../shared/ipc-contracts'
+import type { CodeCheckpoints } from '../git/code-checkpoints'
 import type { PiJsonObject, PiSlashCommand } from '../../shared/protocol-types'
 import type { PiHandshakeResult, PiResponse } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
@@ -77,6 +78,18 @@ function userPromptText(entry: PiJsonObject): string | null {
   return null
 }
 
+/** Индекс промпта в списке get_fork_messages: матч по тексту с конца (как matchPromptIds в jb-pi). */
+function matchPromptFromTail(messages: { entryId: string; text: string }[], text: string, occurrence: number): number {
+  let seen = 0
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].text.trim() === text.trim()) {
+      if (seen === occurrence) return i
+      seen++
+    }
+  }
+  return -1
+}
+
 /** Вшитые PiWright расширения, ставятся перед спавном pi; порядок = порядок `-e`. */
 function ensurePiwrightExtensions(project: ProjectEntry, settings: Settings): Promise<(string | null)[]> {
   const extensions = [
@@ -109,6 +122,8 @@ export interface SessionHostOptions {
   forkSpec?: { userText: string | null; occurrence: number }
   /** Грейс-пауза на subagents:started после turn_end (переопределяется в тестах). */
   subagentGraceMs?: number
+  /** Чекпоинты кода для отката (rewind); null — откат кода недоступен (только сессия). */
+  checkpoints?: CodeCheckpoints | null
 }
 
 export class SessionHost {
@@ -162,6 +177,12 @@ export class SessionHost {
   private readonly remoteTaps = new Set<(line: string) => void>()
   private readonly createBackend: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
+  /** Чекпоинты кода (rewind): слот user-промпта активной ветки → снапшот перед его отправкой. */
+  private readonly checkpoints: CodeCheckpoints | null
+  private checkpointsMap = new Map<number, { sha: string; ts: number }>()
+  private checkpointsLoaded: Promise<void> | null = null
+  /** Слот следующего промпта (= число user-промптов активной ветки); null — не синхронизировано. */
+  private nextPromptSlot: number | null = null
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -179,6 +200,7 @@ export class SessionHost {
     this.desiredThinkingLevel = opts.initialThinkingLevel ?? null
     this.desiredSessionName = opts.initialSessionName ?? null
     this.forkSpec = opts.forkSpec
+    this.checkpoints = opts.checkpoints ?? null
     this.status('idle')
   }
 
@@ -434,6 +456,7 @@ export class SessionHost {
           await this.refreshThinkingState()
         }
       }
+      await this.syncPromptSlot(conn)
       this.status('ready')
     } catch (err) {
       conn.close()
@@ -928,6 +951,19 @@ export class SessionHost {
   private async sendPrompt(text: string, images: string[], behavior?: PromptBehavior): Promise<PromptResult> {
     const conn = this.conn
     if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running' }
+    // Чекпоинт кода до отправки: слот = текущее число user-промптов ветки (этот промпт займёт его).
+    let capturedSlot: number | null = null
+    if (this.checkpoints !== null && this.nextPromptSlot !== null) {
+      await this.ensureCheckpointsLoaded()
+      const slot = this.nextPromptSlot
+      const snapshot = await this.checkpoints.capture(this.project)
+      if (snapshot.ok && snapshot.sha !== null) {
+        this.checkpointsMap.set(slot, { sha: snapshot.sha, ts: Date.now() })
+        capturedSlot = slot
+        this.persistCheckpoints()
+      }
+      this.nextPromptSlot = slot + 1
+    }
     // Ход, начатый этим prompt'ом — «свой»; agent_start без него — внешний ход (nudge субагента,
     // follow_up из pi) — петля его не считает продолжением работы пользователя.
     if (behavior === undefined) this.ownPromptPending = true
@@ -943,6 +979,11 @@ export class SessionHost {
     if (!response.success) {
       if (behavior === undefined) this.ownPromptPending = false
       this.checkTurnPending = false
+      if (capturedSlot !== null) {
+        // Промпт не принят — записи в сессии нет, слот останется дырой (rewind по нему даст откат только сессии).
+        this.checkpointsMap.delete(capturedSlot)
+        this.persistCheckpoints()
+      }
       const error = `${response.command} failed: ${response.error ?? 'no details'}`
       this.status('error', error)
       return { ok: false, error }
@@ -989,6 +1030,56 @@ export class SessionHost {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       return { ok: false, error: message }
+    }
+  }
+
+  /** Откат сессии и кода к чекпоинту (порт Rewind из jb-pi + откат кода): точка — user-промпт,
+   *  следующий за ответом агента — fork переводит pi на новую ветку-сессию без всей истории после
+   *  этого ответа, а рабочий дерево восстанавливается из снапшота, снятого перед тем промптом
+   *  (текущее состояние уходит в git stash). occurrence — как в editPrompt. */
+  async rewind(text: string, occurrence: number): Promise<RewindResult> {
+    if (this.streaming) return { ok: false, error: 'Session is busy — wait for the current turn to finish', codeRestored: null }
+    try {
+      await this.ensureStarted()
+      const conn = this.conn
+      if (conn === null || !conn.running) return { ok: false, error: 'pi connection is not running', codeRestored: null }
+      const messages = await this.fetchForkMessages(conn)
+      const target = matchPromptFromTail(messages, text, occurrence)
+      if (target < 0) return { ok: false, error: 'Prompt not found in session history', codeRestored: null }
+      let codeRestored: boolean | null = null
+      if (this.checkpoints !== null) {
+        await this.ensureCheckpointsLoaded()
+        const checkpoint = this.checkpointsMap.get(target)
+        if (checkpoint === undefined) {
+          codeRestored = false
+        } else {
+          const restored = await this.checkpoints.restore(this.project, checkpoint.sha)
+          if (!restored.ok) return { ok: false, error: `Code restore failed: ${restored.error}`, codeRestored: false }
+          codeRestored = true
+        }
+      }
+      const forkResponse = await conn.request('fork', { entryId: messages[target].entryId })
+      if (!forkResponse.success) {
+        const note = codeRestored === true ? ' (code was rolled back; the previous state is in git stash)' : ''
+        return { ok: false, error: `fork failed: ${forkResponse.error ?? 'no details'}${note}`, codeRestored }
+      }
+      if (
+        typeof forkResponse.data === 'object' &&
+        forkResponse.data !== null &&
+        (forkResponse.data as PiJsonObject)['cancelled'] === true
+      ) {
+        const note = codeRestored === true ? ' (code was rolled back; the previous state is in git stash)' : ''
+        return { ok: false, error: `Rewind was cancelled${note}`, codeRestored }
+      }
+      await this.applyForkedState(conn)
+      for (const slot of [...this.checkpointsMap.keys()]) {
+        if (slot >= target) this.checkpointsMap.delete(slot)
+      }
+      this.persistCheckpoints()
+      return { ok: true, error: null, codeRestored }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return { ok: false, error: message, codeRestored: null }
     }
   }
 
@@ -1057,7 +1148,46 @@ export class SessionHost {
     if (this.handshake !== null && typeof sessionId === 'string' && sessionId.length > 0) {
       this.handshake = { ...this.handshake, sessionId }
     }
+    await this.syncPromptSlot(conn)
     this.status(this.lastState)
+  }
+
+  /** User-промпты активной ветки (get_fork_messages) — цели отката и слоты чекпоинтов. */
+  private async fetchForkMessages(conn: PiConnection): Promise<{ entryId: string; text: string }[]> {
+    const response = await conn.request('get_fork_messages')
+    if (!response.success) return []
+    const data = dataObject(response)
+    const messages = Array.isArray(data['messages']) ? data['messages'] : []
+    const result: { entryId: string; text: string }[] = []
+    for (const message of messages) {
+      if (typeof message !== 'object' || message === null) continue
+      const record = message as PiJsonObject
+      const entryId = record['entryId']
+      const text = record['text']
+      if (typeof entryId === 'string' && typeof text === 'string') result.push({ entryId, text })
+    }
+    return result
+  }
+
+  /** Слот следующего промпта = число user-промптов активной ветки (для чекпоинтов кода). */
+  private async syncPromptSlot(conn: PiConnection): Promise<void> {
+    if (this.checkpoints === null) return
+    this.nextPromptSlot = (await this.fetchForkMessages(conn)).length
+  }
+
+  private ensureCheckpointsLoaded(): Promise<void> {
+    if (this.checkpointsLoaded === null) this.checkpointsLoaded = this.loadCheckpoints()
+    return this.checkpointsLoaded
+  }
+
+  private async loadCheckpoints(): Promise<void> {
+    if (this.checkpoints === null || this.sessionFile === null) return
+    this.checkpointsMap = await this.checkpoints.load(this.sessionFile)
+  }
+
+  private persistCheckpoints(): void {
+    if (this.checkpoints === null || this.sessionFile === null) return
+    void this.checkpoints.save(this.sessionFile, this.checkpointsMap).catch(() => {})
   }
 
   /** Первое сообщение новой сессии: одноразовый pi с той же моделью придумывает название 2-3 слова,

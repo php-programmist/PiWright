@@ -107,6 +107,7 @@ import {
   SESSION_PENDING_DIALOGS_CHANNEL,
   SESSION_PROMPT_CHANNEL,
   SESSION_EDIT_PROMPT_CHANNEL,
+  SESSION_REWIND_CHANNEL,
   SESSION_FORK_CHANNEL,
   LOOP_START_CHANNEL,
   LOOP_STOP_CHANNEL,
@@ -146,6 +147,7 @@ import type {
   ForkSessionResult,
   PromptBehavior,
   QueueTexts,
+  RewindResult,
   SchedulePromptInput,
   Settings,
   StatsQuery,
@@ -183,6 +185,8 @@ const api: PiWrightApi = {
     ipcRenderer.invoke(SESSION_PROMPT_CHANNEL, hostId, text, images ?? [], behavior),
   editPrompt: (hostId: string, text: string, occurrence: number, newText: string) =>
     ipcRenderer.invoke(SESSION_EDIT_PROMPT_CHANNEL, hostId, text, occurrence, newText),
+  rewindSession: (hostId: string, text: string, occurrence: number): Promise<RewindResult> =>
+    ipcRenderer.invoke(SESSION_REWIND_CHANNEL, hostId, text, occurrence),
   forkSession: (hostId: string, userText: string | null, occurrence: number): Promise<ForkSessionResult> =>
     ipcRenderer.invoke(SESSION_FORK_CHANNEL, hostId, userText, occurrence),
   loopStart: (hostId: string, prompt: string, maxIterations: number, exitCondition: string) =>

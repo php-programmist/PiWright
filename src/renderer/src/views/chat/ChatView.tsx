@@ -53,12 +53,12 @@ export interface TextEntry {
   text: string
 }
 
-function EntryViewBase({ entry, project, onAnswer, onEdit, onFork }: { entry: Entry; project: ProjectEntry | null; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void }): React.JSX.Element | null {
+function EntryViewBase({ entry, project, onAnswer, onEdit, onFork, onRewind }: { entry: Entry; project: ProjectEntry | null; onAnswer: (dialogId: string, answer: DialogAnswer) => void; onEdit?: (entry: UserEntry, newText: string) => void; onFork?: (entry: TextEntry) => void; onRewind?: (entry: TextEntry) => void }): React.JSX.Element | null {
   switch (entry.kind) {
     case 'user':
       return <UserMessage entry={entry} project={project} onEdit={onEdit} />
     case 'text':
-      return <AssistantMessage entry={entry} project={project} onFork={onFork} />
+      return <AssistantMessage entry={entry} project={project} onFork={onFork} onRewind={onRewind} />
     case 'thinking':
       return (
         <details className="thinking">
@@ -95,7 +95,8 @@ function EntryViewBase({ entry, project, onAnswer, onEdit, onFork }: { entry: En
 /** Ре-рендер записи только при смене её объекта или колбэков: стриминг меняет лишь открытую запись. */
 export const EntryView = memo(
   EntryViewBase,
-  (a, b) => a.entry === b.entry && a.project === b.project && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork
+  (a, b) =>
+    a.entry === b.entry && a.project === b.project && a.onAnswer === b.onAnswer && a.onEdit === b.onEdit && a.onFork === b.onFork && a.onRewind === b.onRewind
 )
 
 export function ChatThinkingSummary({ tps }: { tps?: number | null }): React.JSX.Element {
@@ -109,11 +110,27 @@ export function ChatThinkingSummary({ tps }: { tps?: number | null }): React.JSX
 }
 
 /** Ответ агента; кнопка под сообщением форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
-function AssistantMessage({ entry, project, onFork }: { entry: TextEntry; project: ProjectEntry | null; onFork?: (entry: TextEntry) => void }): React.JSX.Element {
+/** Ответ агента; кнопки под сообщением: форк в новую сессию и откат сессии и кода к чекпоинту
+ *  (порт MessageActions из jb-pi + откат кода). */
+function AssistantMessage({ entry, project, onFork, onRewind }: { entry: TextEntry; project: ProjectEntry | null; onFork?: (entry: TextEntry) => void; onRewind?: (entry: TextEntry) => void }): React.JSX.Element {
   const t = useT()
   return (
     <div className="assistant-message">
       <RichText text={entry.text} project={project} renderText={(chunk) => <Markdown text={chunk} />} />
+      {onRewind !== undefined && (
+        <button
+          className="msg-action"
+          title={t('Rewind session and code to this point')}
+          onClick={() => onRewind(entry)}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <polyline points="4.5 2.5 4.5 7.5 9.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <line x1="12" y1="12" x2="15" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
+      )}
       {onFork !== undefined && (
         <button
           className="msg-action"
@@ -439,6 +456,39 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     useSessionsStore.getState().setActive(result.hostId)
   }
 
+  /** Откат сессии и кода к чекпоинту: точка — следующий за ответом промпт; история после ответа
+   *  стирается, код восстанавливается из снапшота перед этим промптом (текущее состояние — в git stash). */
+  const rewindTo = async (entry: TextEntry): Promise<void> => {
+    if (activeHostId === null || streaming) return
+    const index = entries.findIndex((e) => e.id === entry.id)
+    if (index < 0) return
+    const nextUser = entries.slice(index + 1).find((e): e is UserEntry => e.kind === 'user')
+    if (nextUser === undefined) return
+    const userIndex = entries.findIndex((e) => e.id === nextUser.id)
+    const occurrence = entries.slice(userIndex + 1).filter((e) => e.kind === 'user' && e.text === nextUser.text).length
+    const confirmed = await confirmDialog({
+      message: t(
+        'Rewind session and code to this point? Later messages will be removed and code restored to the checkpoint. Current changes will be saved to git stash.'
+      ),
+      confirmLabel: t('Rewind')
+    })
+    if (!confirmed) return
+    const result = await window.piwright.rewindSession(activeHostId, nextUser.text, occurrence)
+    if (!result.ok) {
+      if (result.error !== null) {
+        applyEvent({ hostId: activeHostId, event: { type: 'turn_error', message: result.error } })
+      }
+      return
+    }
+    useChatStore.getState().truncateFrom(activeHostId, nextUser.id)
+    if (result.codeRestored === false) {
+      applyEvent({
+        hostId: activeHostId,
+        event: { type: 'notify', message: t('Code checkpoint not found — session rewound only'), isError: false }
+      })
+    }
+  }
+
   const answerDialog = async (dialogId: string, answer: DialogAnswer): Promise<void> => {
     if (activeHostId === null) return
     setDialogReceipt(activeHostId, dialogId, answer.kind === 'cancelled' ? 'cancelled' : 'answered')
@@ -449,9 +499,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   }
 
   // Стабильные колбэки для memo(EntryView): свежие версии функций добираются через ref.
-  const actionsRef = useRef<{ answerDialog: typeof answerDialog; submitEdit: typeof submitEdit; forkFrom: typeof forkFrom } | null>(null)
+  const actionsRef = useRef<{ answerDialog: typeof answerDialog; submitEdit: typeof submitEdit; forkFrom: typeof forkFrom; rewindTo: typeof rewindTo } | null>(null)
   useEffect(() => {
-    actionsRef.current = { answerDialog, submitEdit, forkFrom }
+    actionsRef.current = { answerDialog, submitEdit, forkFrom, rewindTo }
   })
   const stableAnswer = useCallback((dialogId: string, answer: DialogAnswer) => {
     const actions = actionsRef.current
@@ -465,8 +515,24 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     const actions = actionsRef.current
     if (actions !== null) void actions.forkFrom(e)
   }, [])
+  const stableRewind = useCallback((e: TextEntry) => {
+    const actions = actionsRef.current
+    if (actions !== null) void actions.rewindTo(e)
+  }, [])
   const project = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
   const worktree = project !== null ? splitWorktreeHostDir(project.dir) : null
+
+  // Ответы, после которых есть ещё промпт — только под них рисуется кнопка отката.
+  const rewindableIds = useMemo(() => {
+    const ids = new Set<number>()
+    let hasUser = false
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i]
+      if (entry.kind === 'text' && hasUser) ids.add(entry.id)
+      if (entry.kind === 'user') hasUser = true
+    }
+    return ids
+  }, [entries])
 
   // Отложенные промпты (очередь сессий): меню ПКМ по Send + панель в футере.
   const [schedMenuOpen, setSchedMenuOpen] = useState(false)
@@ -1037,6 +1103,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             onAnswer={stableAnswer}
             onEdit={streaming ? undefined : stableEdit}
             onFork={streaming ? undefined : stableFork}
+            onRewind={!streaming && rewindableIds.has(entry.id) ? stableRewind : undefined}
           />
         ))}
         {streaming && <div className="cursor">▍</div>}

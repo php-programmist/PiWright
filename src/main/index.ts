@@ -4,6 +4,7 @@ import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron'
 import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
+import { CodeCheckpoints } from './git/code-checkpoints'
 import { FileService } from './files/file-service'
 import { KanbanService } from './kanban/kanban-service'
 import { KanbanThemeService } from './kanban/kanban-theme-service'
@@ -137,7 +138,10 @@ app.whenReady().then(async () => {
         mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
         hub?.onEvent(message)
       }
-    }
+    },
+    undefined,
+    undefined,
+    new CodeCheckpoints(gitService, join(app.getPath('userData'), 'checkpoints'))
   )
   const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {

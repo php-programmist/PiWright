@@ -6,6 +6,7 @@ import type { PiModelInfo } from '../../shared/protocol-types'
 import { SessionHost } from './session-host'
 import type { SessionHostListener } from './session-host'
 import type { CreateBackendResult } from './backends/factory'
+import type { CodeCheckpoints } from '../git/code-checkpoints'
 
 export interface PiHostSink {
   onStatus(status: PiStatus): void
@@ -21,7 +22,8 @@ export class PiHost {
     private readonly getSettings: () => Settings,
     private readonly sink: PiHostSink,
     private readonly createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>,
-    private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
+    private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>,
+    private readonly checkpoints?: CodeCheckpoints | null
   ) {}
 
   /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
@@ -39,6 +41,7 @@ export class PiHost {
       sessionFile,
       createBackend: this.createBackend,
       installExtensions: this.installExtensions,
+      checkpoints: this.checkpoints ?? null,
       seedModels: seed?.models,
       seedThinkingLevels: seed?.thinkingLevels,
       // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
@@ -70,6 +73,7 @@ export class PiHost {
       forkSpec: fork,
       createBackend: this.createBackend,
       installExtensions: this.installExtensions,
+      checkpoints: this.checkpoints ?? null,
       seedModels: seed?.models,
       seedThinkingLevels: seed?.thinkingLevels,
       initialSessionName: `(fork) ${parent.displayTitle}`,

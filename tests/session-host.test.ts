@@ -8,6 +8,7 @@ import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
+import type { CodeCheckpoints } from '../src/main/git/code-checkpoints'
 
 const SETTINGS = { ...DEFAULT_SETTINGS }
 const PROJECT = { kind: 'native' as const, dir: 'C:\\proj' }
@@ -55,6 +56,55 @@ function makeHost(
     ...hostOpts
   })
   return { host, events, statuses, spawnArgs }
+}
+
+/** Фейковый CodeCheckpoints: capture раздаёт sha по порядку, restore пишет вызовы. */
+function fakeCheckpoints(): {
+  service: CodeCheckpoints
+  captured: string[]
+  restored: string[]
+  failCapture: boolean
+  failRestore: boolean
+} {
+  const state = {
+    captured: [] as string[],
+    restored: [] as string[],
+    failCapture: false,
+    failRestore: false
+  }
+  const service = {
+    capture: async () => {
+      if (state.failCapture) return { ok: false, error: 'not a repo', sha: null }
+      const sha = `ck${state.captured.length + 1}`
+      state.captured.push(sha)
+      return { ok: true, error: null, sha }
+    },
+    restore: async (_project: unknown, sha: string) => {
+      if (state.failRestore) return { ok: false, error: 'stash failed' }
+      state.restored.push(sha)
+      return { ok: true, error: null }
+    },
+    load: async () => new Map<number, { sha: string; ts: number }>(),
+    save: async () => {},
+    drop: async () => {}
+  }
+  return {
+    service: service as unknown as CodeCheckpoints,
+    captured: state.captured,
+    restored: state.restored,
+    get failCapture() {
+      return state.failCapture
+    },
+    set failCapture(value: boolean) {
+      state.failCapture = value
+    },
+    get failRestore() {
+      return state.failRestore
+    },
+    set failRestore(value: boolean) {
+      state.failRestore = value
+    }
+  }
 }
 
 function scriptedChild(sessionFile: string): ScriptedChild {
@@ -1326,6 +1376,165 @@ describe('SessionHost', () => {
     expect(result.ok).toBe(true)
     expect(result.cleared).toEqual({ steering: [], followUp: ['right'] })
     expect(child.sent.some((c) => c['type'] === 'steer' || c['type'] === 'follow_up')).toBe(false)
+    host.dispose()
+  })
+
+  it('rewind forks to the next prompt and restores code from its checkpoint', async () => {
+    const sent: string[] = []
+    const child = new ScriptedChild((type, fields) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\rewound.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_fork_messages') {
+        return { messages: sent.map((text, i) => ({ entryId: `x${i}`, text })) }
+      }
+      if (type === 'prompt') {
+        sent.push(String(fields['message']))
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const fake = fakeCheckpoints()
+    const { host, statuses } = makeHost([child], SETTINGS, { checkpoints: fake.service })
+    await host.prompt('first')
+    await vi.waitFor(() => {
+      expect(host.streaming).toBe(false)
+    })
+    await host.prompt('second')
+    await vi.waitFor(() => {
+      expect(host.streaming).toBe(false)
+    })
+    expect(fake.captured.length).toBe(2)
+    const result = await host.rewind('second', 0)
+    expect(result.ok).toBe(true)
+    expect(result.codeRestored).toBe(true)
+    expect(fake.restored).toEqual([fake.captured[1]])
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'x1')).toBe(true)
+    expect(statuses[statuses.length - 1]?.sessionFile).toBe('C:\\proj\\.pi\\sessions\\rewound.jsonl')
+    host.dispose()
+  })
+
+  it('rewind without a checkpoint rolls back the session only', async () => {
+    const sent: string[] = []
+    const child = new ScriptedChild((type, fields) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\rewound.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_fork_messages') {
+        return { messages: sent.map((text, i) => ({ entryId: `x${i}`, text })) }
+      }
+      if (type === 'prompt') {
+        sent.push(String(fields['message']))
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const fake = fakeCheckpoints()
+    fake.failCapture = true
+    const { host } = makeHost([child], SETTINGS, { checkpoints: fake.service })
+    await host.prompt('first')
+    await vi.waitFor(() => {
+      expect(host.streaming).toBe(false)
+    })
+    const result = await host.rewind('first', 0)
+    expect(result.ok).toBe(true)
+    expect(result.codeRestored).toBe(false)
+    expect(fake.restored.length).toBe(0)
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'x0')).toBe(true)
+    host.dispose()
+  })
+
+  it('rewind without the checkpoints service still rewinds the session', async () => {
+    const sent: string[] = []
+    const child = new ScriptedChild((type, fields) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\rewound.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_fork_messages') {
+        return { messages: sent.map((text, i) => ({ entryId: `x${i}`, text })) }
+      }
+      if (type === 'prompt') {
+        sent.push(String(fields['message']))
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const { host } = makeHost([child])
+    await host.prompt('first')
+    await vi.waitFor(() => {
+      expect(host.streaming).toBe(false)
+    })
+    const result = await host.rewind('first', 0)
+    expect(result.ok).toBe(true)
+    expect(result.codeRestored).toBeNull()
+    expect(child.sent.some((c) => c['type'] === 'fork' && c['entryId'] === 'x0')).toBe(true)
+    host.dispose()
+  })
+
+  it('rewind aborts without fork when code restore fails', async () => {
+    const sent: string[] = []
+    const child = new ScriptedChild((type, fields) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_fork_messages') {
+        return { messages: sent.map((text, i) => ({ entryId: `x${i}`, text })) }
+      }
+      if (type === 'prompt') {
+        sent.push(String(fields['message']))
+        queueMicrotask(() => {
+          childEmitAgentTurn()
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = child
+    const fake = fakeCheckpoints()
+    fake.failRestore = true
+    const { host } = makeHost([child], SETTINGS, { checkpoints: fake.service })
+    await host.prompt('first')
+    await vi.waitFor(() => {
+      expect(host.streaming).toBe(false)
+    })
+    const result = await host.rewind('first', 0)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('Code restore failed: stash failed')
+    expect(child.sent.some((c) => c['type'] === 'fork')).toBe(false)
+    host.dispose()
+  })
+
+  it('rewind fails without fork when the prompt is not in the session', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'get_fork_messages') return { messages: [] }
+      return null
+    })
+    currentChild = child
+    const { host } = makeHost([child])
+    const result = await host.rewind('missing', 0)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('Prompt not found in session history')
+    expect(child.sent.some((c) => c['type'] === 'fork')).toBe(false)
     host.dispose()
   })
 })
