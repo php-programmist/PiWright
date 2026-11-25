@@ -13,6 +13,7 @@ import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { splitWorktreeHostDir } from '../../../shared/worktree'
 import { WORKTREE_ICON } from './SessionsPanel'
 import { renameDialog } from './RenameDialog'
+import { copyText } from './LinkChips'
 import { baseName } from '../views/git/GitPanel'
 
 const DOT_CLASS: Record<string, string> = { confirm: 'confirm', question: 'question', busy: 'busy', waiting: 'waiting', idle: 'idle', error: 'error' }
@@ -354,6 +355,18 @@ export function TabBar(): React.JSX.Element | null {
               onClick={() => void startRename(menu.id, sessionRows.find((r) => r.hostId === menu.id)?.title ?? '')}
             >
               {t('Rename')}
+            </button>
+          )}
+          {menu.isSession && (
+            <button
+              className="tab-menu-item"
+              onClick={() => {
+                setMenu(null)
+                const row = sessionRows.find((r) => r.hostId === menu.id)
+                if (row !== undefined && row.sessionId !== '') copyText(`kanban:session:${row.sessionId}`)
+              }}
+            >
+              {t('Copy session link')}
             </button>
           )}
           <button className="tab-menu-item" onClick={() => menuAction('close')}>{t('Close')}</button>

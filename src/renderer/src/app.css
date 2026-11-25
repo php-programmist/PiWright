@@ -5096,6 +5096,15 @@ pre.code-block {
   border-color: var(--accent);
 }
 
+.board-chip.task {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.board-description-refs {
+  margin: -4px 0 8px;
+}
+
 .board-chip.commit {
   font-family: var(--mono, monospace);
 }

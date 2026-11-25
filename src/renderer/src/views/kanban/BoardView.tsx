@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyCardMove } from '../../../../shared/kanban'
-import type { KanbanBoard, KanbanCard, KanbanColumn, KanbanCommitRef, KanbanSessionRef } from '../../../../shared/kanban'
-import type { KanbanMutationResult, ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
+import type { KanbanBoard, KanbanCard, KanbanColumn, KanbanCommitRef } from '../../../../shared/kanban'
+import type { KanbanMutationResult, ProjectEntry } from '../../../../shared/ipc-contracts'
 import { base64FromBytes } from '../../../../shared/attachments'
 import { draftMap, loopExitMap, useChatStore } from '../../stores/chat'
 import { useSessionsStore, projectKey } from '../../stores/sessions'
@@ -46,68 +46,7 @@ function KanbanThumb({ project, path, onOpen }: { project: ProjectEntry; path: s
   return <img className="board-thumb" src={src} alt={path} onClick={() => onOpen(src)} />
 }
 
-/** Чип сессии в комментарии: живая — активация чата, из истории — восстановление чата,
- *  нигде не найдена — приглушённый чип с тултипом. */
-function SessionChip({ project, session, at }: { project: ProjectEntry; session: KanbanSessionRef; at?: string }): React.JSX.Element {
-  const t = useT()
-  const lang = useLang()
-  const [missing, setMissing] = useState(false)
-  useEffect(() => {
-    const st = useSessionsStore.getState()
-    if (st.active.some((r) => r.sessionId === session.id)) return
-    if (st.projects.some((p) => p.history.some((h) => h.id === session.id))) return
-    let cancelled = false
-    void window.piwright.sessionHistory(project).then((history) => {
-      if (!cancelled && !history.some((h) => h.id === session.id)) setMissing(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [project, session.id])
-
-  const open = (): void => {
-    const st = useSessionsStore.getState()
-    const row = st.active.find((r) => r.sessionId === session.id)
-    if (row !== undefined) {
-      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
-      useTabsStore.getState().activateSession(row.project)
-      st.setActive(row.hostId)
-      return
-    }
-    const resume = async (found: SessionSummary): Promise<void> => {
-      const result = await window.piwright.openSession(project, found.path)
-      if (!result.ok) {
-        if (result.error !== null) window.alert(result.error)
-        return
-      }
-      useTabsStore.getState().setActiveProject(parentTabKey(project))
-      useTabsStore.getState().activateSession(project)
-      st.setActive(result.hostId)
-    }
-    const summary = st.projects
-      .find((p) => p.history.some((h) => h.id === session.id))
-      ?.history.find((h) => h.id === session.id)
-    if (summary !== undefined) {
-      void resume(summary)
-      return
-    }
-    void window.piwright.sessionHistory(project).then((history) => {
-      const found = history.find((h) => h.id === session.id)
-      if (found !== undefined) void resume(found)
-    })
-  }
-
-  const when = at === undefined ? '' : ` · ${new Date(at).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US')}`
-  return (
-    <span
-      className={missing ? 'board-chip missing' : 'board-chip session'}
-      title={missing ? t('Session not found') : `${session.title}${when}`}
-      onClick={open}
-    >
-      {session.title}
-    </span>
-  )
-}
+import { copyText, hasLinkTokens, RichText, SessionChip } from '../../components/LinkChips'
 
 /** Чип коммита: первый клик — док «История Git» + выделение коммита, повторный —
  *  дифф первого файла коммита во вкладке. */
@@ -763,6 +702,15 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
               <button className="project-menu-item" onClick={() => void startCardSession(card)}>
                 {t('Run in new session')}
               </button>
+              <button
+                className="project-menu-item"
+                onClick={() => {
+                  setCardMenu(null)
+                  copyText(`kanban:task:${card.id}`)
+                }}
+              >
+                {t('Copy task link')}
+              </button>
               <div className="project-menu-sep" />
               <button
                 className="project-menu-item"
@@ -1125,6 +1073,11 @@ function CardModal({
               onChange={(e) => setDescription(e.target.value)}
               onBlur={() => void saveDetails()}
             />
+            {hasLinkTokens(description) && (
+              <div className="board-comment-refs board-description-refs">
+                <RichText text={description} project={tab.project} />
+              </div>
+            )}
             <div className="board-section-label">
               {t('Activity')} <span className="board-section-count">({card.comments.length})</span>
             </div>
@@ -1169,7 +1122,9 @@ function CardModal({
                         </div>
                       </>
                     ) : (
-                      <div className="board-comment-text">{item.text}</div>
+                      <div className="board-comment-text">
+                        <RichText text={item.text} project={tab.project} />
+                      </div>
                     )}
                     {(item.session !== undefined || (item.commits?.length ?? 0) > 0) && (
                       <div className="board-comment-refs">

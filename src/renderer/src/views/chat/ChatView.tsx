@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
+import { RichText } from '../../components/LinkChips'
 import { Lightbox } from '../../components/Lightbox'
 import { QueuePanel } from '../../components/QueuePanel'
 import { ScheduledPanel } from '../../components/ScheduledPanel'
@@ -56,7 +57,7 @@ function EntryViewBase({ entry, project, onAnswer, onEdit, onFork }: { entry: En
     case 'user':
       return <UserMessage entry={entry} project={project} onEdit={onEdit} />
     case 'text':
-      return <AssistantMessage entry={entry} onFork={onFork} />
+      return <AssistantMessage entry={entry} project={project} onFork={onFork} />
     case 'thinking':
       return (
         <details className="thinking">
@@ -107,11 +108,11 @@ export function ChatThinkingSummary({ tps }: { tps?: number | null }): React.JSX
 }
 
 /** Ответ агента; кнопка под сообщением форкает сессию в новую с этого места (порт MessageActions из jb-pi). */
-function AssistantMessage({ entry, onFork }: { entry: TextEntry; onFork?: (entry: TextEntry) => void }): React.JSX.Element {
+function AssistantMessage({ entry, project, onFork }: { entry: TextEntry; project: ProjectEntry | null; onFork?: (entry: TextEntry) => void }): React.JSX.Element {
   const t = useT()
   return (
     <div className="assistant-message">
-      <Markdown text={entry.text} />
+      <RichText text={entry.text} project={project} renderText={(chunk) => <Markdown text={chunk} />} />
       {onFork !== undefined && (
         <button
           className="msg-action"
@@ -213,7 +214,7 @@ function UserMessage({ entry, project, onEdit }: { entry: UserEntry; project: Pr
       <div className="user-message">
         {splitAttachmentRefs(entry.text).map((seg, i) =>
           seg.kind === 'text' ? (
-            <span key={i}>{seg.text}</span>
+            <RichText key={i} text={seg.text} project={project} />
           ) : isImageFilePath(seg.name) ? (
             <UserAttachmentImage key={i} project={project} name={seg.name} fallback={seg.ref} />
           ) : (
