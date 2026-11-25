@@ -1,7 +1,7 @@
 /** MCP-серверы проекта: табы Пользователь (mcp.json бэкенда) / Проект (.pi/mcp.json),
  *  карточки серверов с тогглом и живой проверкой, форма добавления/редактирования, импорт JSON. */
 import { useEffect, useState } from 'react'
-import { useCenterProject } from '../../stores/tabs'
+import type { ProjectTab } from '../../stores/tabs'
 import { useT } from '../../lib/i18n'
 import type { McpScope, McpServerEntry } from '../../../../shared/ipc-contracts'
 
@@ -119,8 +119,8 @@ interface ProbeState {
   serverError: string | null
 }
 
-export function McpView({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const project = useCenterProject()
+export function McpView({ tab, onClose }: { tab: ProjectTab; onClose: () => void }): React.JSX.Element {
+  const project = tab.project
   const t = useT()
   const exposures = useExposures()
   const [scope, setScope] = useState<McpScope>('user')

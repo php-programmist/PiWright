@@ -120,9 +120,12 @@ export function App(): React.JSX.Element {
       return
     }
     const st = useSessionsStore.getState()
-    const project = st.active.find((r) => r.hostId === st.activeHostId)?.project
-      ?? st.projects.find((p) => projectKey(p.project) === key)?.project
-      ?? existing?.project
+    // Проект набора вкладок (key), не глобально активной сессии: чужая активная сессия
+    // другого проекта не должна подменять проект MCP/навыков.
+    const project =
+      st.projects.find((p) => projectKey(p.project) === key)?.project ??
+      st.active.find((r) => parentTabKey(r.project) === key)?.project ??
+      existing?.project
     if (project === undefined) return
     tabsStore.openTab(project, { kind })
   }
@@ -296,9 +299,9 @@ export function App(): React.JSX.Element {
                 ) : activeTab.kind === 'task' ? (
                   <TaskView key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'mcp' ? (
-                  <McpView onClose={closeActiveTab} />
+                  <McpView key={tabId(activeTab)} tab={activeTab} onClose={closeActiveTab} />
                 ) : activeTab.kind === 'skills' ? (
-                  <SkillsView onClose={closeActiveTab} />
+                  <SkillsView key={tabId(activeTab)} tab={activeTab} onClose={closeActiveTab} />
                 ) : (
                   <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}

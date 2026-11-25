@@ -1,12 +1,12 @@
 /** Навыки проекта: юзерские каталога агента бэкенда + проектные (.pi/skills, .agents/skills),
  *  тогглы через settings.json бэкенда, открытие папки. */
 import { useEffect, useState } from 'react'
-import { useCenterProject } from '../../stores/tabs'
+import type { ProjectTab } from '../../stores/tabs'
 import { useT } from '../../lib/i18n'
 import type { SkillEntry } from '../../../../shared/ipc-contracts'
 
-export function SkillsView({ onClose }: { onClose: () => void }): React.JSX.Element {
-  const project = useCenterProject()
+export function SkillsView({ tab, onClose }: { tab: ProjectTab; onClose: () => void }): React.JSX.Element {
+  const project = tab.project
   const t = useT()
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [error, setError] = useState<string | null>(null)
