@@ -324,6 +324,7 @@ export function ModelsTab(): React.JSX.Element {
       return err instanceof Error ? err.message : String(err)
     }
     const res = await window.piwright.modelsSave(target, doc)
+    if (res.ok) void window.piwright.modelsRefresh().catch(() => {})
     return res.ok ? null : (res.error ?? t('save failed'))
   }
 

@@ -27,6 +27,8 @@ import type { DialogAnswer } from '../../../../shared/agent-events'
 import type { PiSlashCommand } from '../../../../shared/protocol-types'
 import type { AttachmentResult, ProjectEntry, PromptBehavior, QueueTexts, ScheduledTrigger } from '../../../../shared/ipc-contracts'
 
+let lastModelsRefreshAt = 0
+
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
   starting: 'starting…',
@@ -788,6 +790,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     else setLoopMax(activeHostId, clamped)
   }
   const modelKey = status.model
+  // Правка models.json вне приложения: дропдаун моделей — последний шанс догнать каталог,
+  // фокус-рефреш мог не сработать; троттлинг 5 с, чтобы не дёргать pi на каждый клик.
+  const refreshModelsOnOpen = useRef(() => {
+    if (Date.now() - lastModelsRefreshAt < 5000) return
+    lastModelsRefreshAt = Date.now()
+    void window.piwright.modelsRefresh().catch(() => {})
+  })
   const selectedModel = status.models.find((m) => `${m.provider}/${m.id}` === modelKey)
   const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
   const muted = chat?.muted ?? false
@@ -813,6 +822,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
         <select
           className="model-select"
           value={modelKey ?? ''}
+          onMouseDown={() => refreshModelsOnOpen.current()}
           onChange={(e) => void window.piwright.setModel(activeHostId, e.target.value)}
         >
           {modelKey === null && (
