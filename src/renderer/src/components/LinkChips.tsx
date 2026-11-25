@@ -120,13 +120,11 @@ export function SessionTaskChips({
   sessionId: string | null
 }): React.JSX.Element | null {
   const kanbanEnabled = useSessionsStore((s) => s.settings?.kanbanEnabled ?? false)
-  const [refs, setRefs] = useState<SessionTaskRef[]>([])
+  const scope = `${project?.dir ?? ''}\u0000${sessionId ?? ''}`
+  const [found, setFound] = useState<{ scope: string; refs: SessionTaskRef[] } | null>(null)
 
   useEffect(() => {
-    if (!kanbanEnabled || project === null || sessionId === null) {
-      setRefs([])
-      return
-    }
+    if (!kanbanEnabled || project === null || sessionId === null) return
     let cancelled = false
     const scan = async (): Promise<void> => {
       const boards = await window.piwright.kanbanBoards(project)
@@ -145,11 +143,13 @@ export function SessionTaskChips({
         }
       }
       if (cancelled) return
-      setRefs((prev) =>
-        prev.length === found.length &&
-        prev.every((p, i) => p.boardId === found[i].boardId && p.taskId === found[i].taskId && p.title === found[i].title)
+      setFound((prev) =>
+        prev !== null &&
+        prev.scope === scope &&
+        prev.refs.length === found.length &&
+        prev.refs.every((p, i) => p.boardId === found[i].boardId && p.taskId === found[i].taskId && p.title === found[i].title)
           ? prev
-          : found
+          : { scope, refs: found }
       )
     }
     void scan()
@@ -158,8 +158,9 @@ export function SessionTaskChips({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [kanbanEnabled, project, sessionId])
+  }, [kanbanEnabled, project, sessionId, scope])
 
+  const refs = found !== null && found.scope === scope ? found.refs : []
   if (refs.length === 0) return null
   return (
     <span className="session-task-chips">

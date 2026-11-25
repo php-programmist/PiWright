@@ -591,6 +591,14 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     bottomRef.current?.scrollIntoView({ behavior: streaming || batch ? 'auto' : 'smooth' })
   }, [entries, streaming, activeHostId])
 
+  // Правка models.json вне приложения: дропдаун моделей — последний шанс догнать каталог,
+  // фокус-рефреш мог не сработать; троттлинг 5 с, чтобы не дёргать pi на каждый клик.
+  const refreshModelsOnOpen = useRef(() => {
+    if (Date.now() - lastModelsRefreshAt < 5000) return
+    lastModelsRefreshAt = Date.now()
+    void window.piwright.modelsRefresh().catch(() => {})
+  })
+
   if (activeHostId === null || status === null) {
     return (
       <main className="chat-empty">
@@ -792,13 +800,6 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
     else setLoopMax(activeHostId, clamped)
   }
   const modelKey = status.model
-  // Правка models.json вне приложения: дропдаун моделей — последний шанс догнать каталог,
-  // фокус-рефреш мог не сработать; троттлинг 5 с, чтобы не дёргать pi на каждый клик.
-  const refreshModelsOnOpen = useRef(() => {
-    if (Date.now() - lastModelsRefreshAt < 5000) return
-    lastModelsRefreshAt = Date.now()
-    void window.piwright.modelsRefresh().catch(() => {})
-  })
   const selectedModel = status.models.find((m) => `${m.provider}/${m.id}` === modelKey)
   const thinkingLevels = selectedModel !== undefined ? selectedModel.thinkingLevels : status.thinkingLevels
   const muted = chat?.muted ?? false
