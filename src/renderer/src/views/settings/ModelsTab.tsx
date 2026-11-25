@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { cloneModel, cloneProvider, parseModelsDoc, serializeModelsDoc } from '../../../../shared/models-doc'
 import type { ModelEdit, ParsedModelsDoc, ProviderEdit } from '../../../../shared/models-doc'
 import { useT } from '../../lib/i18n'
+import { useSessionsStore } from '../../stores/sessions'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import type { BackendMode } from '../../../../shared/ipc-contracts'
 
@@ -16,7 +17,7 @@ function otherBackend(backend: BackendMode): BackendMode {
 }
 
 function backendLabel(backend: BackendMode): string {
-  return backend === 'native' ? 'Windows' : 'WSL'
+  return backend === 'native' ? 'Windows' : backend === 'ssh' ? 'SSH' : 'WSL'
 }
 
 function emptyProvider(): ProviderEdit {
@@ -275,6 +276,11 @@ function CopyPanel(props: CopyPanelProps): React.JSX.Element {
 
 export function ModelsTab(): React.JSX.Element {
   const [backend, setBackend] = useState<BackendMode>('native')
+  const settings = useSessionsStore((s) => s.settings)
+  const sshServers = settings?.sshServers ?? []
+  const [sshServerIdRaw, setSshServerId] = useState<string>('')
+  // Сервер по умолчанию — производное состояние: невалидный id заменяется первым существующим.
+  const sshServerId = sshServers.some((s) => s.id === sshServerIdRaw) ? sshServerIdRaw : (sshServers[0]?.id ?? '')
   const t = useT()
   const [loadedFor, setLoadedFor] = useState<BackendMode | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -293,12 +299,12 @@ export function ModelsTab(): React.JSX.Element {
   const [copyNewApiKey, setCopyNewApiKey] = useState('')
   const [copyError, setCopyError] = useState<string | null>(null)
 
-  const loading = loadedFor !== backend
+  const loading = loadedFor !== backend || (backend === 'ssh' && sshServerId.length === 0 && sshServers.length > 0)
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const res = await window.piwright.modelsList(backend)
+      const res = await window.piwright.modelsList(backend, backend === 'ssh' ? sshServerId : undefined)
       if (cancelled) return
       setLoadError(res.ok ? null : (res.error ?? t('load failed')))
       setFile(res.file)
@@ -314,7 +320,7 @@ export function ModelsTab(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [backend, t])
+  }, [backend, sshServerId, t])
 
   const persist = async (next: ParsedModelsDoc, target: BackendMode): Promise<string | null> => {
     let doc: unknown
@@ -323,7 +329,7 @@ export function ModelsTab(): React.JSX.Element {
     } catch (err) {
       return err instanceof Error ? err.message : String(err)
     }
-    const res = await window.piwright.modelsSave(target, doc)
+    const res = await window.piwright.modelsSave(target, doc, target === 'ssh' ? sshServerId : undefined)
     if (res.ok) void window.piwright.modelsRefresh().catch(() => {})
     return res.ok ? null : (res.error ?? t('save failed'))
   }
@@ -447,7 +453,7 @@ export function ModelsTab(): React.JSX.Element {
   }
 
   const reveal = async (): Promise<void> => {
-    const res = await window.piwright.modelsReveal(backend)
+    const res = await window.piwright.modelsReveal(backend, backend === 'ssh' ? sshServerId : undefined)
     if (!res.ok) setNotice(res.error ?? t('open failed'))
   }
 
@@ -461,11 +467,25 @@ export function ModelsTab(): React.JSX.Element {
           <button className={backend === 'wsl' ? 'current' : ''} onClick={() => setBackend('wsl')}>
             WSL
           </button>
+          {sshServers.length > 0 && (
+            <button className={backend === 'ssh' ? 'current' : ''} onClick={() => setBackend('ssh')}>
+              SSH
+            </button>
+          )}
+          {backend === 'ssh' && (
+            <select value={sshServerId} onChange={(e) => setSshServerId(e.target.value)}>
+              {sshServers.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         <span className="spacer" />
-        <button className="ghost" onClick={() => void reveal()}>
-          {t('Open models.json in editor')}
-        </button>
+        {backend !== 'ssh' && (
+          <button className="ghost" onClick={() => void reveal()}>
+            {t('Open models.json in editor')}
+          </button>
+        )}
       </div>
       <div className="models-file">
         {loading ? t('loading…') : `${file}${exists ? '' : ` ${t('(missing — will be created on save)')}`}`}
@@ -544,9 +564,11 @@ export function ModelsTab(): React.JSX.Element {
                     >
                       {t('Edit')}
                     </button>
-                    <button className="ghost" onClick={() => void copyProviderTo(provider)}>
-                      {t('Copy → {backend}', { backend: backendLabel(otherBackend(backend)) })}
-                    </button>
+                    {backend !== 'ssh' && (
+                      <button className="ghost" onClick={() => void copyProviderTo(provider)}>
+                        {t('Copy → {backend}', { backend: backendLabel(otherBackend(backend)) })}
+                      </button>
+                    )}
                     <button className="ghost danger" onClick={() => void deleteProvider(provider)}>
                       {t('Delete')}
                     </button>

@@ -269,6 +269,27 @@ export class SshService {
     return result.stdout.split('\n').map((l) => l.trim()).find((l) => l.startsWith('/')) ?? null
   }
 
+  hasPassword(serverId: string): boolean {
+    return this.secrets.hasPassword(serverId)
+  }
+
+  hasKeyPassphrase(serverId: string): boolean {
+    return this.secrets.hasKeyPassphrase(serverId)
+  }
+
+  setSecret(serverId: string, patch: { password?: string | null; keyPassphrase?: string | null }): void {
+    this.secrets.set(serverId, patch)
+  }
+
+  deleteSecret(serverId: string): void {
+    this.secrets.remove(serverId)
+  }
+
+  /** id серверов, чьи секреты остались без записи в settings (для очистки). */
+  removedServerIds(known: Set<string>): string[] {
+    return this.secrets.ids().filter((id) => !known.has(id))
+  }
+
   closeAll(): void {
     for (const pooled of this.pool.values()) {
       try {

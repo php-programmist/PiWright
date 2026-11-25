@@ -591,6 +591,42 @@ export interface TerminalInfo {
   label: string
 }
 
+/** Явные секреты для проверки/браузера несохранённого сервера (черновик из UI). */
+export interface SshSecretInput {
+  password?: string
+  keyPassphrase?: string
+}
+
+export interface SshTestResult {
+  ok: boolean
+  error: string | null
+  fingerprint: string | null
+  home: string | null
+  piPath: string | null
+}
+
+export interface SshDirEntry {
+  name: string
+  isDir: boolean
+}
+
+export interface SshListDirResult {
+  ok: boolean
+  error: string | null
+  path: string
+  entries: SshDirEntry[]
+}
+
+export interface SshSecretStatus {
+  hasPassword: boolean
+  hasKeyPassphrase: boolean
+}
+
+export interface SshOpResult {
+  ok: boolean
+  error: string | null
+}
+
 export interface TerminalCreateResult {
   ok: boolean
   error: string | null
@@ -805,6 +841,14 @@ export interface PiWrightApi {
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>
+  /** Проверка SSH-сервера (соединение, host key, $HOME, путь pi); secret — черновик из UI. */
+  sshTest(server: SshServerEntry, secret?: SshSecretInput | null): Promise<SshTestResult>
+  /** Листинг каталога на сервере (браузер папок). */
+  sshListDir(server: SshServerEntry, path: string, secret?: SshSecretInput | null): Promise<SshListDirResult>
+  sshSecretStatus(serverId: string): Promise<SshSecretStatus>
+  /** Частичная запись секрета; null — удалить поле. */
+  sshSetSecret(serverId: string, patch: { password?: string | null; keyPassphrase?: string | null }): Promise<SshOpResult>
+  sshForgetHostKey(server: SshServerEntry): Promise<SshOpResult>
   /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
   revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
@@ -943,9 +987,9 @@ export interface PiWrightApi {
   remoteCheckPort(port: number): Promise<{ busy: boolean }>
   /** Немедленная повторная попытка поднять remote-сервер (кнопка «Повторить»); false — нечего повторять. */
   remoteRetry(): Promise<boolean>
-  modelsList(backend: BackendMode): Promise<ModelsListResult>
-  modelsSave(backend: BackendMode, doc: unknown): Promise<ModelsOpResult>
-  modelsReveal(backend: BackendMode): Promise<ModelsOpResult>
+  modelsList(backend: BackendMode, serverId?: string): Promise<ModelsListResult>
+  modelsSave(backend: BackendMode, doc: unknown, serverId?: string): Promise<ModelsOpResult>
+  modelsReveal(backend: BackendMode, serverId?: string): Promise<ModelsOpResult>
  modelsRefresh(): Promise<void>
   mcpList(project: ProjectEntry, scope: McpScope): Promise<McpListResult>
   mcpSave(project: ProjectEntry, scope: McpScope, servers: McpServerEntry[]): Promise<McpOpResult>
@@ -989,6 +1033,11 @@ export const SESSIONS_CLOSE_CHANNEL = 'sessions:close'
 export const SESSIONS_RENAME_CHANNEL = 'sessions:rename'
 export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'
+export const SSH_TEST_CHANNEL = 'ssh:test'
+export const SSH_LIST_DIR_CHANNEL = 'ssh:list-dir'
+export const SSH_SECRET_STATUS_CHANNEL = 'ssh:secret-status'
+export const SSH_SET_SECRET_CHANNEL = 'ssh:set-secret'
+export const SSH_FORGET_HOST_KEY_CHANNEL = 'ssh:forget-host-key'
 export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
 export const SESSION_EDIT_PROMPT_CHANNEL = 'session:edit-prompt'

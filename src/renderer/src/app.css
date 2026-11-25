@@ -1075,6 +1075,150 @@ body {
   margin-bottom: 16px;
 }
 
+/* SSH: список серверов, форма, результаты теста, диалог добавления проекта */
+.ssh-server-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.ssh-server-name {
+  font-weight: 600;
+}
+
+.ssh-server-meta {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.ssh-test-result {
+  width: 100%;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  word-break: break-word;
+}
+
+.ssh-test-result.ok {
+  color: var(--ok, #4caf50);
+}
+
+.ssh-test-result.err {
+  color: var(--red);
+}
+
+.ssh-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+
+.ssh-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ssh-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.ssh-dialog {
+  width: min(520px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg, #1b1e24);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ssh-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.ssh-dialog-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.ssh-dialog-server {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.ssh-dialog-path {
+  display: flex;
+  gap: 6px;
+}
+
+.ssh-dialog-path input {
+  flex: 1;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font: inherit;
+}
+
+.ssh-dialog-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ssh-dialog-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ssh-dialog-entry:hover {
+  background: var(--hover, rgba(255, 255, 255, 0.06));
+}
+
+.ssh-entry-icon {
+  color: var(--faint);
+  width: 12px;
+}
+
+.ssh-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .settings-section h3 {
   margin: 0 0 10px;
   font-size: 12px;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ModelsTab } from './ModelsTab'
+import { SshTab } from './SshTab'
 import { KanbanThemeSection } from './KanbanThemeSection'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
@@ -16,10 +17,11 @@ const REMOTE_STATUS_RETRY_MS = 300
 
 const CHAT_FONT_SIZES = [12, 13, 14, 16, 18]
 
-type Tab = 'general' | 'appearance' | 'notifications' | 'models' | 'advanced'
+type Tab = 'general' | 'ssh' | 'appearance' | 'notifications' | 'models' | 'advanced'
 
 const TABS: { id: Tab; key: string }[] = [
   { id: 'general', key: 'General' },
+  { id: 'ssh', key: 'SSH' },
   { id: 'appearance', key: 'Appearance' },
   { id: 'notifications', key: 'Notifications' },
   { id: 'models', key: 'Models' },
@@ -103,6 +105,7 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           ))}
         </nav>
         <div className="settings-content">
+          {tab === 'ssh' && <SshTab draft={draft} update={update} />}
           {tab === 'general' && (
             <>
               <section className="settings-section">

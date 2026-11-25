@@ -103,4 +103,9 @@ export class SshSecretsService {
     delete file.servers[serverId]
     this.write(file)
   }
+
+  /** Все id с сохранёнными секретами. */
+  ids(): string[] {
+    return Object.keys(this.read().servers)
+  }
 }

@@ -118,6 +118,11 @@ import {
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
+  SSH_FORGET_HOST_KEY_CHANNEL,
+  SSH_LIST_DIR_CHANNEL,
+  SSH_SECRET_STATUS_CHANNEL,
+  SSH_SET_SECRET_CHANNEL,
+  SSH_TEST_CHANNEL,
   STATS_QUERY_CHANNEL,
   SKILLS_LIST_CHANNEL,
   SKILLS_REVEAL_CHANNEL,
@@ -158,6 +163,9 @@ import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { chooseAttachment, putAttachment } from '../attachments/attachments'
+import { getSshService } from '../ssh/ssh-service'
+import { SshProjectFs } from '../fs/project-fs'
+import type { SshSecretInput, SshSecretStatus, SshServerEntry, SshListDirResult, SshOpResult, SshTestResult } from '../../shared/ipc-contracts'
 import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
 import type { TelegramTokenStore } from '../notifications/token-store'
@@ -186,6 +194,25 @@ function isProjectEntry(value: unknown): value is ProjectEntry {
   if (!(typeof entry['dir'] === 'string' && (entry['kind'] === 'native' || entry['kind'] === 'wsl' || entry['kind'] === 'ssh'))) return false
   if (entry['kind'] === 'ssh' && typeof entry['serverId'] !== 'string') return false
   return entry['name'] === undefined || typeof entry['name'] === 'string'
+}
+
+function isSshServerEntry(value: unknown): value is SshServerEntry {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  if (typeof raw['id'] !== 'string' || typeof raw['host'] !== 'string' || typeof raw['user'] !== 'string') return false
+  if (raw['host'].length === 0 || raw['user'].length === 0) return false
+  if (typeof raw['port'] !== 'number' || !Number.isFinite(raw['port'])) return false
+  if (raw['auth'] !== 'password' && raw['auth'] !== 'key' && raw['auth'] !== 'agent') return false
+  if (raw['name'] !== undefined && typeof raw['name'] !== 'string') return false
+  if (raw['keyPath'] !== undefined && typeof raw['keyPath'] !== 'string') return false
+  return true
+}
+
+function isSshSecretInput(value: unknown): value is SshSecretInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  return (raw['password'] === undefined || typeof raw['password'] === 'string') &&
+    (raw['keyPassphrase'] === undefined || typeof raw['keyPassphrase'] === 'string')
 }
 
 function host(piHost: PiHost, hostId: unknown): SessionHost | null {
@@ -405,7 +432,77 @@ export function registerIpc(
     const next = settings.set(safe)
     if (!next.loopsEnabled) loops.stopAll()
     notifications?.onSettingsChanged(next)
+    // Секреты удалённых SSH-серверов чистим (id больше нет в списке).
+    try {
+      const ssh = getSshService()
+      const known = new Set(next.sshServers.map((s) => s.id))
+      for (const id of ssh.removedServerIds(known)) ssh.deleteSecret(id)
+    } catch {
+      // ssh-сервис мог не инициализироваться
+    }
     return next
+  })
+
+  ipcMain.handle(SSH_TEST_CHANNEL, async (_event, server: unknown, secret: unknown): Promise<SshTestResult> => {
+    if (!isSshServerEntry(server)) return { ok: false, error: 'Invalid server', fingerprint: null, home: null, piPath: null }
+    if (!isSshSecretInput(secret)) secret = null
+    try {
+      return await getSshService().test(server, secret as SshSecretInput | null)
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), fingerprint: null, home: null, piPath: null }
+    }
+  })
+
+  ipcMain.handle(SSH_LIST_DIR_CHANNEL, async (_event, server: unknown, path: unknown, secret: unknown): Promise<SshListDirResult> => {
+    if (!isSshServerEntry(server) || typeof path !== 'string') return { ok: false, error: 'Invalid request', path: '', entries: [] }
+    if (!isSshSecretInput(secret)) secret = null
+    try {
+      const ssh = getSshService()
+      const pfs = new SshProjectFs(() => ssh.sftp(server, secret as SshSecretInput | null))
+      const entries = await pfs.readdir(path)
+      const sorted = entries
+        .map((item) => ({ name: item.name, isDir: item.isDir }))
+        .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1))
+      return { ok: true, error: null, path, entries: sorted }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), path, entries: [] }
+    }
+  })
+
+  ipcMain.handle(SSH_SECRET_STATUS_CHANNEL, (_event, serverId: unknown): SshSecretStatus => {
+    if (typeof serverId !== 'string' || serverId.length === 0) return { hasPassword: false, hasKeyPassphrase: false }
+    try {
+      const ssh = getSshService()
+      return { hasPassword: ssh.hasPassword(serverId), hasKeyPassphrase: ssh.hasKeyPassphrase(serverId) }
+    } catch {
+      return { hasPassword: false, hasKeyPassphrase: false }
+    }
+  })
+
+  ipcMain.handle(SSH_SET_SECRET_CHANNEL, async (_event, serverId: unknown, patch: unknown): Promise<SshOpResult> => {
+    if (typeof serverId !== 'string' || serverId.length === 0 || patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
+      return { ok: false, error: 'Invalid request' }
+    }
+    try {
+      const raw = patch as Record<string, unknown>
+      const clean: { password?: string | null; keyPassphrase?: string | null } = {}
+      if (raw['password'] === null || typeof raw['password'] === 'string') clean.password = raw['password'] as string | null
+      if (raw['keyPassphrase'] === null || typeof raw['keyPassphrase'] === 'string') clean.keyPassphrase = raw['keyPassphrase'] as string | null
+      getSshService().setSecret(serverId, clean)
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
+  ipcMain.handle(SSH_FORGET_HOST_KEY_CHANNEL, (_event, server: unknown): SshOpResult => {
+    if (!isSshServerEntry(server)) return { ok: false, error: 'Invalid server' }
+    try {
+      getSshService().forgetHostKey(server)
+      return { ok: true, error: null }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle(SESSIONS_LIST_CHANNEL, () => {
@@ -1170,21 +1267,25 @@ export function registerIpc(
     return { busy: await isPortBusy(p) }
   })
 
-  ipcMain.handle(MODELS_LIST_CHANNEL, async (_event, backend: unknown) => {
-    if (backend !== 'native' && backend !== 'wsl') {
+  ipcMain.handle(MODELS_LIST_CHANNEL, async (_event, backend: unknown, serverId: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl' && backend !== 'ssh') {
       return { ok: false, error: 'Invalid request', file: '', exists: false, doc: null }
     }
-    return listModels(backend, settings.get())
+    if (backend === 'ssh' && typeof serverId !== 'string') {
+      return { ok: false, error: 'Invalid request', file: '', exists: false, doc: null }
+    }
+    return listModels(backend, settings.get(), undefined, typeof serverId === 'string' ? serverId : undefined)
   })
 
-  ipcMain.handle(MODELS_SAVE_CHANNEL, async (_event, backend: unknown, doc: unknown) => {
-    if (backend !== 'native' && backend !== 'wsl') return { ok: false, error: 'Invalid request' }
-    return saveModels(backend, settings.get(), doc)
+  ipcMain.handle(MODELS_SAVE_CHANNEL, async (_event, backend: unknown, doc: unknown, serverId: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl' && backend !== 'ssh') return { ok: false, error: 'Invalid request' }
+    if (backend === 'ssh' && typeof serverId !== 'string') return { ok: false, error: 'Invalid request' }
+    return saveModels(backend, settings.get(), doc, undefined, typeof serverId === 'string' ? serverId : undefined)
   })
 
-  ipcMain.handle(MODELS_REVEAL_CHANNEL, async (_event, backend: unknown) => {
-    if (backend !== 'native' && backend !== 'wsl') return { ok: false, error: 'Invalid request' }
-    return revealModelsFile(backend, settings.get())
+  ipcMain.handle(MODELS_REVEAL_CHANNEL, async (_event, backend: unknown, serverId: unknown) => {
+    if (backend !== 'native' && backend !== 'wsl' && backend !== 'ssh') return { ok: false, error: 'Invalid request' }
+    return revealModelsFile(backend, settings.get(), undefined, typeof serverId === 'string' ? serverId : undefined)
   })
 
   ipcMain.handle(MODELS_REFRESH_CHANNEL, () => piHost.refreshCatalogs())
