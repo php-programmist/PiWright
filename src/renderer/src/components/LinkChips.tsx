@@ -103,6 +103,85 @@ function TaskChip({ project, taskId }: { project: ProjectEntry; taskId: string }
   )
 }
 
+interface SessionTaskRef {
+  boardId: string
+  taskId: string
+  title: string
+}
+
+/** Чипы задач канбана, в которых эта сессия отмечена на уровне карточки (card.sessions —
+ *  ссылка из комментариев/перемещений агента). Поллинг 3 с: агент пишет на доску напрямую
+ *  через pi-расширение, событий в рендерер не приходит. */
+export function SessionTaskChips({
+  project,
+  sessionId
+}: {
+  project: ProjectEntry | null
+  sessionId: string | null
+}): React.JSX.Element | null {
+  const kanbanEnabled = useSessionsStore((s) => s.settings?.kanbanEnabled ?? false)
+  const [refs, setRefs] = useState<SessionTaskRef[]>([])
+
+  useEffect(() => {
+    if (!kanbanEnabled || project === null || sessionId === null) {
+      setRefs([])
+      return
+    }
+    let cancelled = false
+    const scan = async (): Promise<void> => {
+      const boards = await window.piwright.kanbanBoards(project)
+      if (!boards.ok) return
+      const found: SessionTaskRef[] = []
+      const seen = new Set<string>()
+      for (const board of boards.boards) {
+        const res = await window.piwright.kanbanBoardGet(project, board.id)
+        if (!res.ok || res.board === null) continue
+        for (const card of res.board.cards) {
+          if (card.sessions?.some((s) => s.id === sessionId) !== true) continue
+          const key = `${board.id}\u0000${card.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          found.push({ boardId: board.id, taskId: card.id, title: card.title })
+        }
+      }
+      if (cancelled) return
+      setRefs((prev) =>
+        prev.length === found.length &&
+        prev.every((p, i) => p.boardId === found[i].boardId && p.taskId === found[i].taskId && p.title === found[i].title)
+          ? prev
+          : found
+      )
+    }
+    void scan()
+    const timer = window.setInterval(() => void scan(), 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [kanbanEnabled, project, sessionId])
+
+  if (refs.length === 0) return null
+  return (
+    <span className="session-task-chips">
+      {refs.map((ref) => (
+        <span
+          key={`${ref.boardId}\u0000${ref.taskId}`}
+          className="board-chip task"
+          title={ref.title}
+          onClick={() => {
+            if (project === null) return
+            useTabsStore
+              .getState()
+              .openTab(project, { kind: 'task', boardId: ref.boardId, taskId: ref.taskId, title: ref.title })
+          }}
+        >
+          {truncateTitle(ref.title)}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /** Чип сессии в комментарии: живая — активация чата, из истории — восстановление чата,
  *  нигде не найдена — приглушённый чип с тултипом. Пустой title (ссылка-токен) —
  *  заголовок ищется в активных сессиях и истории. */

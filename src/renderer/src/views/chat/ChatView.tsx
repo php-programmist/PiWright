@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
-import { RichText } from '../../components/LinkChips'
+import { RichText, SessionTaskChips } from '../../components/LinkChips'
 import { Lightbox } from '../../components/Lightbox'
 import { QueuePanel } from '../../components/QueuePanel'
 import { ScheduledPanel } from '../../components/ScheduledPanel'
@@ -917,6 +917,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           </span>
         )}
         <span className="spacer" />
+        <SessionTaskChips project={project} sessionId={status.sessionId} />
         <button
           className="icon"
           title={shared ? t('Stop sharing this session with the phone') : t('Share this session with a phone on the same Wi-Fi')}

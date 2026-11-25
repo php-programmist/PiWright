@@ -5115,6 +5115,20 @@ pre.code-block {
   border-color: var(--accent);
 }
 
+/* Чипы задач текущей сессии в шапке чата (слева от тогглеров). */
+.session-task-chips {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  flex: none;
+}
+
+.header .session-task-chips .board-chip {
+  max-width: 140px;
+  flex: none;
+}
+
 .board-chip.task {
   color: var(--accent);
   border-color: var(--accent);
