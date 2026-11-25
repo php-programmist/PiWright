@@ -2935,7 +2935,8 @@ pre.code-block {
 }
 
 .branch-sub {
-  left: calc(100% + 4px);
+  /* Подменю справа от ПОПАПА (250px), не от кнопки — иначе налезает на список (референс PHPStorm). */
+  left: calc(250px + 8px);
 }
 
 .branch-item {

@@ -121,10 +121,19 @@ async function main() {
     log('down arrow:', downText)
     if (!downText.includes('1')) throw new Error('expected ↓1 in header')
 
-    // Ветка в шапке управляется тем же попапом: список веток открывается
+    // Ветка в шапке управляется тем же попапом: список открывается, подменю — справа от попапа без наложения
     await page.locator('.app-header .branch-toggle').click()
     await page.waitForSelector('.app-header .branch-popup .branch-item', { timeout: 5000 })
     log('branch popup opens from header')
+    await page.locator('.app-header .branch-popup .branch-item.current').click()
+    await page.waitForSelector('.app-header .branch-sub', { timeout: 5000 })
+    const rects = await page.evaluate(() => {
+      const popup = document.querySelector('.app-header .branch-popup').getBoundingClientRect()
+      const sub = document.querySelector('.app-header .branch-sub').getBoundingClientRect()
+      return { popupRight: popup.right, subLeft: sub.left, subTop: sub.top, popupTop: popup.top }
+    })
+    log('popup right:', rects.popupRight, 'submenu left:', rects.subLeft)
+    if (rects.subLeft < rects.popupRight - 1) throw new Error(`submenu overlaps popup: sub.left ${rects.subLeft} < popup.right ${rects.popupRight}`)
     await page.keyboard.press('Escape')
     await page.mouse.click(400, 400)
 
