@@ -1713,6 +1713,11 @@ body {
   cursor: zoom-in;
 }
 
+.msg-actions-row {
+  display: flex;
+  gap: 2px;
+}
+
 .msg-action {
   border: none;
   background: transparent;

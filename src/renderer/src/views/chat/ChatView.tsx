@@ -117,33 +117,37 @@ function AssistantMessage({ entry, project, onFork, onRewind }: { entry: TextEnt
   return (
     <div className="assistant-message">
       <RichText text={entry.text} project={project} renderText={(chunk) => <Markdown text={chunk} />} />
-      {onRewind !== undefined && (
-        <button
-          className="msg-action"
-          title={t('Rewind session and code to this point')}
-          onClick={() => onRewind(entry)}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            <polyline points="4.5 2.5 4.5 7.5 9.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            <line x1="12" y1="12" x2="15" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-      )}
-      {onFork !== undefined && (
-        <button
-          className="msg-action"
-          title={t('Fork into a new session from this point')}
-          onClick={() => onFork(entry)}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-            <line x1="6" y1="6" x2="6" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            <circle cx="18" cy="6" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M18 9a9 9 0 0 1-9 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
+      {(onRewind !== undefined || onFork !== undefined) && (
+        <div className="msg-actions-row">
+          {onRewind !== undefined && (
+            <button
+              className="msg-action"
+              title={t('Rewind session and code to this point')}
+              onClick={() => onRewind(entry)}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                <polyline points="4.5 2.5 4.5 7.5 9.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                <line x1="12" y1="12" x2="15" y2="14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          {onFork !== undefined && (
+            <button
+              className="msg-action"
+              title={t('Fork into a new session from this point')}
+              onClick={() => onFork(entry)}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                <line x1="6" y1="6" x2="6" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                <circle cx="18" cy="6" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                <circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M18 9a9 9 0 0 1-9 9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
