@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen } from 'electron'
 import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
@@ -18,6 +18,7 @@ import { TokenStatsService } from './stats/stats-service'
 import { SettingsService } from './settings/settings'
 import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
+import { appendCrashLog, crashDialogPlan, isRecoverableCrash, readSandboxOverride, writeSandboxOverride } from './crash-recovery'
 import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
@@ -57,6 +58,10 @@ try {
   app.commandLine.appendSwitch('lang', 'en-US')
 }
 
+// The renderer previously crashed in the Chromium sandbox on this machine and the user
+// chose the no-sandbox fallback. Chromium reads this switch once at startup.
+if (readSandboxOverride(app.getPath('userData')) !== null) app.commandLine.appendSwitch('no-sandbox')
+
 /** Позиция за пределами объединения всех мониторов. */
 function offscreenPosition(): { x: number; y: number } {
   const displays = screen.getAllDisplays()
@@ -67,7 +72,7 @@ function offscreenPosition(): { x: number; y: number } {
   }
 }
 
-function createWindow(bg: string): void {
+function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
   const state = loadWindowState(windowStatePath, screen.getPrimaryDisplay().workArea)
   const offscreen = smokeMode ? offscreenPosition() : undefined
   mainWindow = new BrowserWindow({
@@ -86,6 +91,43 @@ function createWindow(bg: string): void {
       sandbox: true,
       ...(smokeMode ? { backgroundThrottling: false } : {})
     }
+  })
+  const showCrashDialog = (reason: string, exitCode: number): void => {
+    const userDataDir = app.getPath('userData')
+    const sandboxDisabled = readSandboxOverride(userDataDir) !== null
+    appendCrashLog(userDataDir, `[${new Date().toISOString()}] v${app.getVersion()} ${reason} exitCode=${exitCode} noSandbox=${sandboxDisabled}`)
+    if (smokeMode) return
+    const win = mainWindow
+    if (win === null || win.isDestroyed()) return
+    if (!win.isVisible()) win.show()
+    const plan = crashDialogPlan(lang(), sandboxDisabled, reason, exitCode)
+    const pick = dialog.showMessageBoxSync(win, {
+      type: 'error',
+      title: plan.title,
+      message: plan.message,
+      detail: plan.detail,
+      buttons: plan.buttons,
+      noLink: true,
+      cancelId: plan.buttons.length - 1
+    })
+    if (pick === 0) {
+      win.webContents.reload()
+    } else if (pick === plan.restartNoSandboxIndex) {
+      writeSandboxOverride(userDataDir, `${reason} (exitCode ${exitCode})`)
+      // Plain app.relaunch() drops CLI args (user-data-dir, debugging port) — pass them through.
+      app.relaunch({ args: process.argv.slice(1) })
+      app.quit()
+    } else {
+      win.close()
+    }
+  }
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (isRecoverableCrash(details.reason)) showCrashDialog(details.reason, details.exitCode)
+  })
+  // Missing renderer files after a botched update: same recovery dialog. In dev the
+  // vite dev server hiccups produce transient failures — no dialog there.
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+    if (isMainFrame && errorCode !== -3 && !process.env['ELECTRON_RENDERER_URL']) showCrashDialog('launch-failed', errorCode)
   })
   mainWindow.once('ready-to-show', () => {
     if (smokeMode) mainWindow?.showInactive()
@@ -189,9 +231,9 @@ app.whenReady().then(async () => {
   }, scheduledService, statsService, await consumeUpdateInfo(app.getPath('userData'), app.getVersion()))
   startAutoUpdater(() => settings.get().updateUrl)
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
-  createWindow(bg)
+  createWindow(bg, () => settings.get().language)
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(bg)
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(bg, () => settings.get().language)
   })
 })
 
