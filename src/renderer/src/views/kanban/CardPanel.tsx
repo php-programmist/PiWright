@@ -280,7 +280,7 @@ export function CardPanel({
             onBlur={() => void saveDetails()}
           />
           {hasLinkTokens(description) && (
-            <div className="board-comment-refs board-description-refs">
+            <div className="board-comment-text board-description-refs">
               <RichText text={description} project={project} />
             </div>
           )}
