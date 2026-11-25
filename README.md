@@ -139,5 +139,14 @@ App settings live in `%APPDATA%\PiWright\settings.json` and are editable from th
 - `src/shared` — IPC contracts and pi protocol types, no side effects
 - `src/renderer` — React UI (zustand stores, views)
 - `tests` — vitest
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+Team roles (solo-maintained project):
+- Authors, reviewers and approvers: [@php-programmist](https://github.com/php-programmist)
+
 ## License
 [MIT](LICENSE)
