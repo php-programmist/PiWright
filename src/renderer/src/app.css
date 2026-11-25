@@ -291,7 +291,7 @@ body {
   gap: 4px;
 }
 
-.add-project button {
+.add-project > button {
   background: var(--accent);
   color: #fff;
   border: none;
@@ -302,7 +302,7 @@ body {
   font-size: 11.5px;
 }
 
-.add-project button.cancel {
+.add-project > button.cancel {
   background: transparent;
   color: var(--muted);
 }

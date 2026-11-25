@@ -128,6 +128,11 @@ async function main() {
   await page.waitForTimeout(2500)
   const entries = await page.evaluate(() => [...document.querySelectorAll('.ssh-dialog-entry')].map((e) => e.textContent?.trim()))
   check('remote dir browser lists entries', entries.length > 0, JSON.stringify(entries.slice(0, 5)))
+  const entryBg = await page.evaluate(() => {
+    const el = document.querySelector('.ssh-dialog-entry')
+    return el ? getComputedStyle(el).backgroundColor : 'missing'
+  })
+  check('dir entry not accent-styled', entryBg === 'rgba(0, 0, 0, 0)', entryBg)
   await page.evaluate(() => {
     const input = document.querySelector('.ssh-dialog-path input')
     if (input) {
@@ -152,10 +157,10 @@ async function main() {
       btn?.click()
     })
     await page.waitForTimeout(1500)
-    const projectRow = await page.evaluate(() => document.querySelector('.project-name')?.textContent ?? '')
-    check('ssh project appears in panel', projectRow.toLowerCase().includes('tmp'), projectRow)
-    const badge = await page.evaluate(() => document.querySelector('.kind-badge')?.textContent ?? '')
-    check('SSH badge on project', badge === 'SSH', badge)
+    const rows = await page.evaluate(() => [...document.querySelectorAll('.project-name')].map((el) => el.textContent ?? ''))
+    check('ssh project appears in panel', rows.some((r) => r.toLowerCase().includes('tmp')), JSON.stringify(rows))
+    const badges = await page.evaluate(() => [...document.querySelectorAll('.project-row')].map((el) => el.textContent ?? ''))
+    check('SSH badge on project', badges.some((b) => b.includes('tmp') && b.includes('SSH')), JSON.stringify(badges))
   }
 
   await page.screenshot({ path: 'tests/manual/ssh-ui-smoke.png' })
