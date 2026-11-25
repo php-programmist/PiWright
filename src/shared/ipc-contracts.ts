@@ -70,6 +70,8 @@ export interface Settings {
   lastProjectKey: string | null
   /** Звуки, telegram и remote-мост (вкладка Notifications). */
   notifications: NotificationSettings
+  /** Версия обновления, скрытая кнопкой «Не предлагать эту версию»; баннер вернётся только для более новой версии. */
+  dismissedUpdateVersion: string | null
   /** Последняя выбранная модель (provider/id) — подставляется в новые сессии; пишет только main. */
   lastModel: string | null
   /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
@@ -738,6 +740,14 @@ export interface UpdateInfo {
   updatedFrom: string | null
 }
 
+/** Живой статус проверки обновлений: найденная версия и фаза загрузки. */
+export interface UpdateStatus {
+  /** Доступная новая версия (null — обновления не найдено или версия скрыта пользователем). */
+  availableVersion: string | null
+  /** idle — ждёт решения пользователя; downloading — идёт загрузка; error — загрузка не удалась. */
+  phase: 'idle' | 'downloading' | 'error'
+}
+
 export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
@@ -753,6 +763,16 @@ export interface PiWrightApi {
   changelog(): Promise<ChangelogResult>
   /** Обнаружение обновления: сравнение версии прошлого запуска с текущей. */
   updateInfo(): Promise<UpdateInfo>
+  /** Текущий статус проверки обновлений (автозагрузка выключена — решение за пользователем). */
+  updateStatus(): Promise<UpdateStatus>
+  /** Push статуса обновлений (найдена новая версия, фазы загрузки). */
+  onUpdateEvent(cb: (status: UpdateStatus) => void): () => void
+  /** Скачать и установить найденное обновление (после загрузки приложение перезапустится). */
+  downloadUpdate(): Promise<UpdateStatus>
+  /** «Не предлагать эту версию»: скрыть баннер до выхода более новой версии. */
+  dismissUpdate(): Promise<UpdateStatus>
+  /** Только dev (smoke): эмулировать найденное обновление (null — сбросить). */
+  updateDevEmit(version: string | null): Promise<UpdateStatus>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
   /** Транскрипт сессии без запуска pi: UiEvent-ы из JSONL (для просмотра сессии субагента). */
@@ -933,6 +953,11 @@ export const STATS_QUERY_CHANNEL = 'stats:query'
 export const APP_VERSION_CHANNEL = 'app:version'
 export const APP_CHANGELOG_CHANNEL = 'app:changelog'
 export const APP_UPDATE_INFO_CHANNEL = 'app:update-info'
+export const APP_UPDATE_STATUS_CHANNEL = 'app:update-status'
+export const APP_UPDATE_EVENT_CHANNEL = 'app:update-event'
+export const APP_UPDATE_DOWNLOAD_CHANNEL = 'app:update-download'
+export const APP_UPDATE_DISMISS_CHANNEL = 'app:update-dismiss'
+export const APP_UPDATE_DEV_EMIT_CHANNEL = 'app:update-dev-emit'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'
 export const SESSIONS_TRANSCRIPT_CHANNEL = 'sessions:transcript'

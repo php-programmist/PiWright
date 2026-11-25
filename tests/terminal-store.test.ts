@@ -33,6 +33,7 @@ const baseSettings: Settings = {
   terminalTabs: {},
   projectTabs: {},
   pinnedBranches: {},
+  dismissedUpdateVersion: null,
   lastProjectKey: null,
   lastModel: null,
   lastThinkingLevel: null,

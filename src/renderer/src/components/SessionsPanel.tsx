@@ -9,7 +9,7 @@ import { confirmDialog } from './ConfirmDialog'
 import { ChangelogModal } from './ChangelogModal'
 import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
-import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
+import type { BackendMode, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
 
 const DOT_CLASS: Record<string, string> = {
   confirm: 'confirm',
@@ -523,6 +523,7 @@ export function SessionsPanel(): React.JSX.Element {
   const [version, setVersion] = useState('')
   const [changelogOpen, setChangelogOpen] = useState(false)
   const [updateFrom, setUpdateFrom] = useState<string | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ availableVersion: null, phase: 'idle' })
   const [query, setQuery] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
@@ -582,7 +583,12 @@ export function SessionsPanel(): React.JSX.Element {
     void window.piwright.updateInfo().then((info) => {
       if (info.updatedFrom !== null) setUpdateFrom(info.updatedFrom)
     })
+    void window.piwright.updateStatus().then(setUpdateStatus)
+    return window.piwright.onUpdateEvent(setUpdateStatus)
   }, [])
+
+  const availableVersion = updateStatus.availableVersion
+  const downloading = updateStatus.phase === 'downloading'
 
   const collapse = (): void => {
     setSidebarCollapsed(true)
@@ -696,6 +702,30 @@ export function SessionsPanel(): React.JSX.Element {
             >
               ×
             </button>
+          </div>
+        )}
+        {availableVersion !== null && (
+          <div className="update-offer">
+            <span className="update-offer-text">
+              {t('Update available to version {version}', { version: availableVersion })}
+            </span>
+            <div className="update-offer-buttons">
+              <button
+                className="update-offer-install"
+                disabled={downloading}
+                onClick={() => void window.piwright.downloadUpdate().then(setUpdateStatus)}
+              >
+                {downloading ? t('Downloading…') : t('Download and install')}
+              </button>
+              <button
+                className="update-offer-dismiss"
+                disabled={downloading}
+                title={t('Hide until the next version is released')}
+                onClick={() => void window.piwright.dismissUpdate().then(setUpdateStatus)}
+              >
+                {t("Don't suggest this version")}
+              </button>
+            </div>
           </div>
         )}
         {version.length > 0 && (

@@ -75,6 +75,13 @@ describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () =>
     expect(service.get().projects).toEqual([])
   })
 
+  it('dismissedUpdateVersion coerces non-string to null', async () => {
+    const service = await tempSettings({ dismissedUpdateVersion: 42 })
+    expect(service.get().dismissedUpdateVersion).toBeNull()
+    const kept = await tempSettings({ dismissedUpdateVersion: '0.5.0' })
+    expect(kept.get().dismissedUpdateVersion).toBe('0.5.0')
+  })
+
   it('expandedProjects are kept from file and sanitized by mergeExpandedProjects', async () => {
     const service = await tempSettings({ expandedProjects: { 'native\u0000C:\\x': true, bad: 'nope', '': true } })
     expect(service.get().expandedProjects).toEqual({ 'native\u0000C:\\x': true })

@@ -44,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   terminalTabs: {},
   projectTabs: {},
   pinnedBranches: {},
+  dismissedUpdateVersion: null,
   lastProjectKey: null,
   notifications: DEFAULT_NOTIFICATIONS,
   lastModel: null,
@@ -190,6 +191,7 @@ export class SettingsService {
       if (typeof merged.kanbanTheme !== 'string' || merged.kanbanTheme.trim().length === 0) merged.kanbanTheme = KANBAN_DEFAULT_THEME_ID
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null
       if (typeof merged.lastProjectKey !== 'string') merged.lastProjectKey = null
+      if (typeof merged.dismissedUpdateVersion !== 'string') merged.dismissedUpdateVersion = null
       return migrateLegacy(raw as Record<string, unknown>, merged)
     } catch {
       return { ...DEFAULT_SETTINGS }

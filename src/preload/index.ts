@@ -121,6 +121,11 @@ import {
   APP_VERSION_CHANNEL,
   APP_CHANGELOG_CHANNEL,
   APP_UPDATE_INFO_CHANNEL,
+  APP_UPDATE_STATUS_CHANNEL,
+  APP_UPDATE_EVENT_CHANNEL,
+  APP_UPDATE_DOWNLOAD_CHANNEL,
+  APP_UPDATE_DISMISS_CHANNEL,
+  APP_UPDATE_DEV_EMIT_CHANNEL,
   APP_MENU_SETTINGS_CHANNEL,
   APP_MENU_STATS_CHANNEL,
   STATS_QUERY_CHANNEL,
@@ -151,7 +156,8 @@ import type {
   SchedulePromptInput,
   Settings,
   StatsQuery,
-  TerminalProfileId
+  TerminalProfileId,
+  UpdateStatus
 } from '../shared/ipc-contracts'
 
 function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
@@ -169,6 +175,11 @@ const api: PiWrightApi = {
   appVersion: () => ipcRenderer.invoke(APP_VERSION_CHANNEL),
   changelog: () => ipcRenderer.invoke(APP_CHANGELOG_CHANNEL),
   updateInfo: () => ipcRenderer.invoke(APP_UPDATE_INFO_CHANNEL),
+  updateStatus: () => ipcRenderer.invoke(APP_UPDATE_STATUS_CHANNEL),
+  onUpdateEvent: (cb: (status: UpdateStatus) => void) => subscribe<UpdateStatus>(APP_UPDATE_EVENT_CHANNEL, cb),
+  downloadUpdate: () => ipcRenderer.invoke(APP_UPDATE_DOWNLOAD_CHANNEL),
+  dismissUpdate: () => ipcRenderer.invoke(APP_UPDATE_DISMISS_CHANNEL),
+  updateDevEmit: (version: string | null) => ipcRenderer.invoke(APP_UPDATE_DEV_EMIT_CHANNEL, version),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),
   sessionHistory: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_HISTORY_CHANNEL, project),
   sessionTranscript: (project: ProjectEntry, sessionPath: string) =>

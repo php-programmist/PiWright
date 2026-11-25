@@ -111,6 +111,10 @@ import {
   APP_VERSION_CHANNEL,
   APP_CHANGELOG_CHANNEL,
   APP_UPDATE_INFO_CHANNEL,
+  APP_UPDATE_STATUS_CHANNEL,
+  APP_UPDATE_DOWNLOAD_CHANNEL,
+  APP_UPDATE_DISMISS_CHANNEL,
+  APP_UPDATE_DEV_EMIT_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
@@ -133,8 +137,9 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, ChangelogResult, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId, UpdateInfo } from '../../shared/ipc-contracts'
+import type { BackendMode, ChangelogResult, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId, UpdateInfo, UpdateStatus } from '../../shared/ipc-contracts'
 import { fetchChangelog } from '../changelog'
+import { getUpdateStatus, downloadUpdate, dismissUpdate, emitDevUpdate } from '../updater'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -294,6 +299,17 @@ export function registerIpc(
   )
 
   ipcMain.handle(APP_UPDATE_INFO_CHANNEL, (): UpdateInfo => updateInfo)
+
+  ipcMain.handle(APP_UPDATE_STATUS_CHANNEL, (): UpdateStatus => getUpdateStatus())
+
+  ipcMain.handle(APP_UPDATE_DOWNLOAD_CHANNEL, (): UpdateStatus => downloadUpdate())
+
+  ipcMain.handle(APP_UPDATE_DISMISS_CHANNEL, (): UpdateStatus => dismissUpdate(settings))
+
+  // Только dev (smoke): эмуляция найденного обновления; в упакованном приложении emitDevUpdate — no-op
+  ipcMain.handle(APP_UPDATE_DEV_EMIT_CHANNEL, (_event, version: unknown): UpdateStatus =>
+    emitDevUpdate(typeof version === 'string' && version.length > 0 ? version : null, settings)
+  )
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
     const safe: Partial<Settings> = {}

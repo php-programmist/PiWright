@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen } from 'electron'
-import { FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
+import { APP_UPDATE_EVENT_CHANNEL, FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { CodeCheckpoints } from './git/code-checkpoints'
@@ -229,7 +229,9 @@ app.whenReady().then(async () => {
       rebuildMenu()
     }
   }, scheduledService, statsService, await consumeUpdateInfo(app.getPath('userData'), app.getVersion()))
-  startAutoUpdater(() => settings.get().updateUrl)
+  startAutoUpdater(() => settings.get().updateUrl, settings, (status) => {
+    mainWindow?.webContents.send(APP_UPDATE_EVENT_CHANNEL, status)
+  })
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg, () => settings.get().language)
   app.on('activate', () => {

@@ -796,6 +796,60 @@ body {
   color: var(--text);
 }
 
+/* Оффер обновления возле версии в футере панели проектов */
+.update-offer {
+  margin-left: auto;
+  margin-right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  text-align: right;
+}
+
+.update-offer-text {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.update-offer-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.update-offer-buttons button {
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-bg);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.update-offer-buttons button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.update-offer-buttons button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.update-offer-buttons .update-offer-install {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 /* Модалка истории изменений (клик по версии) */
 .changelog-modal-overlay {
   position: fixed;
