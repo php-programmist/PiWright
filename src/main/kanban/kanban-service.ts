@@ -1,7 +1,6 @@
 /** KanbanService: доски проекта в `<gitCommonRoot>/.pi/kanban/` (spec/kanban-plan.md §1, §3).
- *  Корень резолвится через git-бэкенд проекта (native spawn / wsl.exe), fs — напрямую
- *  (для WSL — по UNC). Все мутации — CAS через casMutate из shared/kanban.ts. */
-import { promises as fs } from 'node:fs'
+ *  Корень резолвится через git-бэкенд проекта (native spawn / wsl.exe / ssh exec), fs — через
+ *  ProjectFs (для WSL — по UNC, для ssh — SFTP). Все мутации — CAS через casMutate из shared/kanban.ts. */
 import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
@@ -52,6 +51,8 @@ import type { KanbanBoardStore } from '../../shared/kanban'
 import { imageMimeTypeForExtension, sanitizeAttachmentName } from '../../shared/attachments'
 import { buildBashCommand, buildWslSpawnArgs } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
+import { getSshService } from '../ssh/ssh-service'
+import { getProjectFs, type ProjectFs } from '../fs/project-fs'
 
 const GITIGNORE_ENTRY = '.pi/kanban/attachments/'
 const GIT_TIMEOUT_MS = 10_000
@@ -72,43 +73,31 @@ const LOCK_STALE_MS = 30_000
 
 /** Кросс-процессная блокировка файла доски на время rev-check + записи: main-процесс и
  *  pi-агент пишут одну доску независимо, check-then-write без лока теряет апдейты и
- *  рвёт JSON. Ловушка через 'wx' (EEXIST если занято); зависший лок (краш писателя)
+ *  рвёт JSON. Ловушка через createExclusive ('wx'); зависший лок (краш писателя)
  *  снимается по возрасту. */
-async function withBoardLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+async function withBoardLock<T>(pfs: ProjectFs, file: string, fn: () => Promise<T>): Promise<T> {
   const lockFile = `${file}.lock`
   const deadline = Date.now() + LOCK_TIMEOUT_MS
   for (;;) {
-    let handle: fs.FileHandle
-    try {
-      handle = await fs.open(lockFile, 'wx')
-    } catch (err) {
-      // EPERM: Windows оставляет только что удалённое имя в pending-delete — это «занято», не фатально.
-      const code = (err as NodeJS.ErrnoException).code
-      if (code !== 'EEXIST' && code !== 'EPERM') throw err
-      if (code === 'EEXIST') {
-        try {
-          const st = await fs.stat(lockFile)
-          if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-            await fs.rm(lockFile, { force: true }).catch(() => {})
-            continue
-          }
-        } catch {
+    const created = await pfs.createExclusive(lockFile, String(process.pid)).catch(() => false)
+    if (!created) {
+      try {
+        const st = await pfs.stat(lockFile)
+        if (st !== null && Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          await pfs.rm(lockFile).catch(() => {})
           continue
         }
+      } catch {
+        // не смогли прочитать возраст — считаем занятым
       }
       if (Date.now() > deadline) throw new Error(`Kanban board file is locked: ${lockFile}`)
       await new Promise((resolve) => setTimeout(resolve, 25 + Math.random() * 75))
       continue
     }
     try {
-      await handle.writeFile(String(process.pid))
-    } finally {
-      await handle.close()
-    }
-    try {
       return await fn()
     } finally {
-      await fs.rm(lockFile, { force: true }).catch(() => {})
+      await pfs.rm(lockFile).catch(() => {})
     }
   }
 }
@@ -121,33 +110,15 @@ function failBoard(error: string): KanbanMutationResult {
   return { ok: false, error, board: null }
 }
 
-const RENAME_RETRY_MAX = 20
-
-/** Уникальный tmp + fsync + rename. fsync до rename: сам rename атомарен для читателя, но без
- *  сброса на диск краш процесса/питания оставляет недописанный tmp. EPERM/EBUSY на rename
- *  (антивирус, индексатор, 9P) — transient, ретраится с бэкоффом. */
-async function atomicWrite(file: string, data: string): Promise<void> {
+/** Уникальный tmp + rename (с перезаписью). EPERM/EBUSY на rename (антивирус, индексатор, 9P)
+ *  — transient, ретраится с бэкоффом (в HostProjectFs.renameOverwrite). */
+async function atomicWrite(pfs: ProjectFs, file: string, data: string): Promise<void> {
   const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   try {
-    const handle = await fs.open(tmp, 'w')
-    try {
-      await handle.writeFile(data, 'utf8')
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        await fs.rename(tmp, file)
-        break
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code
-        if ((code !== 'EPERM' && code !== 'EBUSY') || attempt >= RENAME_RETRY_MAX) throw err
-        await new Promise((resolve) => setTimeout(resolve, 25 + attempt * 5))
-      }
-    }
+    await pfs.writeFile(tmp, data)
+    await pfs.renameOverwrite(tmp, file)
   } catch (err) {
-    await fs.rm(tmp, { force: true })
+    await pfs.rm(tmp).catch(() => {})
     throw err
   }
 }
@@ -155,11 +126,11 @@ async function atomicWrite(file: string, data: string): Promise<void> {
 const CORRUPT_MARK = '.corrupt-'
 
 /** Битый файл доски → `<board>.json.corrupt-<rev>-<ts>.json`; возвращает новое имя или ''. */
-async function quarantineBoardFile(file: string, text: string): Promise<string> {
+async function quarantineBoardFile(pfs: ProjectFs, file: string, text: string): Promise<string> {
   const rev = /"rev"\s*:\s*(\d+)/.exec(text)?.[1] ?? 'x'
   const target = `${file}${CORRUPT_MARK}${rev}-${Date.now()}.json`
   try {
-    await fs.rename(file, target)
+    await pfs.rename(file, target)
     return target
   } catch {
     return ''
@@ -171,17 +142,17 @@ function kanbanRev(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined
 }
 
-async function ensureGitignore(root: string): Promise<void> {
-  const path = win32.join(root, '.gitignore')
+async function ensureGitignore(pfs: ProjectFs, root: string): Promise<void> {
+  const path = pfs.join(root, '.gitignore')
   let current = ''
   try {
-    current = await fs.readFile(path, 'utf8')
+    current = await pfs.readText(path)
   } catch {
     current = ''
   }
   if (current.split(/\r?\n/).some((line) => line.trim() === GITIGNORE_ENTRY)) return
   const prefix = current.length > 0 && !current.endsWith('\n') ? '\n' : ''
-  await fs.writeFile(path, `${current}${prefix}${GITIGNORE_ENTRY}\n`, 'utf8')
+  await pfs.writeFile(path, `${current}${prefix}${GITIGNORE_ENTRY}\n`)
 }
 
 export class KanbanService {
@@ -189,8 +160,18 @@ export class KanbanService {
 
   constructor(private readonly getSettings: () => Settings) {}
 
+  private pfs(project: ProjectEntry): ProjectFs {
+    return getProjectFs(project, this.getSettings())
+  }
+
   private async execGit(project: ProjectEntry, args: string[]): Promise<ExecResult> {
     const settings = this.getSettings()
+    if (project.kind === 'ssh') {
+      const server = settings.sshServers.find((s) => s.id === project.serverId)
+      if (server === undefined) throw new Error('SSH server for this project is missing. Check settings.')
+      const result = await getSshService().exec(server, buildBashCommand('git', args), { cwd: project.dir, timeoutMs: GIT_TIMEOUT_MS })
+      return { code: result.code ?? -1, stdout: result.stdout, stderr: result.stderr }
+    }
     let child: ChildProcess
     if (project.kind === 'native') {
       child = spawn('git', args, { cwd: project.dir, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -241,7 +222,7 @@ export class KanbanService {
   }
 
   /** Корень досок: dirname(`git rev-parse --git-common-dir`) — главный репо (worktree видит
-   *  общую доску); не-git проект → каталог проекта. Для WSL — UNC-путь. */
+   *  общую доску); не-git проект → каталог проекта. Для WSL — UNC-путь, для ssh — POSIX. */
   async resolveKanbanRoot(project: ProjectEntry): Promise<string> {
     const cacheKey = `${project.kind}\0${project.dir}`
     const cached = this.rootCache.get(cacheKey)
@@ -254,7 +235,9 @@ export class KanbanService {
         root =
           project.kind === 'native'
             ? win32.dirname(win32.resolve(project.dir, out))
-            : await this.wslRootFromCommonDir(project, out)
+            : project.kind === 'ssh'
+              ? this.sshRootFromCommonDir(project.dir, out)
+              : await this.wslRootFromCommonDir(project, out)
       } else {
         root = project.dir
       }
@@ -263,6 +246,13 @@ export class KanbanService {
     }
     this.rootCache.set(cacheKey, root)
     return root
+  }
+
+  private sshRootFromCommonDir(projectDir: string, commonDir: string): string {
+    const common = posix.isAbsolute(commonDir)
+      ? posix.normalize(commonDir)
+      : posix.normalize(posix.join(projectDir, commonDir))
+    return posix.dirname(common)
   }
 
   private async wslRootFromCommonDir(project: ProjectEntry, commonDir: string): Promise<string> {
@@ -277,23 +267,24 @@ export class KanbanService {
     return win32.join(`\\\\wsl.localhost\\${distro}`, posix.dirname(common))
   }
 
-  private kanbanDir(root: string): string {
-    return win32.join(root, '.pi', 'kanban')
+  private kanbanDir(pfs: ProjectFs, root: string): string {
+    return pfs.join(root, '.pi', 'kanban')
   }
 
-  private boardFile(dir: string, boardId: string): string {
-    return win32.join(dir, `${boardId}.json`)
+  private boardFile(pfs: ProjectFs, dir: string, boardId: string): string {
+    return pfs.join(dir, `${boardId}.json`)
   }
 
   /** CAS-стор досок проекта. read — null если файла нет; битый JSON — quarantine + null. */
-  private async store(project: ProjectEntry): Promise<{ dir: string; store: KanbanBoardStore }> {
-    const dir = this.kanbanDir(await this.resolveKanbanRoot(project))
+  private async store(project: ProjectEntry): Promise<{ dir: string; pfs: ProjectFs; store: KanbanBoardStore }> {
+    const pfs = this.pfs(project)
+    const dir = this.kanbanDir(pfs, await this.resolveKanbanRoot(project))
     const store: KanbanBoardStore = {
       read: async (boardId) => {
-        const file = this.boardFile(dir, boardId)
+        const file = this.boardFile(pfs, dir, boardId)
         let text: string
         try {
-          text = await fs.readFile(file, 'utf8')
+          text = await pfs.readText(file)
         } catch {
           return null
         }
@@ -304,28 +295,28 @@ export class KanbanService {
           board = null
         }
         if (board === null) {
-          const quarantined = await quarantineBoardFile(file, text)
+          const quarantined = await quarantineBoardFile(pfs, file, text)
           console.error(`[kanban] board file corrupted, quarantined: ${quarantined || file}`)
         }
         return board
       },
       write: async (board) => {
-        const file = this.boardFile(dir, board.id)
-        await withBoardLock(file, async () => {
+        const file = this.boardFile(pfs, dir, board.id)
+        await withBoardLock(pfs, file, async () => {
           let currentRev: number | null = null
           try {
-            const parsed = parseKanbanBoard(JSON.parse(await fs.readFile(file, 'utf8')))
+            const parsed = parseKanbanBoard(JSON.parse(await pfs.readText(file)))
             if (parsed !== null) currentRev = parsed.rev
           } catch {
             // Файла нет — первая запись.
           }
           if (currentRev !== null && currentRev !== board.rev - 1) throw new KanbanConflictError()
-          await fs.mkdir(dir, { recursive: true })
-          await atomicWrite(file, JSON.stringify(board, null, 2))
+          await pfs.mkdir(dir, { recursive: true })
+          await atomicWrite(pfs, file, JSON.stringify(board, null, 2))
         })
       }
     }
-    return { dir, store }
+    return { dir, pfs, store }
   }
 
   private async mutate(
@@ -350,18 +341,20 @@ export class KanbanService {
 
   async listBoards(project: ProjectEntry): Promise<KanbanBoardsResult> {
     try {
-      const dir = this.kanbanDir(await this.resolveKanbanRoot(project))
-      let names: string[]
+      const pfs = this.pfs(project)
+      const dir = this.kanbanDir(pfs, await this.resolveKanbanRoot(project))
+      let entries: Awaited<ReturnType<ProjectFs['readdir']>>
       try {
-        names = await fs.readdir(dir)
+        entries = await pfs.readdir(dir)
       } catch {
         return { ok: true, error: null, boards: [] }
       }
       const boards: KanbanBoardsResult['boards'] = []
-      for (const name of names) {
-        if (!name.endsWith('.json') || name.endsWith('.tmp.json') || name.includes(CORRUPT_MARK)) continue
+      for (const entry of entries) {
+        const name = entry.name
+        if (entry.isDir || !name.endsWith('.json') || name.endsWith('.tmp.json') || name.includes(CORRUPT_MARK)) continue
         try {
-          const board = parseKanbanBoard(JSON.parse(await fs.readFile(win32.join(dir, name), 'utf8')))
+          const board = parseKanbanBoard(JSON.parse(await pfs.readText(pfs.join(dir, name))))
           if (board !== null) {
             boards.push({ id: board.id, name: board.name, rev: board.rev, columns: board.columns.length, cards: board.cards.length })
           }
@@ -379,10 +372,10 @@ export class KanbanService {
   async getBoard(project: ProjectEntry, boardId: string): Promise<KanbanBoardResult> {
     if (!isValidKanbanId(boardId, 'b')) return { ok: false, error: 'Invalid board id', board: null }
     try {
-      const { dir, store } = await this.store(project)
+      const { dir, pfs, store } = await this.store(project)
       const board = await store.read(boardId)
       if (board !== null) return { ok: true, error: null, board }
-      const corrupt = await this.findQuarantined(dir, boardId)
+      const corrupt = await this.findQuarantined(pfs, dir, boardId)
       return corrupt.length > 0
         ? { ok: false, error: `Board file is corrupted, quarantined: ${corrupt.join(', ')}`, board: null }
         : { ok: false, error: `Board not found: ${boardId}`, board: null }
@@ -391,9 +384,9 @@ export class KanbanService {
     }
   }
 
-  private async findQuarantined(dir: string, boardId: string): Promise<string[]> {
+  private async findQuarantined(pfs: ProjectFs, dir: string, boardId: string): Promise<string[]> {
     try {
-      return (await fs.readdir(dir)).filter((name) => name.startsWith(`${boardId}.json${CORRUPT_MARK}`))
+      return (await pfs.readdir(dir)).map((e) => e.name).filter((name) => name.startsWith(`${boardId}.json${CORRUPT_MARK}`))
     } catch {
       return []
     }
@@ -402,11 +395,12 @@ export class KanbanService {
   async createBoard(project: ProjectEntry, name: string): Promise<KanbanBoardResult> {
     try {
       const boardName = sanitizeKanbanName(name) ?? 'Default'
-      const dir = this.kanbanDir(await this.resolveKanbanRoot(project))
-      await fs.mkdir(dir, { recursive: true })
+      const pfs = this.pfs(project)
+      const dir = this.kanbanDir(pfs, await this.resolveKanbanRoot(project))
+      await pfs.mkdir(dir, { recursive: true })
       const board = createDefaultBoard(boardName)
-      const file = this.boardFile(dir, board.id)
-      await withBoardLock(file, () => atomicWrite(file, JSON.stringify(board, null, 2)))
+      const file = this.boardFile(pfs, dir, board.id)
+      await withBoardLock(pfs, file, () => atomicWrite(pfs, file, JSON.stringify(board, null, 2)))
       return { ok: true, error: null, board }
     } catch (err) {
       return { ok: false, error: errorText(err), board: null }
@@ -422,9 +416,10 @@ export class KanbanService {
   async deleteBoard(project: ProjectEntry, boardId: string): Promise<GitOpResult> {
     if (!isValidKanbanId(boardId, 'b')) return { ok: false, error: 'Invalid board id' }
     try {
-      const dir = this.kanbanDir(await this.resolveKanbanRoot(project))
-      await withBoardLock(this.boardFile(dir, boardId), async () => {
-        await fs.unlink(this.boardFile(dir, boardId))
+      const pfs = this.pfs(project)
+      const dir = this.kanbanDir(pfs, await this.resolveKanbanRoot(project))
+      await withBoardLock(pfs, this.boardFile(pfs, dir, boardId), async () => {
+        await pfs.rm(this.boardFile(pfs, dir, boardId))
       })
       return { ok: true, error: null }
     } catch (err) {
@@ -565,26 +560,24 @@ export class KanbanService {
   }
 
   /** base64 → `.pi/kanban/attachments/`; путь в карточках — `attachments/<name>`. Запись через
-   *  'wx' (атомарный create) — два писателя с одним именем не затирают файл друг друга. */
+   *  createExclusive ('wx') — два писателя с одним именем не затирают файл друг друга. */
   async putAttachment(project: ProjectEntry, suggestedName: string, base64: string): Promise<KanbanAttachmentResult> {
     try {
+      const pfs = this.pfs(project)
       const root = await this.resolveKanbanRoot(project)
-      const dir = win32.join(this.kanbanDir(root), 'attachments')
-      await fs.mkdir(dir, { recursive: true })
+      const dir = pfs.join(this.kanbanDir(pfs, root), 'attachments')
+      await pfs.mkdir(dir, { recursive: true })
       const base = sanitizeAttachmentName(suggestedName)
-      const ext = win32.extname(base)
+      const ext = base.includes('.') ? base.slice(base.lastIndexOf('.')) : ''
       const stem = ext.length > 0 ? base.slice(0, -ext.length) : base
       const bytes = Buffer.from(base64, 'base64')
       let name = base
       for (let i = 1; i < 1000; i += 1) {
-        try {
-          await fs.writeFile(win32.join(dir, name), bytes, { flag: 'wx' })
-          await ensureGitignore(root)
+        if (await pfs.createExclusive(pfs.join(dir, name), bytes)) {
+          await ensureGitignore(pfs, root)
           return { ok: true, error: null, name, path: `attachments/${name}` }
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return { ok: false, error: errorText(err), name: '', path: '' }
-          name = `${stem}-${i}${ext}`
         }
+        name = `${stem}-${i}${ext}`
       }
       return { ok: false, error: 'No free attachment name', name: '', path: '' }
     } catch (err) {
@@ -596,11 +589,14 @@ export class KanbanService {
   async getAttachment(project: ProjectEntry, path: string): Promise<KanbanAttachmentGetResult> {
     try {
       if (!isValidKanbanImagePath(path)) return { ok: false, error: 'Invalid attachment path', dataUrl: '' }
+      const pfs = this.pfs(project)
       const root = await this.resolveKanbanRoot(project)
-      const file = win32.join(this.kanbanDir(root), ...path.split('/'))
-      const mime = imageMimeTypeForExtension(win32.extname(file).slice(1))
+      const file = pfs.join(this.kanbanDir(pfs, root), ...path.split('/'))
+      const name = pfs.basename(file)
+      const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
+      const mime = imageMimeTypeForExtension(ext)
       if (mime === null) return { ok: false, error: 'Not an image', dataUrl: '' }
-      const bytes = await fs.readFile(file)
+      const bytes = await pfs.readFile(file)
       if (bytes.byteLength > KANBAN_ATTACHMENT_MAX_BYTES) return { ok: false, error: 'Image too large', dataUrl: '' }
       return { ok: true, error: null, dataUrl: `data:${mime};base64,${bytes.toString('base64')}` }
     } catch (err) {

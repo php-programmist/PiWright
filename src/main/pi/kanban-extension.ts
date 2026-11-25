@@ -1,7 +1,7 @@
 /** Вшитое pi-расширение `kanban` (туы канбан-доски): verbatim-копия `resources/kanban`,
  *  выкладывается в каталог бэкенда проекта, путь уходит в `pi -e` при включённом kanbanEnabled. */
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
-import { installBundledExtension, piwrightExtensionDir } from './bundled-extensions'
+import { installBundledExtension, piwrightExtensionTarget, type ExtensionTarget } from './bundled-extensions'
 import kanbanIndexTs from '../../../resources/kanban/index.ts?raw'
 import kanbanCoreTs from '../../../resources/kanban/lib/core.ts?raw'
 import kanbanRootTs from '../../../resources/kanban/lib/root.ts?raw'
@@ -19,8 +19,8 @@ const KANBAN_EXTENSION_FILES: Record<string, string> = {
 }
 
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */
-export async function installKanbanExtension(dir: string): Promise<string> {
-  return installBundledExtension(dir, KANBAN_EXTENSION_VERSION, KANBAN_EXTENSION_FILES)
+export async function installKanbanExtension(target: ExtensionTarget): Promise<string> {
+  return installBundledExtension(target.pfs, target.dir, KANBAN_EXTENSION_VERSION, KANBAN_EXTENSION_FILES)
 }
 
 /** Путь для `pi -e`; null — поставить не удалось (сессия стартует без расширения). */
@@ -29,9 +29,9 @@ export async function ensureKanbanExtension(
   settings: Settings
 ): Promise<string | null> {
   try {
-    const dir = await piwrightExtensionDir(project, settings, 'kanban')
-    if (dir === null) return null
-    return await installKanbanExtension(dir)
+    const target = await piwrightExtensionTarget(project, settings, 'kanban')
+    if (target === null) return null
+    return await installKanbanExtension(target)
   } catch {
     return null
   }

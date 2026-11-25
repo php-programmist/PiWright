@@ -970,7 +970,7 @@ export class SessionHost {
     const fields: PiJsonObject = { message: text }
     // Модель без `input: image` картинку не примет — остаётся ссылка `@путь` в тексте.
     if (images.length > 0 && (this.handshake?.model?.imageInput ?? false)) {
-      const blocks = await readAttachmentImages(this.project, images)
+      const blocks = await readAttachmentImages(this.project, this.getSettings(), images)
       if (blocks.length > 0) fields['images'] = blocks
     }
     // steer/follow_up только во время хода; ход кончился — обычный prompt (начнёт новый ход).

@@ -1,46 +1,59 @@
 /** Общая часть вшитых pi-расширений PiWright: каталог в fs бэкенда проекта и выкладка файлов
  *  по маркеру версии. Каталоги лежат вне `~/.pi/agent/extensions` — расширения грузятся только
- *  из сессий PiWright (через `pi -e`), а не из любой сессии pi в терминале. */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+ *  из сессий PiWright (через `pi -e`), а не из любой сессии pi в терминале. SSH-проекты —
+ *  выкладка через SFTP (ProjectFs). */
+import { join as winJoin } from 'node:path'
 import { homedir } from 'node:os'
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { listWslDistros, resolveWslHome } from './backends/wsl'
+import { getProjectFs, hostProjectFs, resolveBackendHome, type ProjectFs } from '../fs/project-fs'
 
-/** Каталог расширения `<name>` в fs бэкенда; null — бэкенд недоступен. */
-export async function piwrightExtensionDir(
+export interface ExtensionTarget {
+  pfs: ProjectFs
+  dir: string
+}
+
+/** Каталог расширения `<name>` в fs бэкенда; null — бэкенд/домой не резолвится. */
+export async function piwrightExtensionTarget(
   project: ProjectEntry,
   settings: Settings,
   name: string
-): Promise<string | null> {
+): Promise<ExtensionTarget | null> {
   if (project.kind === 'native') {
-    return join(homedir(), '.pi', 'agent', 'piwright', name)
+    return { pfs: hostProjectFs, dir: winJoin(homedir(), '.pi', 'agent', 'piwright', name) }
   }
-  const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
-  if (distro === undefined) return null
-  const home = await resolveWslHome(distro)
+  if (project.kind === 'wsl') {
+    const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
+    if (distro === undefined) return null
+    const home = await resolveWslHome(distro)
+    if (home === null) return null
+    return { pfs: hostProjectFs, dir: winJoin(`\\\\wsl.localhost\\${distro}`, home, '.pi', 'agent', 'piwright', name) }
+  }
+  const home = await resolveBackendHome(project, settings)
   if (home === null) return null
-  return join(`\\\\wsl.localhost\\${distro}`, home, '.pi', 'agent', 'piwright', name)
+  const pfs = getProjectFs(project, settings)
+  return { pfs, dir: pfs.join(home, '.pi', 'agent', 'piwright', name) }
 }
 
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */
 export async function installBundledExtension(
+  pfs: ProjectFs,
   dir: string,
   version: string,
   files: Record<string, string>
 ): Promise<string> {
   try {
-    const current = (await readFile(join(dir, '.version'), 'utf8')).trim()
+    const current = (await pfs.readText(pfs.join(dir, '.version'))).trim()
     if (current === version) return dir
   } catch {
     // нет маркера — ставим заново
   }
-  await mkdir(dir, { recursive: true })
+  await pfs.mkdir(dir, { recursive: true })
   for (const [rel, text] of Object.entries(files)) {
-    const target = join(dir, ...rel.split('/'))
-    await mkdir(dirname(target), { recursive: true })
-    await writeFile(target, text, 'utf8')
+    const target = pfs.join(dir, ...rel.split('/'))
+    await pfs.mkdir(pfs.dirname(target), { recursive: true })
+    await pfs.writeFile(target, text)
   }
-  await writeFile(join(dir, '.version'), `${version}\n`, 'utf8')
+  await pfs.writeFile(pfs.join(dir, '.version'), `${version}\n`)
   return dir
 }

@@ -1,18 +1,17 @@
 /** Каталог сессий pi: `~/.pi/agent/sessions/--<cwd>--/*.jsonl`. Порт `core/SessionCatalog.kt`:
  *  заголовок `type:"session"` — первая строка; имя — последний `session_info`, иначе первое
- *  сообщение пользователя; JSON разбираются только строки-кандидаты — файлы бывают большими. */
-import { createReadStream } from 'node:fs'
-import { promises as fs } from 'node:fs'
+ *  сообщение пользователя; JSON разбираются только строки-кандидаты — файлы бывают большими.
+ *  Чтение — через ProjectFs (host fs или SFTP удалённого сервера). */
 import { homedir } from 'node:os'
-import { join, win32 } from 'node:path'
-import { createInterface } from 'node:readline'
-import type { Dirent } from 'node:fs'
+import { join, posix, win32 } from 'node:path'
 import type { ProjectEntry, SessionSummary, Settings } from '../../shared/ipc-contracts'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import { contentText, str } from '../pi/event-translator'
 import { listWslDistros, resolveWslHome, wslPathFor } from '../pi/backends/wsl'
+import { getProjectFs, hostProjectFs, resolveBackendHome, type ProjectFs } from '../fs/project-fs'
 
 const MAX_SUMMARY_TITLE_CHARS = 120
+const SESSION_FILE_MAX_BYTES = 64 * 1024 * 1024
 
 /** Имя каталога сессий pi для cwd — как в `session-manager.js`: `--<cwd без ведущего слеша, / \ : → ->--`. */
 export function sessionDirName(cwd: string): string {
@@ -78,63 +77,50 @@ export async function parseSessionSummary(
 }
 
 /** Заголовок сессии (первая строка .jsonl): cwd и parentSession без чтения всего файла. */
-export async function readSessionHeader(filePath: string): Promise<{ cwd: string; parentSession: string | null } | null> {
+export async function readSessionHeader(pfs: ProjectFs, filePath: string): Promise<{ cwd: string; parentSession: string | null } | null> {
   try {
-    const stream = createReadStream(filePath, { encoding: 'utf8' })
-    const lines = createInterface({ input: stream, crlfDelay: Infinity })
-    try {
-      for await (const line of lines) {
-        const parsed = parseJsonObject(line)
-        if (parsed === null || parsed['type'] !== 'session') return null
-        return { cwd: str(parsed, 'cwd') ?? '', parentSession: str(parsed, 'parentSession') }
-      }
-      return null
-    } finally {
-      lines.close()
-      stream.close()
-    }
+    const head = await pfs.readHead(filePath, 64 * 1024)
+    const firstLine = head.split('\n')[0] ?? ''
+    const parsed = parseJsonObject(firstLine)
+    if (parsed === null || parsed['type'] !== 'session') return null
+    return { cwd: str(parsed, 'cwd') ?? '', parentSession: str(parsed, 'parentSession') }
   } catch {
     return null
   }
 }
 
-/** Читает файл сессии построчно (файлы бывают большими) и возвращает сводку. */
-export async function summarizeSessionFile(filePath: string, lastModifiedMs: number): Promise<SessionSummary | null> {
-  const stream = createReadStream(filePath, { encoding: 'utf8' })
-  const lines = createInterface({ input: stream, crlfDelay: Infinity })
+/** Читает файл сессии построчно и возвращает сводку. */
+export async function summarizeSessionFile(pfs: ProjectFs, filePath: string, lastModifiedMs: number): Promise<SessionSummary | null> {
   try {
-    return await parseSessionSummary(filePath, lines, lastModifiedMs)
+    return await parseSessionSummary(filePath, pfs.lines(filePath, SESSION_FILE_MAX_BYTES), lastModifiedMs)
   } catch {
     return null
-  } finally {
-    lines.close()
-    stream.close()
   }
 }
 
 /** Сессии проекта (+ его worktrees) из корня каталога сессий, новые сверху. */
-export async function listProjectSessions(sessionsRoot: string, projectCwd: string): Promise<SessionSummary[]> {
-  let dirs: Dirent[]
+export async function listProjectSessions(pfs: ProjectFs, sessionsRoot: string, projectCwd: string): Promise<SessionSummary[]> {
+  let dirs: Awaited<ReturnType<ProjectFs['readdir']>>
   try {
-    dirs = await fs.readdir(sessionsRoot, { withFileTypes: true })
+    dirs = await pfs.readdir(sessionsRoot)
   } catch {
     return []
   }
   const summaries: SessionSummary[] = []
   for (const dir of dirs) {
-    if (!dir.isDirectory() || !isProjectSessionDir(dir.name, projectCwd)) continue
-    let files: Dirent[]
+    if (!dir.isDir || !isProjectSessionDir(dir.name, projectCwd)) continue
+    const dirPath = pfs.join(sessionsRoot, dir.name)
+    let files: Awaited<ReturnType<ProjectFs['readdir']>>
     try {
-      files = await fs.readdir(join(sessionsRoot, dir.name), { withFileTypes: true })
+      files = await pfs.readdir(dirPath)
     } catch {
       continue
     }
     for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith('.jsonl')) continue
-      const filePath = join(sessionsRoot, dir.name, file.name)
+      if (file.isDir || !file.name.endsWith('.jsonl')) continue
+      const filePath = pfs.join(dirPath, file.name)
       try {
-        const stats = await fs.stat(filePath)
-        const summary = await summarizeSessionFile(filePath, stats.mtimeMs)
+        const summary = await summarizeSessionFile(pfs, filePath, file.mtimeMs)
         if (summary !== null) summaries.push(summary)
       } catch {
         continue
@@ -144,9 +130,14 @@ export async function listProjectSessions(sessionsRoot: string, projectCwd: stri
   return summaries.sort((a, b) => b.lastActivityEpochMs - a.lastActivityEpochMs)
 }
 
-/** Корень каталога сессий выбранного бэкенда: `%USERPROFILE%\.pi\…` или `\\wsl.localhost\<distro>\…`. */
+/** Корень каталога сессий выбранного бэкенда: `%USERPROFILE%\.pi\…`, `\\wsl.localhost\<distro>\…`
+ *  или POSIX-путь на SSH-сервере. */
 export async function resolveSessionsRoot(project: ProjectEntry, settings: Settings): Promise<string | null> {
   if (project.kind === 'native') return join(homedir(), '.pi', 'agent', 'sessions')
+  if (project.kind === 'ssh') {
+    const home = await resolveBackendHome(project, settings)
+    return home === null ? null : posix.join(home, '.pi', 'agent', 'sessions')
+  }
   const distros = await listWslDistros()
   const distro = settings.wslDistro.trim() || distros[0]
   if (distro === undefined) return null
@@ -164,6 +155,7 @@ export async function projectBackendCwd(project: ProjectEntry, settings: Setting
  *  Нужен для всего, что уходит в процесс pi: cwd, `--session <путь>`. */
 export async function toBackendPath(project: ProjectEntry, settings: Settings, path: string): Promise<string> {
   if (project.kind === 'native') return path
+  if (project.kind === 'ssh') return path
   const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
   return distro === undefined ? path : ((await wslPathFor(distro, path)) ?? path)
 }
@@ -173,30 +165,35 @@ export async function listProjectHistory(project: ProjectEntry, settings: Settin
   const root = await resolveSessionsRoot(project, settings)
   if (root === null) return []
   const cwd = await projectBackendCwd(project, settings)
-  return listProjectSessions(root, cwd)
+  return listProjectSessions(getProjectFs(project, settings), root, cwd)
 }
 
 /** Нормализованный путь файла сессии внутри корня и в каталогах проекта/его worktrees; иначе null. */
-function validatedSessionPath(root: string, projectCwd: string, filePath: string): string | null {
-  const normalized = win32.normalize(filePath)
-  const rel = win32.relative(win32.normalize(root), normalized)
-  if (rel.length === 0 || rel.startsWith('..') || win32.isAbsolute(rel)) return null
-  const dirName = win32.basename(win32.dirname(normalized))
+function validatedSessionPath(pfs: ProjectFs, root: string, projectCwd: string, filePath: string): string | null {
+  const isWin = pfs.backend === 'host'
+  const normalize = isWin ? win32.normalize : posix.normalize
+  const relative = isWin ? win32.relative : posix.relative
+  const isAbsolute = isWin ? win32.isAbsolute : posix.isAbsolute
+  const normalized = normalize(filePath)
+  const rel = relative(normalize(root), normalized)
+  if (rel.length === 0 || rel.startsWith('..') || isAbsolute(rel)) return null
+  const dirName = pfs.basename(pfs.dirname(normalized))
   if (!isProjectSessionDir(dirName, projectCwd)) return null
   return normalized
 }
 
-/** Удаление файла сессии с диска. Разрешено только внутри корня каталога сессий и только
+/** Удаление файла сессии. Разрешено только внутри корня каталога сессий и только
  *  в каталогах самого проекта/его worktrees — защита от удаления чужих файлов по пути из UI. */
 export async function deleteSessionFile(
+  pfs: ProjectFs,
   root: string,
   projectCwd: string,
   filePath: string
 ): Promise<{ ok: boolean; error: string | null }> {
-  const normalized = validatedSessionPath(root, projectCwd, filePath)
+  const normalized = validatedSessionPath(pfs, root, projectCwd, filePath)
   if (normalized === null) return { ok: false, error: 'Path is outside the sessions directory' }
   try {
-    await fs.rm(normalized, { force: false })
+    await pfs.rm(normalized)
     return { ok: true, error: null }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -204,7 +201,12 @@ export async function deleteSessionFile(
 }
 
 /** Проверка пути для чтения (транскрипт/открытие) — те же гарантии, что у удаления. */
-export function checkSessionPath(root: string, projectCwd: string, filePath: string): { path: string } | { error: string } {
-  const normalized = validatedSessionPath(root, projectCwd, filePath)
+export function checkSessionPath(pfs: ProjectFs, root: string, projectCwd: string, filePath: string): { path: string } | { error: string } {
+  const normalized = validatedSessionPath(pfs, root, projectCwd, filePath)
   return normalized === null ? { error: 'Path is outside the sessions directory' } : { path: normalized }
+}
+
+/** ProjectFs каталога сессий: ssh — SFTP сервера, иначе локальный fs. */
+export function sessionsFs(project: ProjectEntry, settings: Settings): ProjectFs {
+  return project.kind === 'ssh' ? getProjectFs(project, settings) : hostProjectFs
 }

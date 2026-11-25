@@ -4,6 +4,9 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { attachmentRef, base64FromBytes, imageMimeTypeForExtension, isImageFilePath, removeAttachmentRef, sanitizeAttachmentName, splitAttachmentRefs } from '../src/shared/attachments'
 import { putAttachment, readAttachmentImages } from '../src/main/attachments/attachments'
+
+const SETTINGS = { ...DEFAULT_SETTINGS }
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
 vi.mock('electron', () => ({ dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) } }))
@@ -75,7 +78,7 @@ describe('shared attachments helpers', () => {
 describe('putAttachment', () => {
   it('writes the file, reports image flag and ref, adds gitignore entry', async () => {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    const res = await putAttachment(project(), 'Screenshot1.png', png.toString('base64'))
+    const res = await putAttachment(project(), SETTINGS, 'Screenshot1.png', png.toString('base64'))
     expect(res.ok).toBe(true)
     expect(res.name).toBe('Screenshot1.png')
     expect(res.isImage).toBe(true)
@@ -88,14 +91,14 @@ describe('putAttachment', () => {
   })
 
   it('sanitizes the name and suffixes collisions', async () => {
-    const first = await putAttachment(project(), 'my shot.png', 'aGk=')
-    const second = await putAttachment(project(), 'my shot.png', 'aGk=')
+    const first = await putAttachment(project(), SETTINGS, 'my shot.png', 'aGk=')
+    const second = await putAttachment(project(), SETTINGS, 'my shot.png', 'aGk=')
     expect(first.name).toBe('my_shot.png')
     expect(second.name).toBe('my_shot-1.png')
   })
 
   it('non-image files are not flagged as images', async () => {
-    const res = await putAttachment(project(), 'notes.txt', 'aGk=')
+    const res = await putAttachment(project(), SETTINGS, 'notes.txt', 'aGk=')
     expect(res.isImage).toBe(false)
     expect(res.dataUrl).toBe('')
   })
@@ -104,7 +107,7 @@ describe('putAttachment', () => {
     const wtDir = join(projectDir, '.pi', 'worktrees', 'demo')
     await fs.mkdir(wtDir, { recursive: true })
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47])
-    const res = await putAttachment({ kind: 'native', dir: wtDir }, 'shot.png', png.toString('base64'))
+    const res = await putAttachment({ kind: 'native', dir: wtDir }, SETTINGS, 'shot.png', png.toString('base64'))
     expect(res.ok).toBe(true)
     expect(res.ref).toBe('@../../.pi/attachments/shot.png')
     const saved = await fs.readFile(join(projectDir, '.pi', 'attachments', 'shot.png'))
@@ -118,9 +121,9 @@ describe('putAttachment', () => {
 
 describe('readAttachmentImages', () => {
   it('reads only images by extension, skips missing and unsafe names', async () => {
-    await putAttachment(project(), 'pic.png', Buffer.from([1, 2, 3]).toString('base64'))
-    await putAttachment(project(), 'note.txt', 'aGk=')
-    const blocks = await readAttachmentImages(project(), ['pic.png', 'note.txt', 'gone.png', '../escape.png'])
+    await putAttachment(project(), SETTINGS, 'pic.png', Buffer.from([1, 2, 3]).toString('base64'))
+    await putAttachment(project(), SETTINGS, 'note.txt', 'aGk=')
+    const blocks = await readAttachmentImages(project(), SETTINGS, ['pic.png', 'note.txt', 'gone.png', '../escape.png'])
     expect(blocks).toEqual([{ type: 'image', data: Buffer.from([1, 2, 3]).toString('base64'), mimeType: 'image/png' }])
   })
 })

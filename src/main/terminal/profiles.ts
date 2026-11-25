@@ -1,15 +1,16 @@
-/** Профили терминала: PowerShell, cmd, Git Bash, WSL-дистрибутив. cwd — каталог проекта;
- *  для WSL — путь внутри дистрибутива (`wslPathFor`). Доступность: powershell всегда,
- *  git bash — по найденному bash.exe, wsl — по дистрибутиву. */
+/** Профили терминала: PowerShell, cmd, Git Bash, WSL-дистрибутив, SSH-сервер проекта.
+ *  cwd — каталог проекта; для WSL — путь внутри дистрибутива (`wslPathFor`). Доступность:
+ *  powershell всегда, git bash — по найденному bash.exe, wsl — по дистрибутиву, ssh — по серверу проекта. */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { BackendMode, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { BackendMode, ProjectEntry, Settings, SshServerEntry } from '../../shared/ipc-contracts'
 import type { TerminalProfile, TerminalProfileId } from '../../shared/ipc-contracts'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 
 export interface ProfileAvailability {
   gitBashPath: string | null
   wslDistro: string | null
+  sshServer: SshServerEntry | null
 }
 
 export interface ResolvedSpawn {
@@ -36,20 +37,26 @@ export function findGitBash(candidates: string[] = gitBashCandidates()): string 
   return null
 }
 
-export async function profileAvailability(settings: Settings): Promise<ProfileAvailability> {
+export async function profileAvailability(settings: Settings, project?: ProjectEntry): Promise<ProfileAvailability> {
   const distros = await listWslDistros()
   const wslDistro = settings.wslDistro.trim() || distros[0]
-  return { gitBashPath: findGitBash(), wslDistro: wslDistro ?? null }
+  const sshServer =
+    project !== undefined && project.kind === 'ssh'
+      ? (settings.sshServers.find((s) => s.id === project.serverId) ?? null)
+      : null
+  return { gitBashPath: findGitBash(), wslDistro: wslDistro ?? null, sshServer }
 }
 
-export function availableProfiles(avail: ProfileAvailability): TerminalProfile[] {
+export function availableProfiles(project: ProjectEntry, avail: ProfileAvailability): TerminalProfile[] {
   const profiles: TerminalProfile[] = [{ id: 'powershell', label: 'PowerShell' }, { id: 'cmd', label: 'cmd' }]
   if (avail.gitBashPath !== null) profiles.push({ id: 'gitbash', label: 'Git Bash' })
   if (avail.wslDistro !== null) profiles.push({ id: 'wsl', label: avail.wslDistro })
+  if (project.kind === 'ssh' && avail.sshServer !== null) profiles.push({ id: 'ssh', label: avail.sshServer.name })
   return profiles
 }
 
 export function defaultProfileId(kind: BackendMode, avail: ProfileAvailability): TerminalProfileId {
+  if (kind === 'ssh' && avail.sshServer !== null) return 'ssh'
   if (kind === 'wsl' && avail.wslDistro !== null) return 'wsl'
   return 'powershell'
 }
@@ -60,6 +67,7 @@ export async function resolveSpawn(
   avail: ProfileAvailability,
   resolveWslCwd: (distro: string, hostPath: string) => Promise<string | null> = wslPathFor
 ): Promise<ResolvedSpawn | null> {
+  if (profileId === 'ssh') return null // ssh-терминал создаётся через SshService (shell-канал), не file/args
   if (profileId === 'powershell') {
     return { file: 'powershell.exe', args: ['-NoLogo'], cwd: project.dir }
   }

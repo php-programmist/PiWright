@@ -314,6 +314,8 @@ export class TokenStatsService {
     const projects = this.getSettings().projects
     const roots: string[] = []
     for (const project of projects) {
+      // SSH-корни не сканируем: инкрементальный обход по сети на каждый скан слишком тяжёл.
+      if (project.kind === 'ssh') continue
       const root = await resolveSessionsRoot(project, this.getSettings())
       if (root !== null && !roots.includes(root)) roots.push(root)
     }

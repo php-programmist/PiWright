@@ -1,13 +1,14 @@
-/** FileService: дерево и чтение файлов проекта — fs по хост-пути (native — Windows-каталог,
- *  wsl — UNC `\\wsl.localhost\…`, читается из Windows напрямую). Автообновление открытых
- *  файлов — chokidar на набор путей; для WSL — polling (fs.watch по UNC ненадёжен). */
+/** FileService: дерево и чтение файлов проекта — через ProjectFs (native/wsl — fs по хост-пути,
+ *  ssh — SFTP). Автообновление открытых файлов — chokidar на набор путей; для WSL — polling
+ *  (fs.watch по UNC ненадёжен); для ssh live-watch недоступен (без вотчеров). */
 import { promises as fs } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { posix, win32 } from 'node:path'
 import * as chokidar from 'chokidar'
 import { buildWslUncPath, parseWslUnc } from '../pi/backends/shell'
+import { getProjectFs, type ProjectFs } from '../fs/project-fs'
 import { imageMimeTypeForExtension } from '../../shared/attachments'
-import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FilesSearchResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
+import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FilesSearchResult, FileWriteResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -67,6 +68,20 @@ export function resolveWithinRoot(root: string, relPath: string): string | null 
   return abs
 }
 
+/** POSIX-вариант для ssh-проектов (пути сервера). */
+function resolveWithinRootPosix(root: string, relPath: string): string | null {
+  if (posix.isAbsolute(relPath)) return null
+  const normalizedRoot = posix.normalize(root)
+  const abs = posix.join(normalizedRoot, ...relPath.split('/'))
+  const rel = posix.relative(normalizedRoot, abs)
+  if (rel.startsWith('..') || posix.isAbsolute(rel)) return null
+  return abs
+}
+
+function resolveRootPath(pfs: ProjectFs, root: string, relPath: string): string | null {
+  return pfs.backend === 'host' ? resolveWithinRoot(root, relPath) : resolveWithinRootPosix(root, relPath)
+}
+
 function sameSet(a: Set<string>, b: Set<string>): boolean {
   return a.size === b.size && [...a].every((v) => b.has(v))
 }
@@ -79,17 +94,25 @@ export class FileService {
   private readonly openPaths = new Map<string, Set<string>>()
   private readonly watchers = new Map<string, chokidar.FSWatcher>()
 
-  constructor(private readonly events: FileServiceEvents) {}
+  constructor(
+    private readonly events: FileServiceEvents,
+    private readonly getSettings: () => Settings
+  ) {}
+
+  private pfs(project: ProjectEntry): ProjectFs {
+    return getProjectFs(project, this.getSettings())
+  }
 
   async listDir(project: ProjectEntry, relDir: string): Promise<FileListResult> {
-    const resolved = resolveWithinRoot(project.dir, relDir)
+    const pfs = this.pfs(project)
+    const resolved = resolveRootPath(pfs, project.dir, relDir)
     if (resolved === null) return { ok: false, error: 'Path is outside the project', entries: [] }
-    const abs = await resolveHostPath(resolved)
+    const abs = pfs.backend === 'host' ? await resolveHostPath(resolved) : resolved
     try {
-      const dirents = await fs.readdir(abs, { withFileTypes: true })
+      const dirents = await pfs.readdir(abs)
       const entries = dirents
         .filter((d) => d.name !== '.git')
-        .map((d) => ({ name: d.name, kind: d.isDirectory() ? ('dir' as const) : ('file' as const) }))
+        .map((d) => ({ name: d.name, kind: d.isDir ? ('dir' as const) : ('file' as const) }))
       entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
       return { ok: true, error: null, entries }
     } catch (err) {
@@ -99,23 +122,24 @@ export class FileService {
 
   /** Плоский обход проекта для «поиска везде»: файлы, скрытые и тяжёлые каталоги пропускаются. */
   async searchFiles(project: ProjectEntry): Promise<FilesSearchResult> {
-    const root = win32.normalize(project.dir)
+    const pfs = this.pfs(project)
+    const root = pfs.backend === 'host' ? win32.normalize(project.dir) : posix.normalize(project.dir)
     const files: string[] = []
     const walk = async (rel: string): Promise<void> => {
       if (files.length >= MAX_SEARCH_FILES) return
-      const abs = rel === '' ? root : `${root}\\${rel.replace(/\//g, '\\')}`
+      const abs = rel === '' ? root : pfs.join(root, ...rel.split('/'))
       let dirents
       try {
-        dirents = await fs.readdir(abs, { withFileTypes: true })
+        dirents = await pfs.readdir(abs)
       } catch {
         return
       }
       for (const d of dirents) {
-        if (d.isDirectory()) {
+        if (d.isDir) {
           if (d.name.startsWith('.') || SEARCH_SKIP_DIRS.has(d.name)) continue
           await walk(rel === '' ? d.name : `${rel}/${d.name}`)
           if (files.length >= MAX_SEARCH_FILES) return
-        } else if (d.isFile()) {
+        } else {
           files.push(rel === '' ? d.name : `${rel}/${d.name}`)
           if (files.length >= MAX_SEARCH_FILES) return
         }
@@ -127,14 +151,16 @@ export class FileService {
   }
 
   async read(project: ProjectEntry, relPath: string): Promise<FileReadResult> {
-    const resolved = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const resolved = resolveRootPath(pfs, project.dir, relPath)
     if (resolved === null) return { ok: false, error: 'Path is outside the project', content: '' }
-    const abs = await resolveHostPath(resolved)
+    const abs = pfs.backend === 'host' ? await resolveHostPath(resolved) : resolved
     try {
-      const stat = await fs.stat(abs)
-      if (!stat.isFile()) return { ok: false, error: 'Not a regular file', content: '' }
-      if (stat.size > MAX_READ_BYTES) return { ok: true, error: null, content: LARGE_PLACEHOLDER }
-      const buffer = await fs.readFile(abs)
+      const st = await pfs.stat(abs)
+      if (st === null) return { ok: false, error: 'Not a regular file', content: '' }
+      if (st.isDir) return { ok: false, error: 'Not a regular file', content: '' }
+      if (st.size > MAX_READ_BYTES) return { ok: true, error: null, content: LARGE_PLACEHOLDER }
+      const buffer = await pfs.readFile(abs)
       return { ok: true, error: null, content: buffer.includes(0) ? BINARY_PLACEHOLDER : buffer.toString('utf8') }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), content: '' }
@@ -142,17 +168,18 @@ export class FileService {
   }
 
   async readImage(project: ProjectEntry, relPath: string): Promise<FileReadImageResult> {
-    const resolved = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const resolved = resolveRootPath(pfs, project.dir, relPath)
     if (resolved === null) return { ok: false, error: 'Path is outside the project', dataUrl: '' }
-    const abs = await resolveHostPath(resolved)
+    const abs = pfs.backend === 'host' ? await resolveHostPath(resolved) : resolved
     const ext = relPath.slice(relPath.lastIndexOf('.') + 1)
     const mime = imageMimeTypeForExtension(ext)
     if (mime === null) return { ok: false, error: 'Not an image file', dataUrl: '' }
     try {
-      const stat = await fs.stat(abs)
-      if (!stat.isFile()) return { ok: false, error: 'Not a regular file', dataUrl: '' }
-      if (stat.size > MAX_IMAGE_BYTES) return { ok: false, error: 'Image too large to display', dataUrl: '' }
-      const buffer = await fs.readFile(abs)
+      const st = await pfs.stat(abs)
+      if (st === null || st.isDir) return { ok: false, error: 'Not a regular file', dataUrl: '' }
+      if (st.size > MAX_IMAGE_BYTES) return { ok: false, error: 'Image too large to display', dataUrl: '' }
+      const buffer = await pfs.readFile(abs)
       return { ok: true, error: null, dataUrl: `data:${mime};base64,${buffer.toString('base64')}` }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), dataUrl: '' }
@@ -160,11 +187,12 @@ export class FileService {
   }
 
   async write(project: ProjectEntry, relPath: string, content: string): Promise<FileWriteResult> {
-    const abs = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const abs = resolveRootPath(pfs, project.dir, relPath)
     if (abs === null) return { ok: false, error: 'Path is outside the project' }
     try {
-      await fs.mkdir(win32.dirname(abs), { recursive: true })
-      await fs.writeFile(abs, content, 'utf8')
+      await pfs.mkdir(pfs.dirname(abs), { recursive: true })
+      await pfs.writeFile(abs, content)
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -175,19 +203,15 @@ export class FileService {
     if (newName.length === 0 || newName === '.' || newName === '..' || /[\\/]/.test(newName)) {
       return { ok: false, error: 'Invalid name' }
     }
-    const abs = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const abs = resolveRootPath(pfs, project.dir, relPath)
     if (abs === null) return { ok: false, error: 'Path is outside the project' }
-    const target = win32.join(win32.dirname(abs), newName)
+    const target = pfs.join(pfs.dirname(abs), newName)
     if (target !== abs) {
-      try {
-        await fs.stat(target)
-        return { ok: false, error: 'Target already exists' }
-      } catch {
-        // цели нет — можно переименовывать
-      }
+      if (await pfs.exists(target)) return { ok: false, error: 'Target already exists' }
     }
     try {
-      await fs.rename(abs, target)
+      await pfs.rename(abs, target)
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -196,10 +220,11 @@ export class FileService {
 
   async delete(project: ProjectEntry, relPath: string): Promise<FileWriteResult> {
     if (relPath.length === 0 || relPath === '.' || relPath === '..') return { ok: false, error: 'Invalid path' }
-    const abs = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const abs = resolveRootPath(pfs, project.dir, relPath)
     if (abs === null) return { ok: false, error: 'Path is outside the project' }
     try {
-      await fs.rm(abs, { recursive: true, force: false })
+      await pfs.rm(abs)
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -211,23 +236,26 @@ export class FileService {
     if (relPath.length === 0 || segments.some((s) => s.length === 0 || s === '.' || s === '..' || s.includes('\\'))) {
       return { ok: false, error: 'Invalid name' }
     }
-    const abs = resolveWithinRoot(project.dir, relPath)
+    const pfs = this.pfs(project)
+    const abs = resolveRootPath(pfs, project.dir, relPath)
     if (abs === null) return { ok: false, error: 'Path is outside the project' }
     try {
-      await fs.mkdir(abs, { recursive: true })
+      await pfs.mkdir(abs, { recursive: true })
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
 
-  /** Набор открытых файлов проекта → вотчеры; вызывается renderer'ом при каждом изменении набора. */
+  /** Набор открытых файлов проекта → вотчеры; вызывается renderer'ом при каждом изменении набора.
+   *  ssh — live-watch недоступен: набор запоминается, вотчеры не создаются. */
   setWatched(project: ProjectEntry, relPaths: string[]): void {
     const key = `${project.kind}\u0000${project.dir}`
     const next = new Set(relPaths)
     const current = this.openPaths.get(key)
     if (current !== undefined && sameSet(current, next)) return
     this.openPaths.set(key, next)
+    if (project.kind === 'ssh') return
     void this.watchers.get(key)?.close().catch(() => {})
     this.watchers.delete(key)
     const hostPaths = [...next]

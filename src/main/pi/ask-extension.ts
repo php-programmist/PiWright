@@ -2,7 +2,7 @@
  *  jb-pi из `resources/ask-question`, выкладываются в каталог бэкенда проекта (см.
  *  `bundled-extensions.ts`), путь уходит в `pi -e`. */
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
-import { installBundledExtension, piwrightExtensionDir } from './bundled-extensions'
+import { installBundledExtension, piwrightExtensionTarget, type ExtensionTarget } from './bundled-extensions'
 import askIndexTs from '../../../resources/ask-question/index.ts?raw'
 import askLicense from '../../../resources/ask-question/LICENSE?raw'
 import askNotice from '../../../resources/ask-question/NOTICE?raw'
@@ -30,16 +30,16 @@ const ASK_EXTENSION_FILES: Record<string, string> = {
 }
 
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */
-export async function installAskExtension(dir: string): Promise<string> {
-  return installBundledExtension(dir, ASK_EXTENSION_VERSION, ASK_EXTENSION_FILES)
+export async function installAskExtension(target: ExtensionTarget): Promise<string> {
+  return installBundledExtension(target.pfs, target.dir, ASK_EXTENSION_VERSION, ASK_EXTENSION_FILES)
 }
 
 /** Путь для `pi -e`; null — поставить не удалось (сессия стартует без расширения, как в jb-pi). */
 export async function ensureAskExtension(project: ProjectEntry, settings: Settings): Promise<string | null> {
   try {
-    const dir = await piwrightExtensionDir(project, settings, 'ask-question')
-    if (dir === null) return null
-    return await installAskExtension(dir)
+    const target = await piwrightExtensionTarget(project, settings, 'ask-question')
+    if (target === null) return null
+    return await installAskExtension(target)
   } catch {
     return null
   }

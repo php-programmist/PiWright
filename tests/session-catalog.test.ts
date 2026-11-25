@@ -9,6 +9,7 @@ import {
   sessionDirName,
   summarizeSessionFile
 } from '../src/main/sessions/session-catalog'
+import { hostProjectFs } from '../src/main/fs/project-fs'
 
 const HEADER = '{"type":"session","version":3,"id":"s1","timestamp":"2026-09-26T10:29:47.527Z","cwd":"/tmp/p"}'
 const USER = '{"type":"message","id":"m1","parentId":null,"message":{"role":"user","content":[{"type":"text","text":"say hi"}]}}'
@@ -90,10 +91,10 @@ describe('summarizeSessionFile / listProjectSessions', () => {
       const future = new Date('2030-01-01T00:00:00Z')
       await fs.utimes(join(own, 'old.jsonl'), future, future)
 
-      const single = await summarizeSessionFile(join(own, 'old.jsonl'), 7)
+      const single = await summarizeSessionFile(hostProjectFs, join(own, 'old.jsonl'), 7)
       expect(single?.id).toBe('s1')
 
-      const list = await listProjectSessions(root, '/tmp/p')
+      const list = await listProjectSessions(hostProjectFs, root, '/tmp/p')
       expect(list.map((s) => s.path.endsWith('old.jsonl') || s.path.endsWith('wt.jsonl') ? s.path.split(/[\\/]/).pop() : '')).toContain('old.jsonl')
       expect(list.some((s) => s.path.includes('foreign'))).toBe(false)
       expect(list).toHaveLength(2)
@@ -105,6 +106,6 @@ describe('summarizeSessionFile / listProjectSessions', () => {
   })
 
   it('missing root yields empty list', async () => {
-    expect(await listProjectSessions(join(tmpdir(), 'piwright-nope-xyz'), '/tmp/p')).toEqual([])
+    expect(await listProjectSessions(hostProjectFs, join(tmpdir(), 'piwright-nope-xyz'), '/tmp/p')).toEqual([])
   })
 })

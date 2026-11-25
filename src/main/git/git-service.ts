@@ -3,7 +3,7 @@
  *  `exec/WslShell.kt`). Сообщение коммита генерирует одноразовый `PiConnection` с
  *  `--no-session` (файл сессии не создаётся, история не засоряется). */
 import { randomUUID } from 'node:crypto'
-import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises'
+import { readdir, stat, writeFile, unlink } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -20,6 +20,7 @@ import type {
   GitStatusResult,
   ProjectEntry,
   Settings,
+  SshServerEntry,
   WorktreeCreateResult,
   WorktreeRemoveResult
 } from '../../shared/ipc-contracts'
@@ -28,6 +29,8 @@ import { obj, str } from '../pi/event-translator'
 import { createPiBackend } from '../pi/backends/factory'
 import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath, shellQuote } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
+import { getSshService } from '../ssh/ssh-service'
+import { getProjectFs } from '../fs/project-fs'
 import { buildCommitPrompt, cleanCommitMessage } from './commit-message'
 import { parseLogRich, parseNameStatus, parseStatusOutput } from './porcelain'
 import {
@@ -80,8 +83,9 @@ export interface CheckpointCaptureResult {
 export class GitService {
   constructor(private readonly getSettings: () => Settings) {}
 
-  /** Прогон git на стороне бэкенда: native — прямой spawn, wsl — bash -lic внутри дистрибутива.
-   *  cwd — рабочий каталог git (по умолчанию каталог проекта; вложенные репо — их подкаталог). */
+  /** Прогон git на стороне бэкенда: native — прямой spawn, wsl — bash -lic внутри дистрибутива,
+   *  ssh — exec-канал SshService. cwd — рабочий каталог git (по умолчанию каталог проекта;
+   *  вложенные репо — их подкаталог). */
   private async exec(
     project: ProjectEntry,
     args: string[],
@@ -90,6 +94,22 @@ export class GitService {
     env?: NodeJS.ProcessEnv
   ): Promise<ExecResult> {
     const settings = this.getSettings()
+    if (project.kind === 'ssh') {
+      const server = settings.sshServers.find((s) => s.id === project.serverId)
+      if (server === undefined) throw new Error('SSH server for this project is missing. Check settings.')
+      const result = await getSshService().exec(server, buildBashCommand('git', args), {
+        cwd,
+        env:
+          env === undefined
+            ? null
+            : Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+        timeoutMs
+      })
+      if (result.timedOut) {
+        return { code: -1, stdout: result.stdout, stderr: `git ${args[0] ?? ''} timed out after ${Math.round(timeoutMs / 1000)}s` }
+      }
+      return { code: result.code ?? -1, stdout: result.stdout, stderr: result.stderr }
+    }
     let child: ChildProcess
     if (project.kind === 'native') {
       child = spawn('git', args, {
@@ -233,10 +253,11 @@ export class GitService {
     return result.code === 0 ? result.stdout : ''
   }
 
-  /** Файл на диске (хост-путь: Windows-каталог или UNC WSL); удалён — пусто. */
-  private async diskFile(repoDir: string, path: string): Promise<string> {
+  /** Файл на диске (хост-путь: Windows-каталог/UNC WSL или SFTP для ssh); удалён — пусто. */
+  private async diskFile(project: ProjectEntry, repoDir: string, path: string): Promise<string> {
     try {
-      return await readFile(join(repoDir, ...path.split('/')), 'utf8')
+      const pfs = getProjectFs(project, this.getSettings())
+      return await pfs.readText(pfs.join(repoDir, ...path.split('/')))
     } catch {
       return ''
     }
@@ -250,7 +271,7 @@ export class GitService {
     // У вложенного репо первый сегмент пути — имя подкаталога, внутри репо путь короче.
     const rel = entry?.repoRoot !== undefined ? path.slice(path.indexOf('/') + 1) : path
     const original = entry !== undefined && (entry.untracked || entry.index === 'A') ? '' : await this.headFile(project, rel, repoDir)
-    const modified = await this.diskFile(repoDir, rel)
+    const modified = await this.diskFile(project, repoDir, rel)
     const clean = (text: string): string => (text.includes('\0') ? BINARY_PLACEHOLDER : text)
     return { ok: true, error: null, original: clean(original), modified: clean(modified) }
   }
@@ -570,8 +591,9 @@ export class GitService {
         env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
       } else {
         const msgName = '.piwright-rebase-msg.tmp'
-        await writeFile(join(project.dir, msgName), message, 'utf8')
-        cleanup.push(join(project.dir, msgName))
+        const msgPath = getProjectFs(project, this.getSettings()).join(project.dir, msgName)
+        await getProjectFs(project, this.getSettings()).writeFile(msgPath, message)
+        cleanup.push(msgPath)
         args.push(
           '-c',
           `sequence.editor=sed -i "s/^pick \\(${short}[0-9a-f]*\\)/${verb} \\1/"`,
@@ -585,7 +607,8 @@ export class GitService {
     } finally {
       for (const path of cleanup) {
         try {
-          await unlink(path)
+          if (path.startsWith(project.dir)) await getProjectFs(project, this.getSettings()).rm(path)
+          else await unlink(path)
         } catch {
           // файла уже нет
         }
@@ -606,7 +629,14 @@ export class GitService {
     if (root === null) return { ok: false, error: 'Not a git repository', sha: null }
     const tempIndex = join(tmpdir(), `piwright-ckpt-${randomUUID()}.index`)
     let indexFile = tempIndex
-    if (project.kind === 'wsl') {
+    let sshCleanup: { server: SshServerEntry; command: string } | null = null
+    if (project.kind === 'ssh') {
+      // Временный индекс — на сервере внутри .git (git сам его создаст), локальный файл не нужен.
+      indexFile = `${root}/.git/piwright-ckpt-${randomUUID()}.index`
+      const server = this.getSettings().sshServers.find((s) => s.id === project.serverId)
+      if (server === undefined) return { ok: false, error: 'SSH server for this project is missing. Check settings.', sha: null }
+      sshCleanup = { server, command: `rm -f ${shellQuote(indexFile)}` }
+    } else if (project.kind === 'wsl') {
       const settings = this.getSettings()
       const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
       const wslIndex = distro === undefined ? null : await wslPathFor(distro, tempIndex)
@@ -624,6 +654,11 @@ export class GitService {
         ? { ok: true, error: null, sha }
         : { ok: false, error: 'write-tree returned no tree sha', sha: null }
     } finally {
+      if (sshCleanup !== null) {
+        void getSshService()
+          .exec(sshCleanup.server, sshCleanup.command, { timeoutMs: 5000 })
+          .catch(() => {})
+      }
       try {
         await unlink(tempIndex)
       } catch {

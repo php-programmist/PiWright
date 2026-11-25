@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { availableProfiles, defaultProfileId, findGitBash, resolveSpawn } from '../src/main/terminal/profiles'
+
 import type { ProfileAvailability } from '../src/main/terminal/profiles'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
-const FULL: ProfileAvailability = { gitBashPath: 'C:\\Program Files\\Git\\bin\\bash.exe', wslDistro: 'Ubuntu' }
-const NO_GITBASH: ProfileAvailability = { gitBashPath: null, wslDistro: 'Ubuntu' }
-const NO_WSL: ProfileAvailability = { gitBashPath: FULL.gitBashPath, wslDistro: null }
+const FULL: ProfileAvailability = { gitBashPath: 'C:\\Program Files\\Git\\bin\\bash.exe', wslDistro: 'Ubuntu', sshServer: null }
+const NO_GITBASH: ProfileAvailability = { gitBashPath: null, wslDistro: 'Ubuntu', sshServer: null }
+const NO_WSL: ProfileAvailability = { gitBashPath: FULL.gitBashPath, wslDistro: null, sshServer: null }
 
 const NATIVE: ProjectEntry = { kind: 'native', dir: 'C:\\Projects\\demo' }
 const WSL: ProjectEntry = { kind: 'wsl', dir: '\\\\wsl.localhost\\Ubuntu\\home\\u\\demo' }
 
 describe('availableProfiles', () => {
   it('lists all four when everything is available', () => {
-    expect(availableProfiles(FULL)).toEqual([
+    expect(availableProfiles(NATIVE, FULL)).toEqual([
       { id: 'powershell', label: 'PowerShell' },
       { id: 'cmd', label: 'cmd' },
       { id: 'gitbash', label: 'Git Bash' },
@@ -21,11 +22,11 @@ describe('availableProfiles', () => {
   })
 
   it('hides git bash when not found', () => {
-    expect(availableProfiles(NO_GITBASH).map((p) => p.id)).toEqual(['powershell', 'cmd', 'wsl'])
+    expect(availableProfiles(NATIVE, NO_GITBASH).map((p) => p.id)).toEqual(['powershell', 'cmd', 'wsl'])
   })
 
   it('hides wsl when no distro', () => {
-    expect(availableProfiles(NO_WSL).map((p) => p.id)).toEqual(['powershell', 'cmd', 'gitbash'])
+    expect(availableProfiles(NATIVE, NO_WSL).map((p) => p.id)).toEqual(['powershell', 'cmd', 'gitbash'])
   })
 })
 

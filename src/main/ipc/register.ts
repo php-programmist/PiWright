@@ -153,7 +153,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeSshServers, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -166,7 +166,7 @@ import { isPortBusy } from '../remote/server'
 import { listMcpServers, probeMcpServer, revealMcpFile, saveMcpServers } from '../mcp/mcp-config'
 import { listModels, revealModelsFile, saveModels } from '../models/models-service'
 import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-service'
-import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, toBackendPath, checkSessionPath, readSessionHeader } from '../sessions/session-catalog'
+import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, sessionsFs, toBackendPath, checkSessionPath, readSessionHeader } from '../sessions/session-catalog'
 import { readSessionTranscript } from '../sessions/transcript'
 import { worktreeNameFromCwd } from '../../shared/worktree'
 import { buildWslUncPath, stripWslUncPrefix } from '../pi/backends/shell'
@@ -183,7 +183,8 @@ function isDialogAnswer(value: unknown): value is DialogAnswer {
 function isProjectEntry(value: unknown): value is ProjectEntry {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const entry = value as Record<string, unknown>
-  if (!((entry['kind'] === 'native' || entry['kind'] === 'wsl') && typeof entry['dir'] === 'string')) return false
+  if (!(typeof entry['dir'] === 'string' && (entry['kind'] === 'native' || entry['kind'] === 'wsl' || entry['kind'] === 'ssh'))) return false
+  if (entry['kind'] === 'ssh' && typeof entry['serverId'] !== 'string') return false
   return entry['name'] === undefined || typeof entry['name'] === 'string'
 }
 
@@ -367,6 +368,12 @@ export function registerIpc(
         const projects = raw['projects'].filter(isProjectEntry)
         safe.projects = projects
       }
+      if (typeof raw['piPathSsh'] === 'string') {
+        safe.piPathSsh = raw['piPathSsh']
+      }
+      if (raw['sshServers'] !== undefined) {
+        safe.sshServers = mergeSshServers(raw['sshServers'])
+      }
       if (raw['notifications'] !== null && typeof raw['notifications'] === 'object' && !Array.isArray(raw['notifications'])) {
         safe.notifications = mergeNotifications(raw['notifications'])
       }
@@ -445,12 +452,13 @@ export function registerIpc(
     const root = await resolveSessionsRoot(project, current)
     if (root === null) return { ok: false, error: 'Sessions directory not found', hostId: null }
     const cwd = await projectBackendCwd(project, current)
-    const checked = checkSessionPath(root, cwd, sessionFile)
+    const pfs = sessionsFs(project, current)
+    const checked = checkSessionPath(pfs, root, cwd, sessionFile)
     if ('error' in checked) return { ok: false, error: checked.error, hostId: null }
     const backendPath = await toBackendPath(project, current, sessionFile)
     // Сессия worktree: пересоздать worktree по имени из cwd заголовка (порт openSessionTab jb-pi).
     let hostProject = project
-    const header = await readSessionHeader(checked.path)
+    const header = await readSessionHeader(pfs, checked.path)
     const wtName = header !== null ? worktreeNameFromCwd(header.cwd) : null
     if (wtName !== null) {
       const wt = await git.worktreeCreate(project, wtName)
@@ -492,10 +500,11 @@ export function registerIpc(
     const root = await resolveSessionsRoot(project, current)
     if (root === null) return { ok: false, error: 'Sessions directory not found', events: [] }
     const cwd = await projectBackendCwd(project, current)
-    const checked = checkSessionPath(root, cwd, sessionPath)
+    const pfs = sessionsFs(project, current)
+    const checked = checkSessionPath(pfs, root, cwd, sessionPath)
     if ('error' in checked) return { ok: false, error: checked.error, events: [] }
     try {
-      return { ok: true, error: null, events: await readSessionTranscript(checked.path) }
+      return { ok: true, error: null, events: await readSessionTranscript(pfs, checked.path) }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err), events: [] }
     }
@@ -529,7 +538,7 @@ export function registerIpc(
       return { ok: false, error: 'Session is active — close it first' }
     }
     const cwd = await projectBackendCwd(project, current)
-    return deleteSessionFile(root, cwd, sessionPath)
+    return deleteSessionFile(sessionsFs(project, current), root, cwd, sessionPath)
   })
 
   ipcMain.handle(SESSIONS_CHOOSE_DIR_CHANNEL, async (_event, kind: unknown) => {
@@ -946,12 +955,12 @@ export function registerIpc(
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof base64 !== 'string') {
       return { ok: false, error: 'Invalid request', name: '', isImage: false, ref: '', dataUrl: '' }
     }
-    return putAttachment(project, name, base64)
+    return putAttachment(project, settings.get(), name, base64)
   })
 
   ipcMain.handle(ATTACHMENTS_CHOOSE_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', name: '', isImage: false, ref: '', dataUrl: '' }
-    return chooseAttachment(project)
+    return chooseAttachment(project, settings.get())
   })
 
   ipcMain.handle(KANBAN_BOARDS_CHANNEL, async (_event, project: unknown) => {
@@ -1227,13 +1236,13 @@ export function registerIpc(
     if (!isProjectEntry(project)) {
       return { ok: false, error: 'Invalid project', profiles: [], defaultProfileId: null }
     }
-    const avail = await profileAvailability(settings.get())
+    const avail = await profileAvailability(settings.get(), project)
     return { ok: true, error: null, ...terminals.profiles(project, avail) }
   })
 
   ipcMain.handle(TERM_CREATE_CHANNEL, async (_event, project: unknown, profileId: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', terminal: null }
-    const avail = await profileAvailability(settings.get())
+    const avail = await profileAvailability(settings.get(), project)
     const terminal = await terminals.create(project, isProfileId(profileId) ? profileId : null, avail)
     if (terminal === null) return { ok: false, error: 'Profile is not available', terminal: null }
     return { ok: true, error: null, terminal }

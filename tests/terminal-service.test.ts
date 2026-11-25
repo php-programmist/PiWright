@@ -5,7 +5,7 @@ import type { ProfileAvailability } from '../src/main/terminal/profiles'
 import type { IPty } from 'node-pty'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
-const AVAIL: ProfileAvailability = { gitBashPath: 'C:\\Git\\bin\\bash.exe', wslDistro: 'Ubuntu' }
+const AVAIL: ProfileAvailability = { gitBashPath: 'C:\\Git\\bin\\bash.exe', wslDistro: 'Ubuntu', sshServer: null }
 const NATIVE: ProjectEntry = { kind: 'native', dir: 'C:\\Projects\\demo' }
 
 class FakePty {
@@ -93,7 +93,7 @@ describe('TerminalService', () => {
 
   it('returns null for unavailable profile', async () => {
     const { service } = harness()
-    expect(await service.create(NATIVE, 'gitbash', { gitBashPath: null, wslDistro: null })).toBeNull()
+    expect(await service.create(NATIVE, 'gitbash', { gitBashPath: null, wslDistro: null, sshServer: null })).toBeNull()
   })
 
   it('writes input and resizes the pty', async () => {

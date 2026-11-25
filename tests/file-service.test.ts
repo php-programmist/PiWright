@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FileService, resolveWithinRoot } from '../src/main/files/file-service'
+import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
+
+const SETTINGS = { ...DEFAULT_SETTINGS }
 import { toProjectRelative } from '../src/shared/file-paths'
 import type { ProjectEntry } from '../src/shared/ipc-contracts'
 
@@ -25,7 +28,7 @@ beforeAll(() => {
   writeFileSync(join(dir, 'pic.png'), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 1]))
   writeFileSync(join(dir, 'pic.txt'), 'not an image')
   writeFileSync(join(dir, 'big.txt'), 'x'.repeat(3 * 1024 * 1024))
-  service = new FileService({ onChanged: () => {} })
+  service = new FileService({ onChanged: () => {} }, () => SETTINGS)
 })
 
 afterAll(() => {
@@ -250,7 +253,7 @@ describe('FileService watcher', () => {
 
   it('emits changes of watched files', async () => {
     const events: string[] = []
-    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) })
+    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) }, () => SETTINGS)
     const file = join(watchDir, 'watched.txt')
     writeFileSync(file, 'v1')
     svc.setWatched(watchProject, ['watched.txt'])
@@ -262,7 +265,7 @@ describe('FileService watcher', () => {
 
   it('ignores files that are not open', async () => {
     const events: string[] = []
-    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) })
+    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) }, () => SETTINGS)
     writeFileSync(join(watchDir, 'open.txt'), 'v1')
     writeFileSync(join(watchDir, 'other.txt'), 'v1')
     svc.setWatched(watchProject, ['open.txt'])
@@ -275,7 +278,7 @@ describe('FileService watcher', () => {
 
   it('emits after delete and recreate', async () => {
     const events: string[] = []
-    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) })
+    const svc = new FileService({ onChanged: (_p, rel) => events.push(rel) }, () => SETTINGS)
     const file = join(watchDir, 'recreated.txt')
     writeFileSync(file, 'v1')
     svc.setWatched(watchProject, ['recreated.txt'])

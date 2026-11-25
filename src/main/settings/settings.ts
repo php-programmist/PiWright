@@ -3,7 +3,7 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   wslDistro: '',
   piPathNative: '',
   piPathWsl: '',
+  piPathSsh: '',
   piExtraArgs: '',
   updateUrl: 'https://github.com/php-programmist/PiWright/releases/latest/download/',
   selectorPlacement: 'top',
@@ -49,7 +50,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: DEFAULT_NOTIFICATIONS,
   lastModel: null,
   lastThinkingLevel: null,
-  projects: []
+  projects: [],
+  sshServers: []
 }
 
 /** Границы размера шрифта чата (санитайзер settings:set). */
@@ -106,6 +108,43 @@ export function mergeExpandedProjects(value: unknown): Record<string, boolean> {
 
 /** Лимит вкладок терминала на проект (санитайзер). */
 export const TERMINAL_TABS_MAX = 16
+
+/** Лимит SSH-серверов в настройках. */
+export const SSH_SERVERS_MAX = 20
+
+const SSH_ID_RE = /^[A-Za-z0-9._-]{1,64}$/
+const SSH_AUTH_TYPES: SshAuthType[] = ['password', 'key', 'agent']
+
+function sanitizeSshString(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+/** sshServers из файла/settings:set: id по маске, порт 1–65535, auth из белого списка. */
+export function mergeSshServers(value: unknown): SshServerEntry[] {
+  const out: SshServerEntry[] = []
+  if (!Array.isArray(value)) return out
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (out.length >= SSH_SERVERS_MAX) break
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const id = sanitizeSshString(raw['id'], 64)
+    if (!SSH_ID_RE.test(id) || seen.has(id)) continue
+    const host = sanitizeSshString(raw['host'], 253)
+    const user = sanitizeSshString(raw['user'], 64)
+    if (host.length === 0 || user.length === 0) continue
+    const portRaw = raw['port']
+    const port = typeof portRaw === 'number' && Number.isFinite(portRaw) ? Math.round(portRaw) : 22
+    const authRaw = raw['auth']
+    const auth: SshAuthType = SSH_AUTH_TYPES.includes(authRaw as SshAuthType) ? (authRaw as SshAuthType) : 'password'
+    const entry: SshServerEntry = { id, name: sanitizeSshString(raw['name'], 60) || host, host, port: Math.min(65535, Math.max(1, port)), user, auth }
+    const keyPath = sanitizeSshString(raw['keyPath'], 500)
+    if (keyPath.length > 0) entry.keyPath = keyPath
+    seen.add(id)
+    out.push(entry)
+  }
+  return out
+}
 
 /** terminalTabs из файла/settings:set поверх дефолтов: строковые ключи, валидные profileId,
  *  опциональные строковые label, активный индекс в границах. */
@@ -187,6 +226,7 @@ export class SettingsService {
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
   merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
+      merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null
       if (typeof merged.kanbanTheme !== 'string' || merged.kanbanTheme.trim().length === 0) merged.kanbanTheme = KANBAN_DEFAULT_THEME_ID
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null

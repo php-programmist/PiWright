@@ -1,11 +1,10 @@
 /** Клиент одного `pi --mode rpc`. Порт `core/rpc/PiRpcClient.kt`:
  *  stdout читается непрерывно (иначе pi встаёт), строки режутся только по LF, stderr — хвост 20 строк,
  *  ответы матчятся по `id` (порядок не гарантирован), падение размораживает pending-запросы ошибкой. */
-import type { ChildProcess } from 'node:child_process'
 import type { PiJsonObject, PiResponse } from '../../shared/protocol-types'
 import { NdjsonAccumulator } from './ndjson'
 import { encodeCommand, encodeExtensionUiResponse, parseInbound } from './rpc'
-import type { PiSpawnRequest, PiSpawner } from './backends/types'
+import type { PiChildProcess, PiSpawnRequest, PiSpawner } from './backends/types'
 
 export interface PiConnectionListener {
   onEvent(type: string, payload: PiJsonObject): void
@@ -34,7 +33,7 @@ export function describeExit(cause: string | null, exitCode: number | null, stde
 export class PiConnection {
   private nextId = 1
   private readonly pending = new Map<string, Pending>()
-  private child: ChildProcess | null = null
+  private child: PiChildProcess | null = null
   private closed = false
   private disconnected = false
   private exited = false

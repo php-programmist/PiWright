@@ -8,7 +8,8 @@ import { CodeCheckpoints } from './git/code-checkpoints'
 import { FileService } from './files/file-service'
 import { KanbanService } from './kanban/kanban-service'
 import { KanbanThemeService } from './kanban/kanban-theme-service'
-import { TerminalService } from './terminal/terminal-service'
+import { TerminalService, createSshPty } from './terminal/terminal-service'
+import { getSshService, initSshService } from './ssh/ssh-service'
 import { startAutoUpdater } from './updater'
 import { consumeUpdateInfo } from './update-state'
 import { PiHost } from './pi/pi-host'
@@ -151,12 +152,17 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
+  initSshService(
+    app.getPath('userData'),
+    (value) => safeStorage.encryptString(value),
+    (buffer) => safeStorage.decryptString(buffer)
+  )
   const kanbanThemes = new KanbanThemeService(join(app.getPath('userData'), 'kanban-themes.json'))
   gitService = new GitService(() => settings.get())
   kanbanService = new KanbanService(() => settings.get())
   fileService = new FileService({
     onChanged: (project, path) => mainWindow?.webContents.send(FILES_CHANGED_CHANNEL, { project, path })
-  })
+  }, () => settings.get())
   const tokenStore = new TelegramTokenStore(
     app.getPath('userData'),
     (value) => safeStorage.encryptString(value),
@@ -219,7 +225,7 @@ app.whenReady().then(async () => {
   terminalService = new TerminalService({
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
-  })
+  }, undefined, (server, cwd) => createSshPty(getSshService(), server, cwd))
   const rebuildMenu = installAppMenu(() => settings.get().language, () => mainWindow)
   registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
     tokenStore,
@@ -248,4 +254,9 @@ app.on('will-quit', () => {
   scheduledService?.dispose()
   fileService?.dispose()
   terminalService?.disposeAll()
+  try {
+    getSshService().closeAll()
+  } catch {
+    // ssh-сервис мог не инициализироваться (ранний выход)
+  }
 })

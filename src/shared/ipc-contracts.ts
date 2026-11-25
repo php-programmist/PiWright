@@ -5,8 +5,8 @@ import type { ProjectTabsSnapshot } from './project-tabs'
 import type { KanbanBoard, KanbanCommitRef, KanbanSessionRef } from './kanban'
 import type { KanbanTheme } from './kanban-theme'
 
-/** Бэкенд проекта: нативный pi на Windows или pi в WSL-дистрибутиве. */
-export type BackendMode = 'native' | 'wsl'
+/** Бэкенд проекта: нативный pi на Windows, pi в WSL-дистрибутиве или pi на удалённом сервере по SSH. */
+export type BackendMode = 'native' | 'wsl' | 'ssh'
 
 /** Язык интерфейса. */
 export type UiLanguage = 'en' | 'ru'
@@ -14,12 +14,30 @@ export type UiLanguage = 'en' | 'ru'
 /** Тема оформления приложения. */
 export type Theme = 'dark' | 'light'
 
+/** Способ аутентификации на SSH-сервере. */
+export type SshAuthType = 'password' | 'key' | 'agent'
+
+/** SSH-сервер из настроек; секреты (пароль/passphrase) — в зашифрованном хранилище, не здесь. */
+export interface SshServerEntry {
+  id: string
+  /** Отображаемое имя. */
+  name: string
+  host: string
+  port: number
+  user: string
+  auth: SshAuthType
+  /** Путь к приватному ключу (auth = 'key'). */
+  keyPath?: string
+}
+
 export interface ProjectEntry {
   kind: BackendMode
-  /** native — каталог Windows; wsl — UNC `\\wsl.localhost\<distro>\…` или путь внутри WSL. */
+  /** native — каталог Windows; wsl — UNC `\\wsl.localhost\<distro>\…`; ssh — POSIX-путь на сервере. */
   dir: string
   /** Отображаемое имя (алиас); пусто/undefined — имя каталога. */
   name?: string
+  /** SSH-сервер (kind = 'ssh'): id записи из settings.sshServers. */
+  serverId?: string
 }
 
 export interface Settings {
@@ -28,6 +46,10 @@ export interface Settings {
   piPathNative: string
   /** Путь к pi для WSL-проектов (POSIX внутри дистрибутива). */
   piPathWsl: string
+  /** Путь к pi для SSH-проектов (POSIX на сервере); пусто — автопоиск. */
+  piPathSsh: string
+  /** SSH-серверы для удалённых проектов (секреты — в ssh-secrets.json). */
+  sshServers: SshServerEntry[]
   /** Доп. аргументы pi (оба бэкенда), сплит по пробелам, кавычки для путей с пробелами. */
   piExtraArgs: string
   /** URL фида обновлений (generic-провайдер electron-updater); пусто — проверка выключена. */
@@ -547,9 +569,9 @@ export interface PendingDialog {
   dialog: ExtensionDialog
 }
 
-export type TerminalProfileId = 'powershell' | 'cmd' | 'gitbash' | 'wsl'
+export type TerminalProfileId = 'powershell' | 'cmd' | 'gitbash' | 'wsl' | 'ssh'
 
-export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'cmd', 'gitbash', 'wsl']
+export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'cmd', 'gitbash', 'wsl', 'ssh']
 
 export interface TerminalProfile {
   id: TerminalProfileId

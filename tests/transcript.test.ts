@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readSessionMessages, readSessionTranscript, replaySessionEvents } from '../src/main/sessions/transcript'
+import { hostProjectFs } from '../src/main/fs/project-fs'
 
 const USER = '{"type":"message","id":"m1","message":{"role":"user","content":[{"type":"text","text":"do it"}]}}'
 const ASSISTANT =
@@ -53,9 +54,9 @@ describe('readSessionMessages / readSessionTranscript', () => {
       ['{"type":"session","id":"s1","cwd":"/p"}', NOISE, USER, 'not json', CUSTOM, ASSISTANT, TOOL_RESULT, ''].join('\n'),
       'utf8'
     )
-    const messages = await readSessionMessages(file)
+    const messages = await readSessionMessages(hostProjectFs, file)
     expect(messages).toHaveLength(3)
-    const events = await readSessionTranscript(file)
+    const events = await readSessionTranscript(hostProjectFs, file)
     expect(events[0].type).toBe('injected_user_message')
     expect(events[events.length - 1].type).toBe('tool_end')
   })
@@ -63,6 +64,6 @@ describe('readSessionMessages / readSessionTranscript', () => {
   it('пустой/битый файл → пустая лента', async () => {
     const file = join(dir, 'empty.jsonl')
     writeFileSync(file, '', 'utf8')
-    expect(await readSessionTranscript(file)).toEqual([])
+    expect(await readSessionTranscript(hostProjectFs, file)).toEqual([])
   })
 })

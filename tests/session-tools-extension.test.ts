@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { SESSION_TOOLS_EXTENSION_VERSION, installSessionToolsExtension } from '../src/main/pi/session-tools-extension'
+import { hostProjectFs } from '../src/main/fs/project-fs'
 
 /** Установка расширения session-tools: файлы выкладываются, маркер версии решает перезапись. */
 
@@ -20,7 +21,7 @@ afterAll(() => {
 
 describe('installSessionToolsExtension', () => {
   it('writes the extension file and the version marker', async () => {
-    expect(await installSessionToolsExtension(dir)).toBe(dir)
+    expect(await installSessionToolsExtension({ pfs: hostProjectFs, dir })).toBe(dir)
     const files = readdirSync(dir, { recursive: true }).map((f) => f.toString().replace(/\\/g, '/'))
     expect(files).toContain('index.ts')
     expect(files).toContain('.version')
@@ -29,16 +30,16 @@ describe('installSessionToolsExtension', () => {
   })
 
   it('skips writing when the marker matches', async () => {
-    await installSessionToolsExtension(dir)
+    await installSessionToolsExtension({ pfs: hostProjectFs, dir })
     writeFileSync(join(dir, 'index.ts'), 'touched')
-    await installSessionToolsExtension(dir)
+    await installSessionToolsExtension({ pfs: hostProjectFs, dir })
     expect(readFileSync(join(dir, 'index.ts'), 'utf8')).toBe('touched')
   })
 
   it('reinstalls when the marker differs', async () => {
     writeFileSync(join(dir, '.version'), 'old-version')
     writeFileSync(join(dir, 'index.ts'), 'stale')
-    await installSessionToolsExtension(dir)
+    await installSessionToolsExtension({ pfs: hostProjectFs, dir })
     expect(readFileSync(join(dir, 'index.ts'), 'utf8')).not.toBe('stale')
     expect(readFileSync(join(dir, '.version'), 'utf8').trim()).toBe(SESSION_TOOLS_EXTENSION_VERSION)
   })

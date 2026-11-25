@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { KANBAN_EXTENSION_VERSION, installKanbanExtension } from '../src/main/pi/kanban-extension'
+import { hostProjectFs } from '../src/main/fs/project-fs'
 
 /** Установка расширения kanban: файлы выкладываются, маркер версии решает перезапись. */
 
@@ -20,7 +21,7 @@ afterAll(() => {
 
 describe('installKanbanExtension', () => {
   it('writes the extension files and the version marker', async () => {
-    expect(await installKanbanExtension(dir)).toBe(dir)
+    expect(await installKanbanExtension({ pfs: hostProjectFs, dir })).toBe(dir)
     const files = readdirSync(dir, { recursive: true }).map((f) => f.toString().replace(/\\/g, '/'))
     expect(files).toContain('index.ts')
     expect(files).toContain('lib/core.ts')
@@ -36,16 +37,16 @@ describe('installKanbanExtension', () => {
   })
 
   it('skips writing when the marker matches', async () => {
-    await installKanbanExtension(dir)
+    await installKanbanExtension({ pfs: hostProjectFs, dir })
     writeFileSync(join(dir, 'index.ts'), 'touched')
-    await installKanbanExtension(dir)
+    await installKanbanExtension({ pfs: hostProjectFs, dir })
     expect(readFileSync(join(dir, 'index.ts'), 'utf8')).toBe('touched')
   })
 
   it('reinstalls when the marker differs', async () => {
     writeFileSync(join(dir, '.version'), 'old-version')
     writeFileSync(join(dir, 'index.ts'), 'stale')
-    await installKanbanExtension(dir)
+    await installKanbanExtension({ pfs: hostProjectFs, dir })
     expect(readFileSync(join(dir, 'index.ts'), 'utf8')).not.toBe('stale')
     expect(readFileSync(join(dir, '.version'), 'utf8').trim()).toBe(KANBAN_EXTENSION_VERSION)
   })

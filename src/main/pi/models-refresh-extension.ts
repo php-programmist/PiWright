@@ -3,7 +3,7 @@
  *  Команда перечитывает models.json в реестр моделей pi — снапшот `get_available_models`
  *  иначе живёт только до старта процесса. */
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
-import { installBundledExtension, piwrightExtensionDir } from './bundled-extensions'
+import { installBundledExtension, piwrightExtensionTarget, type ExtensionTarget } from './bundled-extensions'
 import modelsRefreshIndexTs from '../../../resources/models-refresh/index.ts?raw'
 
 export const MODELS_REFRESH_EXTENSION_VERSION = 'models-refresh-1'
@@ -15,8 +15,8 @@ const MODELS_REFRESH_EXTENSION_FILES: Record<string, string> = {
 }
 
 /** Выкладывает файлы расширения, если маркер версии не совпадает; возвращает каталог. */
-export async function installModelsRefreshExtension(dir: string): Promise<string> {
-  return installBundledExtension(dir, MODELS_REFRESH_EXTENSION_VERSION, MODELS_REFRESH_EXTENSION_FILES)
+export async function installModelsRefreshExtension(target: ExtensionTarget): Promise<string> {
+  return installBundledExtension(target.pfs, target.dir, MODELS_REFRESH_EXTENSION_VERSION, MODELS_REFRESH_EXTENSION_FILES)
 }
 
 /** Путь для `pi -e`; null — поставить не удалось (сессия стартует без команды рефреша). */
@@ -25,9 +25,9 @@ export async function ensureModelsRefreshExtension(
   settings: Settings
 ): Promise<string | null> {
   try {
-    const dir = await piwrightExtensionDir(project, settings, 'models-refresh')
-    if (dir === null) return null
-    return await installModelsRefreshExtension(dir)
+    const target = await piwrightExtensionTarget(project, settings, 'models-refresh')
+    if (target === null) return null
+    return await installModelsRefreshExtension(target)
   } catch {
     return null
   }

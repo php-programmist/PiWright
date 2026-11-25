@@ -42,7 +42,7 @@ const baseSettings: Settings = {
     telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
     remote: { enabled: false, port: 7690, staticPin: '' }
   },
-  projects: []
+  projects: [], piPathSsh: '', sshServers: []
 }
 
 function seedState(settings: Settings | null): void {
