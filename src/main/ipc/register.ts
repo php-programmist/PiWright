@@ -111,6 +111,7 @@ import {
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
+  STATS_QUERY_CHANNEL,
   SKILLS_LIST_CHANNEL,
   SKILLS_REVEAL_CHANNEL,
   SKILLS_TOGGLE_CHANNEL,
@@ -129,7 +130,7 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId } from '../../shared/ipc-contracts'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -141,6 +142,7 @@ import type { PiHost } from '../pi/pi-host'
 import type { LoopController } from '../pi/loop-controller'
 import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
+import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
 import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -258,9 +260,22 @@ export function registerIpc(
   kanban: KanbanService,
   kanbanThemes: KanbanThemeService,
   notifications?: NotificationServices,
-  scheduled?: ScheduleService
+  scheduled?: ScheduleService,
+  stats?: TokenStatsService
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
+
+  ipcMain.handle(STATS_QUERY_CHANNEL, (_event, query: unknown) => {
+    const q = query as Partial<StatsQuery> | null
+    const kind = q?.kind === 'day' || q?.kind === 'month' || q?.kind === 'year' || q?.kind === 'custom' ? q.kind : 'day'
+    const month = typeof q?.month === 'number' && q.month >= 1 && q.month <= 12 ? Math.floor(q.month) : undefined
+    const year = typeof q?.year === 'number' && q.year >= 1970 && q.year <= 2999 ? Math.floor(q.year) : undefined
+    const project = typeof q?.project === 'string' && q.project.length > 0 ? q.project : null
+    const model = typeof q?.model === 'string' && q.model.length > 0 ? q.model : null
+    return stats
+      ? stats.ensureScanned().then(() => stats.query({ kind, month, year, project, model }))
+      : Promise.resolve({ granularity: 'day' as const, points: [], projects: [], models: [], updatedAt: Date.now() })
+  })
 
   ipcMain.handle(SETTINGS_REVEAL_CHANNEL, () => {
     shell.showItemInFolder(settings.path)

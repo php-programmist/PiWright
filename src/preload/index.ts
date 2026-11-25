@@ -119,6 +119,8 @@ import {
   SESSION_SET_THINKING_CHANNEL,
   APP_VERSION_CHANNEL,
   APP_MENU_SETTINGS_CHANNEL,
+  APP_MENU_STATS_CHANNEL,
+  STATS_QUERY_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
@@ -144,6 +146,7 @@ import type {
   QueueTexts,
   SchedulePromptInput,
   Settings,
+  StatsQuery,
   TerminalProfileId
 } from '../shared/ipc-contracts'
 
@@ -296,6 +299,8 @@ const api: PiWrightApi = {
   termResize: (id: string, cols: number, rows: number) => ipcRenderer.send(TERM_RESIZE_CHANNEL, id, cols, rows),
   onPiEvent: (cb) => subscribe(PI_EVENT_CHANNEL, cb),
   onMenuSettings: (cb) => subscribe(APP_MENU_SETTINGS_CHANNEL, cb),
+  onMenuStats: (cb) => subscribe(APP_MENU_STATS_CHANNEL, cb),
+  statsQuery: (query: StatsQuery) => ipcRenderer.invoke(STATS_QUERY_CHANNEL, query),
   onScheduledChanged: (cb) => subscribe(SCHEDULED_CHANGED_CHANNEL, cb),
   onPiStatus: (cb) => subscribe(PI_STATUS_CHANNEL, cb),
   onFilesChanged: (cb) => subscribe(FILES_CHANGED_CHANNEL, cb),

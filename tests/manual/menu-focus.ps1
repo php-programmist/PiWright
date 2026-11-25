@@ -53,12 +53,18 @@ for ($i = 0; $i -lt 5; $i++) {
 "fg-after=$([MenuFocus]::GetForegroundWindow())"
 if ([MenuFocus]::GetForegroundWindow() -ne $h) { throw 'failed to focus smoke window' }
 
-# Ctrl+OemComma — акселератор «Настройки» (работает и в русской раскладке: Ctrl+б)
-[MenuFocus]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+# Клавиши акселератора: аргументы 2+ — VK-коды (по умолчанию Ctrl+OemComma — «Настройки»;
+# работает и в русской раскладке: Ctrl+б). Пример: Ctrl+Shift+S = 0x11 0x10 0x53 (Alt = 0x12).
+$keys = @($args | Select-Object -Skip 1)
+if ($keys.Count -eq 0) { $keys = @(0x11, 0xBC) }
+[MenuFocus]::keybd_event([byte]$keys[0], 0, 0, [UIntPtr]::Zero)
+for ($i = 1; $i -lt $keys.Count; $i++) {
+  Start-Sleep -Milliseconds 60
+  [MenuFocus]::keybd_event([byte]$keys[$i], 0, 0, [UIntPtr]::Zero)
+}
 Start-Sleep -Milliseconds 60
-[MenuFocus]::keybd_event(0xBC, 0, 0, [UIntPtr]::Zero)
-Start-Sleep -Milliseconds 60
-[MenuFocus]::keybd_event(0xBC, 0, 2, [UIntPtr]::Zero)
-[MenuFocus]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)
+for ($i = $keys.Count - 1; $i -ge 0; $i--) {
+  [MenuFocus]::keybd_event([byte]$keys[$i], 0, 2, [UIntPtr]::Zero)
+}
 Start-Sleep -Milliseconds 300
 'sent'

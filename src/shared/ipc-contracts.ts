@@ -668,12 +668,52 @@ export interface SkillsListResult {
   skills: SkillEntry[]
 }
 
+export type StatsWindowKind = 'day' | 'month' | 'year' | 'custom'
+export type StatsGranularity = 'hour' | 'day' | 'month'
+
+/** Окно статистики: day = последние сутки (почасово), month/year = текущий календарный,
+ *  custom = произвольный месяц (детализация по дням). project/model: null = без фильтра. */
+export interface StatsQuery {
+  kind: StatsWindowKind
+  month?: number
+  year?: number
+  project: string | null
+  model: string | null
+}
+
+export interface StatsPoint {
+  /** Начало бакета (epoch ms, локальное время). */
+  t: number
+  input: number
+  output: number
+  cacheRead: number
+}
+
+export interface StatsProjectOption {
+  /** Нормализованный cwd проекта (worktree свёрнут в основной проект). */
+  key: string
+  name: string
+}
+
+export interface StatsResult {
+  granularity: StatsGranularity
+  /** Непрерывные бакеты окна, включая пустые (нули). */
+  points: StatsPoint[]
+  projects: StatsProjectOption[]
+  models: string[]
+  updatedAt: number
+}
+
 export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
   revealSettings(): Promise<{ ok: boolean; error: string | null }>
   /** Пункт «Настройки» в меню приложения (File): renderer открывает оверлей настроек. */
   onMenuSettings(cb: () => void): () => void
+  /** Пункт «Статистика» в меню приложения (File): renderer открывает оверлей статистики. */
+  onMenuStats(cb: () => void): () => void
+  /** Агрегаты токенов по всем проектам за выбранное окно. */
+  statsQuery(query: StatsQuery): Promise<StatsResult>
   appVersion(): Promise<string>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
@@ -848,6 +888,8 @@ export const SETTINGS_GET_CHANNEL = 'settings:get'
 export const SETTINGS_SET_CHANNEL = 'settings:set'
 export const SETTINGS_REVEAL_CHANNEL = 'settings:reveal'
 export const APP_MENU_SETTINGS_CHANNEL = 'app:menu-settings'
+export const APP_MENU_STATS_CHANNEL = 'app:menu-stats'
+export const STATS_QUERY_CHANNEL = 'stats:query'
 export const APP_VERSION_CHANNEL = 'app:version'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'

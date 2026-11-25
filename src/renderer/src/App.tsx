@@ -17,6 +17,7 @@ import { TranscriptView } from './views/chat/TranscriptView'
 import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
+import { StatsView } from './views/stats/StatsView'
 import { ConfirmDialogHost } from './components/ConfirmDialog'
 import { RenameDialogHost } from './components/RenameDialog'
 import { TabSwitcherHost } from './components/TabSwitcher'
@@ -30,6 +31,7 @@ import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
 import { useKanbanStore } from './stores/kanban'
 import { useScheduledStore } from './stores/scheduled'
+import { useStatsStore } from './stores/stats'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { closeSessionAndSweepWorktree } from './lib/worktree-cleanup'
 import { applyAppearance, applyKanbanTheme } from './lib/appearance'
@@ -46,6 +48,7 @@ export function App(): React.JSX.Element {
   const load = useSessionsStore((s) => s.load)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const settingsOpen = useSessionsStore((s) => s.settingsOpen)
+  const statsOpen = useStatsStore((s) => s.open)
   const gitOpen = useGitStore((s) => s.open)
   const filesOpen = useFilesStore((s) => s.open)
   const termOpen = useTerminalStore((s) => s.open)
@@ -245,6 +248,7 @@ export function App(): React.JSX.Element {
       useTerminalStore.getState().applyExit(message.id, message.code)
     })
     const offMenuSettings = window.piwright.onMenuSettings(() => useSessionsStore.getState().openSettings())
+    const offMenuStats = window.piwright.onMenuStats(() => useStatsStore.getState().openModal())
     const offScheduled = window.piwright.onScheduledChanged(() => void useScheduledStore.getState().refresh())
     void useScheduledStore.getState().refresh()
     void load()
@@ -258,6 +262,7 @@ export function App(): React.JSX.Element {
       offTermData()
       offTermExit()
       offMenuSettings()
+      offMenuStats()
       offScheduled()
     }
   }, [applyEvent, applyChatStatus, applySessionsStatus, load])
@@ -270,6 +275,7 @@ export function App(): React.JSX.Element {
       <TabSwitcherHost />
       <SearchEverywhereHost />
       {settingsOpen && <SettingsView />}
+      {statsOpen && <StatsView />}
       {(
         <div className="layout">
           <SessionsPanel />

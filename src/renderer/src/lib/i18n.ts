@@ -553,7 +553,22 @@ const RU: Record<string, string> = {
   '\n\nRunning sessions ({count}) will be closed.': '\n\nБудут закрыты активные сессии ({count}).',
   "Remove worktree '{name}'? The branch stays.": "Удалить worktree «{name}»? Ветка останется.",
   'There are uncommitted changes. Force remove?': 'Есть незакоммиченные изменения. Удалить принудительно?',
-  'Invalid worktree name': 'Неверное имя worktree'
+  'Invalid worktree name': 'Неверное имя worktree',
+
+  // Статистика токенов (File → Statistics)
+  'Statistics': 'Статистика',
+  'Last 24 hours': 'Последние сутки',
+  'Month': 'Месяц',
+  'Year': 'Год',
+  'Custom month': 'Произвольный месяц',
+  'Custom year': 'Произвольный год',
+  'All projects': 'Все проекты',
+  'All models': 'Все модели',
+  'In': 'Вход',
+  'Out': 'Выход',
+  'Cached read': 'Чтение кэша',
+  'No data': 'Нет данных',
+  'Loading…': 'Загрузка…'
 }
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string

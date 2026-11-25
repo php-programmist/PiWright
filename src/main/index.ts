@@ -12,6 +12,7 @@ import { startAutoUpdater } from './updater'
 import { PiHost } from './pi/pi-host'
 import { LoopController } from './pi/loop-controller'
 import { ScheduleService } from './schedule/schedule-service'
+import { TokenStatsService } from './stats/stats-service'
 import { SettingsService } from './settings/settings'
 import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
@@ -31,6 +32,7 @@ let bridge: RemoteBridge | null = null
 let hub: NotificationHub | null = null
 let loopController: LoopController | null = null
 let scheduledService: ScheduleService | null = null
+let statsService: TokenStatsService | null = null
 let windowStatePath = ''
 
 // Смоук-режим: окно вне всех мониторов, чтобы не красть фокус. Без этих переключателей
@@ -165,6 +167,8 @@ app.whenReady().then(() => {
   bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)
   bridge.applySettings(settings.get())
   hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
+  statsService = new TokenStatsService(join(app.getPath('userData'), 'token-stats.json'), () => settings.get())
+  void statsService.ensureScanned().catch(() => {})
   terminalService = new TerminalService({
     onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
@@ -177,7 +181,7 @@ app.whenReady().then(() => {
       bridge?.applySettings(next)
       rebuildMenu()
     }
-  }, scheduledService)
+  }, scheduledService, statsService)
   startAutoUpdater(() => settings.get().updateUrl)
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg)
