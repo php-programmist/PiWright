@@ -35,6 +35,16 @@ export class DaemonChildProcess extends EventEmitter implements PiChildProcess {
     this.transport.sendClose(this.sessionKey)
   }
 
+  /** Отвязка без остановки: ребёнок демона продолжает работать, адаптер уходит из клиента.
+   *  События error/close не эмитятся — вызывающий (PiConnection.detach) уже закрыл состояние. */
+  detach(): void {
+    if (this.exited) return
+    this.exited = true
+    this.stdout.end()
+    this.stderr.end()
+    this.transport.releaseAdapter(this.sessionKey)
+  }
+
   /** Пуши демона: строки — в потоки, exit — в error/close (порядок как у нативного спавна). */
   handlePush(push: DaemonPush): void {
     if (push.type === 'stdout') {
@@ -64,9 +74,10 @@ export class DaemonChildProcess extends EventEmitter implements PiChildProcess {
   }
 }
 
-/** Транспорт адаптера: команды в демона без ответа (input/endInput/close). */
+/** Транспорт адаптера: команды в демона без ответа (input/endInput/close) + отвязка адаптера. */
 export interface DaemonChildTransport {
   sendInput(sessionKey: string, chunk: string): void
   sendEndInput(sessionKey: string): void
   sendClose(sessionKey: string): void
+  releaseAdapter(sessionKey: string): void
 }

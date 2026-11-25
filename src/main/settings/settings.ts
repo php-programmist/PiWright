@@ -3,7 +3,7 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -44,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   kanbanCardAttention: {},
   terminalTabs: {},
   projectTabs: {},
+  openSessionTabs: [],
   pinnedBranches: {},
   dismissedUpdateVersion: null,
   lastProjectKey: null,
@@ -108,6 +109,42 @@ export function mergeExpandedProjects(value: unknown): Record<string, boolean> {
 
 /** Лимит вкладок терминала на проект (санитайзер). */
 export const TERMINAL_TABS_MAX = 16
+
+/** Лимит восстанавливаемых вкладок сессий (санитайзер). */
+export const OPEN_SESSION_TABS_MAX = 32
+
+const PROJECT_KINDS = ['native', 'wsl', 'ssh'] as const
+
+/** openSessionTabs из файла/settings:set: валидный проект + непустой файл, дедуп по ключу. */
+export function mergeOpenSessionTabs(value: unknown): SavedSessionTab[] {
+  const out: SavedSessionTab[] = []
+  if (!Array.isArray(value)) return out
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (out.length >= OPEN_SESSION_TABS_MAX) break
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const project = raw['project']
+    if (project === null || typeof project !== 'object' || Array.isArray(project)) continue
+    const p = project as Record<string, unknown>
+    const kind = p['kind']
+    const dir = p['dir']
+    if (typeof kind !== 'string' || typeof dir !== 'string' || dir.length === 0) continue
+    if (!PROJECT_KINDS.includes(kind as (typeof PROJECT_KINDS)[number])) continue
+    const sessionFile = raw['sessionFile']
+    if (typeof sessionFile !== 'string' || sessionFile.length === 0 || sessionFile.length > 2000) continue
+    const entry: SavedSessionTab = { project: { kind: kind as ProjectEntry['kind'], dir }, sessionFile }
+    if (typeof p['name'] === 'string' && p['name'].length > 0) entry.project = { ...entry.project, name: p['name'] }
+    if (kind === 'ssh' && typeof p['serverId'] === 'string' && p['serverId'].length > 0) {
+      entry.project = { ...entry.project, serverId: p['serverId'] }
+    }
+    const key = `${kind}\u0000${dir}\u0000${sessionFile}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(entry)
+  }
+  return out
+}
 
 /** Лимит SSH-серверов в настройках. */
 export const SSH_SERVERS_MAX = 20
@@ -224,7 +261,8 @@ export class SettingsService {
       merged.kanbanColumnsCollapsed = mergeExpandedProjects((raw as Partial<Settings>)['kanbanColumnsCollapsed'])
       merged.kanbanCardAttention = mergeKanbanCardAttention((raw as Partial<Settings>)['kanbanCardAttention'])
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
-  merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
+      merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
+      merged.openSessionTabs = mergeOpenSessionTabs((raw as Partial<Settings>)['openSessionTabs'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
       merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null

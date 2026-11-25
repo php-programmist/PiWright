@@ -27,6 +27,7 @@ import { fallbackTitle, generateSessionTitle } from './session-title'
 import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
 import { estimateContextBreakdown } from './context-breakdown'
+import { getDaemonClient } from '../daemon/client'
 
 export interface SessionHostListener {
   onStatus(status: PiStatus): void
@@ -124,6 +125,8 @@ export interface SessionHostOptions {
   subagentGraceMs?: number
   /** Чекпоинты кода для отката (rewind); null — откат кода недоступен (только сессия). */
   checkpoints?: CodeCheckpoints | null
+  /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления. */
+  onSessionFile?: (sessionFile: string) => void
 }
 
 export class SessionHost {
@@ -179,6 +182,7 @@ export class SessionHost {
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
   /** Чекпоинты кода (rewind): слот user-промпта активной ветки → снапшот перед его отправкой. */
   private readonly checkpoints: CodeCheckpoints | null
+  private readonly onSessionFile: ((sessionFile: string) => void) | null
   private checkpointsMap = new Map<number, { sha: string; ts: number }>()
   private checkpointsLoaded: Promise<void> | null = null
   /** Слот следующего промпта (= число user-промптов активной ветки); null — не синхронизировано. */
@@ -201,6 +205,7 @@ export class SessionHost {
     this.desiredSessionName = opts.initialSessionName ?? null
     this.forkSpec = opts.forkSpec
     this.checkpoints = opts.checkpoints ?? null
+    this.onSessionFile = opts.onSessionFile ?? null
     this.status('idle')
   }
 
@@ -410,6 +415,7 @@ export class SessionHost {
       translator.contextWindow = handshake.model?.contextWindow ?? 0
       this.conn = conn
       this.translator = translator
+      this.syncDaemonKey(conn)
       for (const tap of this.remoteTaps) conn.addRawSink(tap)
       if (handshake.sessionTokens !== null) {
         this.emit({ type: 'session_stats', tokens: handshake.sessionTokens })
@@ -1144,6 +1150,7 @@ export class SessionHost {
         : {}
     const sessionFile = data['sessionFile']
     if (typeof sessionFile === 'string' && sessionFile.length > 0) this.sessionFile = sessionFile
+    this.syncDaemonKey(conn)
     const sessionId = data['sessionId']
     if (this.handshake !== null && typeof sessionId === 'string' && sessionId.length > 0) {
       this.handshake = { ...this.handshake, sessionId }
@@ -1208,17 +1215,53 @@ export class SessionHost {
     }
   }
 
+  /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork): rekey у демона — без него
+   *  рестарт не найдёт ребёнка для attach; колбэк обновляет сохранённую вкладку восстановления. */
+  private syncDaemonKey(conn: PiConnection): void {
+    const sessionFile = this.sessionFile
+    if (sessionFile === null) return
+    const sessionKey = conn.daemonSessionKey
+    if (sessionKey !== null) void getDaemonClient()?.rekey(sessionKey, sessionFile).catch(() => {})
+    this.onSessionFile?.(sessionFile)
+  }
+
   dispose(): void {
     this.clearPendingDialogs()
     this.cancelTurnEndTimer()
     this.cancelResolveTimer()
+    if (this.startPromise !== null) {
+      // Старт в полёте: ребёнок появится после — закрыть/отвязать и его, иначе осиротеет в демоне.
+      void this.startPromise.then(() => {
+        this.conn?.close()
+        this.conn = null
+      }).catch(() => {})
+      return
+    }
     this.conn?.close()
+    this.conn = null
+  }
+
+  /** Отключение от сессии без остановки процесса (крестик вкладки): ребёнок демона живёт,
+   *  повторное открытие вкладки аттачится к нему (spawn с тем же sessionFile). */
+  detach(): void {
+    this.clearPendingDialogs()
+    this.cancelTurnEndTimer()
+    this.cancelResolveTimer()
+    if (this.startPromise !== null) {
+      void this.startPromise.then(() => {
+        this.conn?.detach()
+        this.conn = null
+      }).catch(() => {})
+      return
+    }
+    this.conn?.detach()
     this.conn = null
   }
 
   /** dispose() и ожидание выхода процесса (с таймаутом) — чтобы каталог перестал быть занятым
    *  перед `git worktree remove`. */
   async disposeAndWait(): Promise<void> {
+    if (this.startPromise !== null) await this.startPromise.catch(() => {})
     const conn = this.conn
     this.dispose()
     await conn?.waitForExit()

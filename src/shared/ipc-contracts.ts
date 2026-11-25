@@ -86,6 +86,8 @@ export interface Settings {
   terminalTabs: Record<string, TerminalTabsSnapshot>
   /** Вкладки проекта (файлы/диффы/MCP/навыки; ключ projectKey) — переживают перезапуск, сессии не сохраняются. */
   projectTabs: Record<string, ProjectTabsSnapshot>
+  /** Открытые вкладки сессий — при старте восстанавливаются (живые дети демона аттачатся). Пишет только main. */
+  openSessionTabs: SavedSessionTab[]
   /** Закреплённые ветки проекта (ключ projectKey) — всегда вверху списка переключателя веток. */
   pinnedBranches: Record<string, string[]>
   /** Последний активный проект (ключ projectKey) — восстанавливается при старте. */
@@ -132,6 +134,13 @@ export interface PanelPrefs {
 }
 
 export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'sessions'
+
+/** Сохранённая вкладка сессии для восстановления после рестарта (эффект Herdr): при старте
+ *  хост пересоздаётся; живой ребёнок демона аттачится, мёртвый — обычный респавн с --session. */
+export interface SavedSessionTab {
+  project: ProjectEntry
+  sessionFile: string
+}
 
 /** Сохранённая вкладка терминала: профиль + юзерское имя (пусто/undefined — имя профиля). */
 export interface SavedTerminalTab {
@@ -837,7 +846,9 @@ export interface PiWrightApi {
   sessionTranscript(project: ProjectEntry, sessionPath: string): Promise<SessionTranscriptResult>
   newSession(project: ProjectEntry): Promise<HostRef>
   openSession(project: ProjectEntry, sessionFile: string): Promise<SessionOpenResult>
-  closeSession(hostId: string): Promise<PromptResult>
+  /** keepAlive=true (крестик вкладки) — отключиться от сессии, ребёнок демона живёт;
+   *  false/undefined — остановить процесс («Остановить сессию», worktree-пути). */
+  closeSession(hostId: string, keepAlive?: boolean): Promise<PromptResult>
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>

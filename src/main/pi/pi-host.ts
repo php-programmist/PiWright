@@ -1,7 +1,7 @@
 /** Реестр сессий приложения: одна сессия = один `SessionHost` со своим процессом pi.
  *  По плану §2 — `PiHost`. Renderer'у уходят статусы и события, помеченные hostId. */
 import type { ExtensionDialog } from '../../shared/agent-events'
-import type { BackendMode, HostRef, PiEventMessage, PiStatus, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import type { BackendMode, HostRef, PiEventMessage, PiStatus, ProjectEntry, SavedSessionTab, Settings } from '../../shared/ipc-contracts'
 import type { PiModelInfo } from '../../shared/protocol-types'
 import { SessionHost } from './session-host'
 import type { SessionHostListener } from './session-host'
@@ -17,13 +17,17 @@ export class PiHost {
   private readonly hosts = new Map<string, SessionHost>()
   /** Каталог моделей/уровней thinking по типу бэкенда — из последних хендшейков; сид для новых сессий. */
   private readonly catalogs = new Map<BackendMode, { models: PiModelInfo[]; thinkingLevels: string[] }>()
+  /** Открытые вкладки сессий (hostId → вкладка) — пишутся в настройки при открытии/закрытии/rekey. */
+  private readonly openTabs = new Map<string, SavedSessionTab>()
 
   constructor(
     private readonly getSettings: () => Settings,
     private readonly sink: PiHostSink,
     private readonly createBackend?: (project: ProjectEntry, settings: Settings) => Promise<CreateBackendResult>,
     private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>,
-    private readonly checkpoints?: CodeCheckpoints | null
+    private readonly checkpoints?: CodeCheckpoints | null,
+    /** Персист открытых вкладок сессий (settings.openSessionTabs) — восстановление после рестарта. */
+    private readonly persistOpenTabs?: (tabs: SavedSessionTab[]) => void
   ) {}
 
   /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
@@ -46,10 +50,24 @@ export class PiHost {
       seedThinkingLevels: seed?.thinkingLevels,
       // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
       initialModel: sessionFile == null ? overrides?.model ?? settings.lastModel : null,
-      initialThinkingLevel: sessionFile == null ? overrides?.thinkingLevel ?? settings.lastThinkingLevel : null
+      initialThinkingLevel: sessionFile == null ? overrides?.thinkingLevel ?? settings.lastThinkingLevel : null,
+      onSessionFile: (file) => this.trackOpenTab(host.id, project, file)
     })
     this.hosts.set(host.id, host)
+    if (sessionFile != null) this.trackOpenTab(host.id, project, sessionFile)
     return host
+  }
+
+  /** Вкладка восстановления: новая/переименованная (fork меняет файл) — с записью в настройки. */
+  private trackOpenTab(hostId: string, project: ProjectEntry, sessionFile: string): void {
+    const existing = this.openTabs.get(hostId)
+    if (existing !== undefined && existing.sessionFile === sessionFile) return
+    this.openTabs.set(hostId, { project, sessionFile })
+    this.persistOpenTabs?.([...this.openTabs.values()])
+  }
+
+  private forgetOpenTab(hostId: string): void {
+    if (this.openTabs.delete(hostId)) this.persistOpenTabs?.([...this.openTabs.values()])
   }
 
   /** Форк сессии в новую (порт openForkTab из jb-pi): новый хост стартует на файле родителя,
@@ -77,9 +95,11 @@ export class PiHost {
       seedModels: seed?.models,
       seedThinkingLevels: seed?.thinkingLevels,
       initialSessionName: `(fork) ${parent.displayTitle}`,
-      initialThinkingLevel: parent.lastStatus()?.thinkingLevel ?? null
+      initialThinkingLevel: parent.lastStatus()?.thinkingLevel ?? null,
+      onSessionFile: (file) => this.trackOpenTab(host.id, parent.project, file)
     })
     this.hosts.set(host.id, host)
+    this.trackOpenTab(host.id, parent.project, sessionFile)
     return host
   }
 
@@ -119,11 +139,15 @@ export class PiHost {
     return result
   }
 
-  close(hostId: string): HostRef | null {
+  /** keepAlive=true — отключиться от сессии (крестик вкладки): ребёнок демона живёт.
+   *  keepAlive=false (по умолчанию) — остановить процесс («Остановить сессию», worktree). */
+  close(hostId: string, opts?: { keepAlive?: boolean }): HostRef | null {
     const host = this.hosts.get(hostId)
     if (host === undefined) return null
-    host.dispose()
+    if (opts?.keepAlive === true) host.detach()
+    else host.dispose()
     this.hosts.delete(hostId)
+    this.forgetOpenTab(hostId)
     return { hostId }
   }
 
@@ -133,11 +157,23 @@ export class PiHost {
     if (host === undefined) return false
     await host.disposeAndWait()
     this.hosts.delete(hostId)
+    this.forgetOpenTab(hostId)
     return true
   }
 
   disposeAll(): void {
     for (const host of this.hosts.values()) host.dispose()
     this.hosts.clear()
+    if (this.openTabs.size > 0) {
+      this.openTabs.clear()
+      this.persistOpenTabs?.([])
+    }
+  }
+
+  /** Поднять все хосты (восстановленные вкладки при старте). Повторные вызовы безобидны —
+   *  ensureStarted идемпотентен; вызывается при первом sessions:list, когда окно уже готово
+   *  получать реплей транскрипта. */
+  ensureAllStarted(): void {
+    for (const host of this.hosts.values()) void host.ensureStarted().catch(() => {})
   }
 }

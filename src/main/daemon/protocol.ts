@@ -41,6 +41,7 @@ export type DaemonRequest =
   | { type: 'input'; sessionKey: string; chunk: string }
   | { type: 'endInput'; sessionKey: string }
   | { type: 'close'; sessionKey: string }
+  | { type: 'rekey'; id: string; sessionKey: string; sessionFile: string }
   | { type: 'list'; id: string }
   | { type: 'shutdown'; id: string }
 

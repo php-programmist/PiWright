@@ -65,6 +65,8 @@ export class DaemonClient implements DaemonChildTransport {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly adapters = new Map<string, DaemonChildProcess>()
   private readonly buffered = new Map<string, DaemonPush[]>()
+  /** Ключи отвязанных детей (detach вкладки): живы в демоне, пуши не буферизуются. */
+  private readonly detached = new Set<string>()
   private welcomeWaiter: { resolve: (welcome: DaemonWelcome) => void; reject: (error: Error) => void; timer: NodeJS.Timeout | null } | null = null
 
   constructor(options: DaemonClientOptions) {
@@ -121,6 +123,14 @@ export class DaemonClient implements DaemonChildTransport {
 
   sendClose(sessionKey: string): void {
     this.send({ type: 'close', sessionKey })
+  }
+
+  /** Обновить файл сессии ребёнка (после хендшейка/fork): без rekey рестарт не найдёт ребёнка для attach. */
+  async rekey(sessionKey: string, sessionFile: string): Promise<void> {
+    await this.ensureConnected()
+    const id = String(this.nextId++)
+    const response = await this.request({ type: 'rekey', id, sessionKey, sessionFile }, this.helloTimeoutMs)
+    if (!response.ok) throw new Error(response.error)
   }
 
   /** Флеш команд (endInput/close) в канал и закрытие сокета — для will-quit: записи в сокет
@@ -289,7 +299,7 @@ export class DaemonClient implements DaemonChildTransport {
     const push = message as DaemonPush
     const adapter = this.adapters.get(push.sessionKey)
     if (adapter !== undefined) adapter.handlePush(push)
-    else this.bufferPush(push)
+    else if (!this.detached.has(push.sessionKey)) this.bufferPush(push)
   }
 
   private bufferPush(push: DaemonPush): void {
@@ -304,11 +314,20 @@ export class DaemonClient implements DaemonChildTransport {
 
   private registerAdapter(sessionKey: string, child: DaemonChildProcess): void {
     this.adapters.set(sessionKey, child)
+    this.detached.delete(sessionKey)
     const buffered = this.buffered.get(sessionKey)
     if (buffered !== undefined) {
       this.buffered.delete(sessionKey)
       for (const push of buffered) child.handlePush(push)
     }
+  }
+
+  /** Отвязать адаптер без остановки ребёнка (detach вкладки): адаптер уходит, пуши ключа
+   *  не буферизуются — при повторном открытии транскрипт догоняет get_messages-реплей. */
+  releaseAdapter(sessionKey: string): void {
+    this.adapters.delete(sessionKey)
+    this.buffered.delete(sessionKey)
+    this.detached.add(sessionKey)
   }
 
   private handleDisconnect(): void {

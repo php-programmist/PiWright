@@ -191,7 +191,7 @@ const api: PiWrightApi = {
     ipcRenderer.invoke(SESSIONS_TRANSCRIPT_CHANNEL, project, sessionPath),
   newSession: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_NEW_CHANNEL, project),
   openSession: (project: ProjectEntry, sessionFile: string) => ipcRenderer.invoke(SESSIONS_OPEN_CHANNEL, project, sessionFile),
-  closeSession: (hostId: string) => ipcRenderer.invoke(SESSIONS_CLOSE_CHANNEL, hostId),
+  closeSession: (hostId: string, keepAlive?: boolean) => ipcRenderer.invoke(SESSIONS_CLOSE_CHANNEL, hostId, keepAlive ?? null),
   renameSession: (hostId: string, name: string) => ipcRenderer.invoke(SESSIONS_RENAME_CHANNEL, hostId, name),
   deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
     ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),

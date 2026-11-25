@@ -250,6 +250,10 @@ export class DaemonServer {
       this.handleClose(message.sessionKey)
       return
     }
+    if (message.type === 'rekey') {
+      this.handleRekey(conn, message.id, message.sessionKey, message.sessionFile)
+      return
+    }
     if (message.type === 'list') {
       this.respond(conn, message.id, { sessions: this.sessionInfos() })
       return
@@ -367,6 +371,28 @@ export class DaemonServer {
     }
     this.log(`child ${record.key} exited (code ${code ?? '?'}, cause ${record.cause ?? '—'}, stdout ${record.stdoutLines})`)
     this.scheduleIdleCheck()
+  }
+
+  /** rekey: ребёнок, заспавненный без --session (файл создаёт pi), после хендшейка/fork получает
+   *  реальный файл сессии — без этого рестарт не найдёт ребёнка для attach. */
+  private handleRekey(conn: ConnState, id: string, sessionKey: string, sessionFile: string): void {
+    const record = this.children.get(sessionKey)
+    if (record === undefined || record.exited) {
+      this.respondError(conn, id, 'unknown session')
+      return
+    }
+    const owner = this.bySessionFile.get(sessionFile)
+    if (owner !== undefined && owner !== sessionKey) {
+      this.respondError(conn, id, 'session file already tracked')
+      return
+    }
+    if (record.sessionFile !== null && this.bySessionFile.get(record.sessionFile) === sessionKey) {
+      this.bySessionFile.delete(record.sessionFile)
+    }
+    record.sessionFile = sessionFile
+    this.bySessionFile.set(sessionFile, sessionKey)
+    this.respond(conn, id, { sessionKey, sessionFile })
+    this.log(`child ${sessionKey} rekeyed to session ${sessionFile}`)
   }
 
   /** close: stdin.end + kill через 2 c — семантика PiConnection.close. */

@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects, mergeTerminalTabs } from '../src/main/settings/settings'
+import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects, mergeOpenSessionTabs, mergeTerminalTabs } from '../src/main/settings/settings'
 
 async function tempSettings(initial: unknown): Promise<SettingsService> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-settings-'))
@@ -106,5 +106,25 @@ describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () =>
     expect(mergeTerminalTabs({ k: { tabs: [{ profileId: 'powershell' }], activeIndex: 5 } })).toEqual({
       k: { tabs: [{ profileId: 'powershell' }] }
     })
+  })
+
+  it('openSessionTabs are kept from file and sanitized by mergeOpenSessionTabs', async () => {
+    const good = { project: { kind: 'native', dir: 'C:\\x' }, sessionFile: 'C:\\x\\.pi\\a.jsonl' }
+    const ssh = { project: { kind: 'ssh', dir: '/home/u/api', serverId: 's1' }, sessionFile: 'b.jsonl' }
+    const service = await tempSettings({
+      openSessionTabs: [
+        good,
+        ssh,
+        { project: { kind: 'nope', dir: 'C:\\y' }, sessionFile: 'c.jsonl' },
+        { project: { kind: 'native' }, sessionFile: 'd.jsonl' },
+        { project: good.project, sessionFile: '' },
+        good,
+        'junk',
+        null
+      ]
+    })
+    expect(service.get().openSessionTabs).toEqual([good, ssh])
+    expect(mergeOpenSessionTabs(null)).toEqual([])
+    expect(mergeOpenSessionTabs('x')).toEqual([])
   })
 })

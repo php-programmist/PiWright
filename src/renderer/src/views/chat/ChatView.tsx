@@ -21,6 +21,7 @@ import { cacheHitOf } from '../../../../shared/agent-events'
 import { base64FromBytes, isImageFilePath, removeAttachmentRef, splitAttachmentRefs } from '../../../../shared/attachments'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../../../shared/todo'
 import { useT } from '../../lib/i18n'
+import { stopSession } from '../../lib/worktree-cleanup'
 import { formatCompactDuration } from '../../lib/duration'
 import { onPromptInject } from '../../lib/prompt-inject'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../../shared/worktree'
@@ -971,6 +972,13 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
               <circle cx="6" cy="18" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
               <circle cx="18" cy="12" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
               <path d="M6 8.4v7.2M8.4 6h4.1a3 3 0 0 1 3 3v.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          </button>
+        )}
+        {activeHostId !== null && (
+          <button className="icon" title={t('Stop session')} onClick={() => void stopSession(activeHostId)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="7" y="7" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
             </svg>
           </button>
         )}

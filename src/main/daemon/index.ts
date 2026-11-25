@@ -97,6 +97,7 @@ function main(): void {
         log('another daemon is already running, exiting')
         process.exit(0)
       }
+      log(`daemon pid ${process.pid}`)
     })
     .catch((err: unknown) => {
       log(`failed to start: ${err instanceof Error ? err.message : String(err)}`)

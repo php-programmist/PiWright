@@ -3,8 +3,9 @@ import type { ChildProcess } from 'node:child_process'
 import { PiHost } from '../src/main/pi/pi-host'
 import type { PiBackend } from '../src/main/pi/backends/types'
 import type { CreateBackendResult } from '../src/main/pi/backends/factory'
-import type { PiEventMessage, PiStatus } from '../src/shared/ipc-contracts'
+import type { PiEventMessage, PiStatus, SavedSessionTab } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
+import { DaemonClient, setDaemonClientForTests } from '../src/main/daemon/client'
 import { ScriptedChild } from './helpers/fake-child'
 
 const SETTINGS = { ...DEFAULT_SETTINGS }
@@ -324,5 +325,67 @@ describe('PiHost', () => {
     expect(await piHost.closeAndWait(host.id)).toBe(true)
     expect(piHost.get(host.id)).toBeNull()
     expect(await piHost.closeAndWait('no-such-host')).toBe(false)
+  })
+
+  it('close with keepAlive detaches (child stdin stays open), default close kills', async () => {
+    const child = scriptedChild('C:\\proj\\a.jsonl')
+    currentChild = child
+    const { piHost } = makePiHost([child])
+    const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
+    await host.ensureStarted()
+    expect(piHost.close(host.id, { keepAlive: true })).toEqual({ hostId: host.id })
+    expect(piHost.get(host.id)).toBeNull()
+    expect(child.stdin.writableEnded).toBe(false)
+    expect(child.killed).toBe(false)
+
+    const killChild = scriptedChild('C:\\proj\\b.jsonl')
+    currentChild = killChild
+    const second = makePiHost([killChild])
+    const host2 = second.piHost.create(PROJECT, 'C:\\proj\\b.jsonl')
+    await host2.ensureStarted()
+    second.piHost.close(host2.id)
+    expect(killChild.stdin.writableEnded).toBe(true)
+  })
+
+  it('persists open session tabs on create and removes on close', async () => {
+    const child = scriptedChild('C:\\proj\\a.jsonl')
+    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-1'
+    currentChild = child
+    setDaemonClientForTests({ rekey: async () => {} } as unknown as DaemonClient)
+    const persisted: SavedSessionTab[][] = []
+    const backend: PiBackend = {
+      displayName: 'fake',
+      spawner: async () => child as unknown as ChildProcess
+    }
+    const created: CreateBackendResult = { backend, error: null }
+    const piHost = new PiHost(
+      () => SETTINGS,
+      { onStatus: () => {}, onEvent: () => {} },
+      async () => created,
+      async () => [],
+      null,
+      (tabs) => persisted.push([...tabs])
+    )
+    const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
+    expect(persisted).toEqual([[{ project: PROJECT, sessionFile: 'C:\\proj\\a.jsonl' }]])
+    piHost.close(host.id)
+    expect(persisted[persisted.length - 1]).toEqual([])
+    setDaemonClientForTests(null)
+  })
+
+  it('ensureAllStarted starts restored hosts and is idempotent', async () => {
+    const child = scriptedChild('C:\\proj\\a.jsonl')
+    currentChild = child
+    const { piHost } = makePiHost([child])
+    const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
+    piHost.ensureAllStarted()
+    await vi.waitFor(() => {
+      expect(host.lastStatus()?.state).toBe('ready')
+    })
+    // Хендшейк шлёт get_state дважды (уровни thinking) — повторный ensureAllStarted не добавляет.
+    const afterFirst = child.sent.filter((c) => c['type'] === 'get_state').length
+    expect(afterFirst).toBe(2)
+    piHost.ensureAllStarted()
+    expect(child.sent.filter((c) => c['type'] === 'get_state')).toHaveLength(afterFirst)
   })
 })

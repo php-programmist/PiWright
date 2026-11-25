@@ -191,7 +191,11 @@ app.whenReady().then(async () => {
     },
     undefined,
     undefined,
-    new CodeCheckpoints(gitService, join(app.getPath('userData'), 'checkpoints'))
+    new CodeCheckpoints(gitService, join(app.getPath('userData'), 'checkpoints')),
+    // Персист открытых вкладок сессий — восстановление после рестарта (эффект Herdr).
+    (tabs) => {
+      settings.set({ openSessionTabs: tabs })
+    }
   )
   const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {
@@ -240,6 +244,11 @@ app.whenReady().then(async () => {
   startAutoUpdater(() => settings.get().updateUrl, settings, (status) => {
     mainWindow?.webContents.send(APP_UPDATE_EVENT_CHANNEL, status)
   })
+  // Восстановление открытых вкладок сессий: хосты создаются сразу (видны в панели), подъём —
+  // на первом sessions:list из рендерера, чтобы реплей транскрипта не ушёл в пустоту.
+  for (const tab of settings.get().openSessionTabs) {
+    piHost.create(tab.project, tab.sessionFile)
+  }
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg, () => settings.get().language)
   app.on('activate', () => {
@@ -256,7 +265,9 @@ app.on('will-quit', (event) => {
   if (!quitDisposalStarted) {
     quitDisposalStarted = true
     event.preventDefault()
-    piHost?.disposeAll()
+    // Дети демона живут: закрытие приложения — не остановка сессий (эффект Herdr), при следующем
+    // старте вкладки восстановятся и аттачатся. Явная остановка — «Остановить сессию» в UI
+    // (sessions:close keepAlive=false) и «Остановить все фоновые сессии» (piHost.disposeAll, задача 3).
     scheduledService?.dispose()
     fileService?.dispose()
     terminalService?.disposeAll()
@@ -265,11 +276,10 @@ app.on('will-quit', (event) => {
     } catch {
       // ssh-сервис мог не инициализироваться (ранний выход)
     }
-    // Дети убиваются командами close через демон; записи в сокет асинхронны — ждём флеш,
-    // иначе endInput/close теряются при выходе и pi переживает приложение.
     const finish = (): void => {
       void app.quit()
     }
+    // Ждём закрытия сокета: записи (rekey и т.п.) асинхронны и без флеша теряются при выходе.
     const client = getDaemonClient()
     if (client === null) finish()
     else void client.dispose().then(finish)

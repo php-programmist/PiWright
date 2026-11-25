@@ -50,6 +50,12 @@ export class PiConnection {
     return this.child !== null && !this.closed && !this.disconnected
   }
 
+  /** Ключ ребёнка в демоне (DaemonChildProcess.sessionKey); null — локальный спавн/не запущен. */
+  get daemonSessionKey(): string | null {
+    const child = this.child as { sessionKey?: string } | null
+    return typeof child?.sessionKey === 'string' && child.sessionKey.length > 0 ? child.sessionKey : null
+  }
+
   /** Спавнит процесс и начинает непрерывное чтение stdout. */
   async start(req: PiSpawnRequest): Promise<void> {
     if (this.child !== null) throw new Error('PiConnection is already started')
@@ -186,6 +192,21 @@ export class PiConnection {
       timer.unref()
       this.exitWaiters.add(waiter)
     })
+  }
+
+  /** Отвязка без остановки процесса (крестик вкладки): ребёнок демона живёт, stdin не закрывается,
+   *  kill не отправляется. Локальное состояние закрывается, ожидающие запросы размораживаются. */
+  detach(): void {
+    if (this.closed) return
+    this.closed = true
+    for (const p of this.pending.values()) p.reject(new Error('pi connection was detached'))
+    this.pending.clear()
+    const child = this.child
+    this.child = null
+    this.markExited()
+    if (child !== null && typeof (child as { detach?: unknown }).detach === 'function') {
+      ;(child as unknown as { detach: () => void }).detach()
+    }
   }
 
   /** Закрытие stdin — штатное завершение pi; процесс добиваем, если завис. */

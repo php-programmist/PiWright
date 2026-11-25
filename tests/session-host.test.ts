@@ -8,6 +8,7 @@ import type { PiStatus, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { UiEvent } from '../src/shared/agent-events'
 import { ScriptedChild } from './helpers/fake-child'
+import { DaemonClient, setDaemonClientForTests } from '../src/main/daemon/client'
 import type { CodeCheckpoints } from '../src/main/git/code-checkpoints'
 
 const SETTINGS = { ...DEFAULT_SETTINGS }
@@ -1535,6 +1536,38 @@ describe('SessionHost', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toBe('Prompt not found in session history')
     expect(child.sent.some((c) => c['type'] === 'fork')).toBe(false)
+    host.dispose()
+  })
+
+  it('detach keeps the child alive: no stdin end and no kill (dispose ends stdin)', async () => {
+    const child = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
+    currentChild = child
+    const { host } = makeHost([child])
+    await host.ensureStarted()
+    host.detach()
+    expect(child.stdin.writableEnded).toBe(false)
+    expect(child.killed).toBe(false)
+
+    const other = scriptedChild('C:\\proj\\.pi\\sessions\\b.jsonl')
+    currentChild = other
+    const second = makeHost([other])
+    await second.host.ensureStarted()
+    second.host.dispose()
+    expect(other.stdin.writableEnded).toBe(true)
+  })
+
+  it('rekeys the daemon child after handshake and reports the session file', async () => {
+    const child = scriptedChild('C:\\proj\\.pi\\sessions\\new.jsonl')
+    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-1'
+    currentChild = child
+    const rekey = vi.fn(async () => {})
+    setDaemonClientForTests({ rekey } as unknown as DaemonClient)
+    const onSessionFile = vi.fn()
+    const { host } = makeHost([child], SETTINGS, { onSessionFile })
+    await host.ensureStarted()
+    expect(rekey).toHaveBeenCalledWith('k-1', 'C:\\proj\\.pi\\sessions\\new.jsonl')
+    expect(onSessionFile).toHaveBeenCalledWith('C:\\proj\\.pi\\sessions\\new.jsonl')
+    setDaemonClientForTests(null)
     host.dispose()
   })
 })

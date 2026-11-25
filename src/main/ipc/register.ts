@@ -158,7 +158,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeSshServers, mergeTerminalTabs } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeOpenSessionTabs, mergeSshServers, mergeTerminalTabs } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -422,6 +422,9 @@ export function registerIpc(
       if (raw['projectTabs'] !== null && typeof raw['projectTabs'] === 'object' && !Array.isArray(raw['projectTabs'])) {
         safe.projectTabs = mergeProjectTabs(raw['projectTabs'])
       }
+      if (raw['openSessionTabs'] !== undefined) {
+        safe.openSessionTabs = mergeOpenSessionTabs(raw['openSessionTabs'])
+      }
       if (raw['pinnedBranches'] !== null && typeof raw['pinnedBranches'] === 'object' && !Array.isArray(raw['pinnedBranches'])) {
         safe.pinnedBranches = mergePinnedBranches(raw['pinnedBranches'])
       }
@@ -506,6 +509,8 @@ export function registerIpc(
   })
 
   ipcMain.handle(SESSIONS_LIST_CHANNEL, () => {
+    // Восстановленные вкладки поднимаем при первом списке — окно уже готово получать реплей транскрипта.
+    piHost.ensureAllStarted()
     notifications?.bridge.syncSessions()
     return {
       active: piHost.statuses().map((s) => ({
@@ -607,12 +612,13 @@ export function registerIpc(
     }
   })
 
-  ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown) => {
+  ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown, keepAlive: unknown) => {
     if (typeof hostId === 'string') {
       loops.forget(hostId)
       scheduled?.forgetHost(hostId)
     }
-    piHost.close(typeof hostId === 'string' ? hostId : '')
+    // keepAlive=true — крестик вкладки: отключиться, ребёнок демона живёт. Иначе — остановить процесс.
+    piHost.close(typeof hostId === 'string' ? hostId : '', { keepAlive: keepAlive === true })
     return { ok: true, error: null }
   })
 

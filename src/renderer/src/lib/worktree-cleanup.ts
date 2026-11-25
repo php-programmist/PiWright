@@ -10,11 +10,13 @@ function translator(): TFunc {
   return tFor(useSessionsStore.getState().settings?.language ?? 'en')
 }
 
-/** Закрыть сессию и убрать её из панели; askCleanup=false — не дергать диалог очистки (массовое закрытие). */
+/** Закрыть вкладку сессии. Обычная сессия — отключиться (keepAlive): агент продолжает работать
+ *  в фоне, повторное открытие аттачится. Worktree-сессия — остановить процесс: иначе живой
+ *  агент держит каталог и `git worktree remove` упадёт. askCleanup=false — не дергать диалог. */
 export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = true): Promise<void> {
   const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
   const wt = row !== undefined ? splitWorktreeHostDir(row.project.dir) : null
-  await window.piwright.closeSession(hostId)
+  await window.piwright.closeSession(hostId, wt === null)
   useChatStore.getState().removeHost(hostId)
   useSessionsStore.getState().forgetHost(hostId)
   if (row !== undefined) void useSessionsStore.getState().refreshHistory(row.project)
@@ -31,4 +33,14 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
     result = await window.piwright.worktreeRemove(row.project, wt.name, true)
   }
   if (!result.ok) window.alert(result.error)
+}
+
+/** «Остановить сессию» — явная остановка: убить процесс агента (в отличие от крестика —
+ *  отключиться и оставить агента работать в фоне). */
+export async function stopSession(hostId: string): Promise<void> {
+  const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
+  await window.piwright.closeSession(hostId, false)
+  useChatStore.getState().removeHost(hostId)
+  useSessionsStore.getState().forgetHost(hostId)
+  if (row !== undefined) void useSessionsStore.getState().refreshHistory(row.project)
 }

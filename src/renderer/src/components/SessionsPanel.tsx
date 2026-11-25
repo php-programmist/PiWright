@@ -3,7 +3,7 @@ import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
-import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
+import { closeSessionAndSweepWorktree, stopSession } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
 import { ChangelogModal } from './ChangelogModal'
@@ -481,6 +481,7 @@ function ProjectRow({
                   <span className="session-title" onDoubleClick={() => void startSessionRename(s.hostId, s.title)}>{s.title}</span>
                   {wt !== null && <span className="kind-badge" title={s.project.dir}>{wt.name}</span>}
                   <span className="spacer" />
+                  <button className="icon" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>
                   <button className="icon" title={t('Rename (or double-click title)')} onClick={() => void startSessionRename(s.hostId, s.title)}>✎</button>
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>

@@ -138,6 +138,53 @@ describe('DaemonClient', () => {
     expect(sessions).toHaveLength(1)
     expect(sessions[0]).toMatchObject({ sessionFile: 'C:\\proj\\.pi\\s.json', mode: 'native' })
   })
+
+  it('rekeys the child so a later spawn attaches by the new session file', async () => {
+    startServer()
+    await server.start()
+    const client = makeClient()
+    const { child, sessionKey } = await client.spawn(SPEC, null)
+    child.on('error', () => {})
+    child.on('close', () => {})
+    const sessionFile = 'C:\\proj\\.pi\\handshaked.json'
+    await client.rekey(sessionKey, sessionFile)
+    const second = await client.spawn(SPEC, sessionFile)
+    second.child.on('error', () => {})
+    second.child.on('close', () => {})
+    expect(second.attached).toBe(true)
+    expect(second.sessionKey).toBe(sessionKey)
+    expect(children).toHaveLength(1)
+  })
+
+  it('detach releases the adapter without killing the child and drops its pushes', async () => {
+    startServer()
+    await server.start()
+    const client = makeClient()
+    const { child, sessionKey } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
+    const events: string[] = []
+    child.on('error', (err: Error) => events.push(`error:${err.message}`))
+    child.on('close', () => events.push('close'))
+    child.detach()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(events).toEqual([])
+    expect(children[0].killed).toBe(false)
+    expect((children[0].stdin.read() as Buffer | null)).toBeNull()
+
+    // Пуши отвязанного ключа не буферизуются: повторный spawn не получает старые строки.
+    children[0].emitData('stale\n')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const reattach = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
+    reattach.child.on('error', () => {})
+    reattach.child.on('close', () => {})
+    expect(reattach.attached).toBe(true)
+    expect(reattach.sessionKey).toBe(sessionKey)
+    const lines: string[] = []
+    reattach.child.stdout.setEncoding('utf8')
+    reattach.child.stdout.on('data', (chunk: string) => lines.push(chunk))
+    children[0].emitData('fresh\n')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(lines.join('')).toBe('fresh\n')
+  })
 })
 
 describe('daemon spawner', () => {

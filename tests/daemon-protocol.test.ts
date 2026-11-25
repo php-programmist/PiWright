@@ -250,6 +250,53 @@ describe('daemon protocol', () => {
     expect(push).toEqual({ type: 'stdout', sessionKey: key1, line: 'line' })
   })
 
+  it('rekeys a child spawned without a session file and attaches by the new file', async () => {
+    startServer()
+    await server.start()
+    const client = new TestClient()
+    await client.connect(channel, readDaemonToken(userDataDir) ?? '')
+    client.send({ type: 'spawn', id: 'r1', spec: SPEC, sessionFile: null })
+    const spawn = await client.next()
+    const key = (spawn.data as Record<string, unknown>)['sessionKey'] as string
+
+    client.send({ type: 'list', id: 'r2' })
+    const before = await client.next()
+    expect((before.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile: null, mode: 'native' }])
+
+    const sessionFile = 'C:\\proj\\.pi\\new.json'
+    client.send({ type: 'rekey', id: 'r3', sessionKey: key, sessionFile })
+    const rekeyed = await client.next()
+    expect(rekeyed).toMatchObject({ type: 'response', id: 'r3', ok: true, data: { sessionKey: key, sessionFile } })
+
+    client.send({ type: 'list', id: 'r4' })
+    const after = await client.next()
+    expect((after.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile, mode: 'native' }])
+
+    client.send({ type: 'spawn', id: 'r5', spec: SPEC, sessionFile })
+    const attach = await client.next()
+    expect(attach).toMatchObject({ type: 'response', id: 'r5', ok: true, data: { sessionKey: key, attached: true } })
+    expect(spawnCalls).toHaveLength(1)
+  })
+
+  it('rejects rekey for unknown keys and for a session file tracked by another child', async () => {
+    startServer()
+    await server.start()
+    const client = new TestClient()
+    await client.connect(channel, readDaemonToken(userDataDir) ?? '')
+    client.send({ type: 'rekey', id: 'r1', sessionKey: 'nope', sessionFile: 'C:\\x.json' })
+    const unknown = await client.next()
+    expect(unknown).toMatchObject({ type: 'response', id: 'r1', ok: false, error: 'unknown session' })
+
+    client.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile: 'C:\\proj\\.pi\\a.json' })
+    await client.next()
+    client.send({ type: 'spawn', id: 'r3', spec: SPEC, sessionFile: 'C:\\proj\\.pi\\b.json' })
+    const second = await client.next()
+    const key2 = (second.data as Record<string, unknown>)['sessionKey'] as string
+    client.send({ type: 'rekey', id: 'r4', sessionKey: key2, sessionFile: 'C:\\proj\\.pi\\a.json' })
+    const busy = await client.next()
+    expect(busy).toMatchObject({ type: 'response', id: 'r4', ok: false, error: 'session file already tracked' })
+  })
+
   it('sends a single exit event when error and close both fire', async () => {
     startServer()
     await server.start()
