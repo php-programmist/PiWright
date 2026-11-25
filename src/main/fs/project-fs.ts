@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import { promises as fs } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename as winBasename, dirname as winDirname, join as winJoin } from 'node:path'
-import { basename as posixBasename, dirname as posixDirname, join as posixJoin } from 'node:path'
+import { posix } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { getSshService } from '../ssh/ssh-service'
@@ -22,8 +22,7 @@ export interface FsEntry {
 /** Ретраи rename на Windows (EPERM/EBUSY: антивирус, индексатор, 9P). */
 const RENAME_RETRY_MAX = 20
 
-/** SFTPWrapper в promise-режиме (ssh2 возвращает Promise при вызове без колбэка,
- *  но @types/ssh2 описывает только callback-сигнатуры). */
+/** SFTPWrapper в promise-режиме: методы ssh2 — только callback-стиль, оборачиваем вручную. */
 interface SftpEntry {
   filename: string
   attrs: { isDirectory(): boolean; size?: number; mtime?: number }
@@ -47,11 +46,30 @@ type SftpPromises = {
   close(handle: SftpHandle): Promise<void>
   read(handle: SftpHandle, buffer: Buffer, offset: number, length: number, position: number): Promise<{ bytesRead: number }>
   write(handle: SftpHandle, buffer: Buffer, offset: number, length: number, position: number): Promise<void>
-  ext_openssh_rename?(src: string, dst: string): Promise<void>
 }
 
-async function sftpPromises(sftp: Promise<SFTPWrapper>): Promise<SftpPromises> {
-  return (await sftp) as unknown as SftpPromises
+async function sftpPromises(sftpPromise: Promise<SFTPWrapper>): Promise<SftpPromises> {
+  const sftp = await sftpPromise
+  const call = <T>(fn: (cb: (err: Error | null | undefined, res?: T) => void) => void): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      fn((err, res) => (err !== null && err !== undefined ? reject(err) : resolve(res as T)))
+    })
+  return {
+    readdir: (path) => call((cb) => sftp.readdir(path, (err, list) => cb(err, list as SftpEntry[]))),
+    readFile: (path) => call((cb) => sftp.readFile(path, (err, buf) => cb(err, buf as Buffer))),
+    writeFile: (path, data) => call((cb) => sftp.writeFile(path, data as string, (err) => cb(err))),
+    mkdir: (path) => call((cb) => sftp.mkdir(path, (err) => cb(err))),
+    unlink: (path) => call((cb) => sftp.unlink(path, (err) => cb(err))),
+    rmdir: (path) => call((cb) => sftp.rmdir(path, (err) => cb(err))),
+    rename: (from, to) => call((cb) => sftp.rename(from, to, (err) => cb(err))),
+    stat: (path) => call((cb) => sftp.stat(path, (err, st) => cb(err, st as SftpStat))),
+    open: (path, flags) => call((cb) => sftp.open(path, flags as never, (err, handle) => cb(err, handle as unknown as SftpHandle))),
+    close: (handle) => call((cb) => sftp.close(handle as unknown as Buffer, (err) => cb(err))),
+    read: (handle, buffer, offset, length, position) =>
+      call((cb) => sftp.read(handle as unknown as Buffer, buffer, offset, length, position, (err, bytesRead) => cb(err, { bytesRead }))),
+    write: (handle, buffer, offset, length, position) =>
+      call((cb) => sftp.write(handle as unknown as Buffer, buffer, offset, length, position, (err) => cb(err)))
+  }
 }
 
 export interface ProjectFs {
@@ -211,15 +229,15 @@ export class SshProjectFs implements ProjectFs {
   ) {}
 
   join(...parts: string[]): string {
-    return posixJoin(...parts)
+    return posix.join(...parts)
   }
 
   dirname(path: string): string {
-    return posixDirname(path)
+    return posix.dirname(path)
   }
 
   basename(path: string): string {
-    return posixBasename(path)
+    return posix.basename(path)
   }
 
   async readdir(path: string): Promise<FsEntry[]> {
@@ -343,9 +361,15 @@ export class SshProjectFs implements ProjectFs {
 
   async renameOverwrite(from: string, to: string): Promise<void> {
     const sftp = await sftpPromises(this.sftp())
-    if (typeof sftp.ext_openssh_rename === 'function') {
-      await sftp.ext_openssh_rename(from, to)
-      return
+    // posix-rename@openssh.com перезаписывает цель атомарно; сервер без расширения — фолбэк.
+    const ext = sftp as unknown as { ext_openssh_rename?: (src: string, dst: string) => Promise<void> }
+    if (typeof ext.ext_openssh_rename === 'function') {
+      try {
+        await ext.ext_openssh_rename(from, to)
+        return
+      } catch {
+        // расширения нет — обычный путь ниже
+      }
     }
     try {
       await sftp.rename(from, to)
