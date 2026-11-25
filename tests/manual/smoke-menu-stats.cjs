@@ -95,6 +95,19 @@ async function main() {
   await p.click('.stats-metric:nth-of-type(1) input')
   await p.waitForTimeout(300)
 
+  // Stacked режим: один столбец на бакет — у сегментов бакета один x (distinct x ≈ бакеты).
+  await p.click('.stats-mode .stats-seg-btn:nth-child(2)')
+  await p.waitForTimeout(300)
+  const stacked = await p.evaluate(() => {
+    const rects = [...document.querySelectorAll('.stats-modal .stats-chart rect')]
+    return { rects: rects.length, xs: new Set(rects.map((r) => r.getAttribute('x'))).size }
+  })
+  console.log('stacked view:', JSON.stringify(stacked))
+  if (!stacked.rects) throw new Error('stacked view has no bars')
+  if (stacked.xs >= stacked.rects) throw new Error('stacked mode: segments do not share x')
+  await p.click('.stats-mode .stats-seg-btn:nth-child(1)')
+  await p.waitForTimeout(300)
+
   // Прямой IPC: окно «день» → 24 часовых бакета; произвольный месяц → дни.
   const query = await p.evaluate(() =>
     window.piwright.statsQuery({ kind: 'day', project: null, model: null }).then((r) => ({

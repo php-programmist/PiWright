@@ -18,6 +18,7 @@ interface StatsState {
   project: string | null
   model: string | null
   metrics: StatsMetrics
+  stacked: boolean
   openModal: () => void
   closeModal: () => void
   setKind: (kind: StatsWindowKind) => void
@@ -25,6 +26,7 @@ interface StatsState {
   setProject: (project: string | null) => void
   setModel: (model: string | null) => void
   toggleMetric: (metric: keyof StatsMetrics) => void
+  setStacked: (stacked: boolean) => void
   refresh: () => Promise<void>
 }
 
@@ -38,6 +40,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
   project: null,
   model: null,
   metrics: { input: true, output: true, cacheRead: true },
+  stacked: false,
 
   openModal: () => {
     set({ open: true })
@@ -64,6 +67,7 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     const metrics = { ...get().metrics, [metric]: !get().metrics[metric] }
     set({ metrics })
   },
+  setStacked: (stacked) => set({ stacked }),
   refresh: async () => {
     const { kind, month, year, project, model } = get()
     set({ loading: true })

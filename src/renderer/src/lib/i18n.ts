@@ -574,6 +574,8 @@ const RU: Record<string, string> = {
   'In': 'Вход',
   'Out': 'Выход',
   'Cached read': 'Чтение кэша',
+  'Grouped': 'Раздельно',
+  'Stacked': 'Стопкой',
   'No data': 'Нет данных',
   'Loading…': 'Загрузка…'
 }

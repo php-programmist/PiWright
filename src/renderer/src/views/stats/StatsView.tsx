@@ -50,6 +50,8 @@ export function StatsView(): React.JSX.Element {
   const setProject = useStatsStore((s) => s.setProject)
   const setModel = useStatsStore((s) => s.setModel)
   const toggleMetric = useStatsStore((s) => s.toggleMetric)
+  const stacked = useStatsStore((s) => s.stacked)
+  const setStacked = useStatsStore((s) => s.setStacked)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -169,6 +171,14 @@ export function StatsView(): React.JSX.Element {
               {t(METRIC_LABELS[m.key])}
             </label>
           ))}
+          <div className="stats-seg stats-mode">
+            <button className={stacked ? 'stats-seg-btn' : 'stats-seg-btn active'} onClick={() => setStacked(false)}>
+              {t('Grouped')}
+            </button>
+            <button className={stacked ? 'stats-seg-btn active' : 'stats-seg-btn'} onClick={() => setStacked(true)}>
+              {t('Stacked')}
+            </button>
+          </div>
         </div>
         {hasData && visible.length > 0 && (
           <div className="stats-totals">
@@ -186,7 +196,7 @@ export function StatsView(): React.JSX.Element {
           ) : !hasData || visible.length === 0 ? (
             <div className="panel-hint">{t('No data')}</div>
           ) : (
-            <Chart points={points} granularity={result?.granularity ?? 'day'} visible={visible} locale={locale} />
+            <Chart points={points} granularity={result?.granularity ?? 'day'} visible={visible} stacked={stacked} locale={locale} />
           )}
         </div>
       </div>
@@ -204,18 +214,20 @@ function Chart({
   points,
   granularity,
   visible,
+  stacked,
   locale
 }: {
   points: StatsPoint[]
   granularity: StatsGranularity
   visible: readonly { key: MetricKey; color: string }[]
+  stacked: boolean
   locale: string
 }): React.JSX.Element {
   const t = useT()
   const max = niceMax(Math.max(...points.map((p) => visible.reduce((sum, m) => sum + p[m.key], 0)), 1))
   const n = points.length
   const groupW = PLOT_W / n
-  const barW = Math.min(20, (groupW * 0.72) / visible.length)
+  const barW = stacked ? Math.min(20, groupW * 0.72) : Math.min(20, (groupW * 0.72) / visible.length)
 
   const compact = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })
   const full = new Intl.NumberFormat(locale)
@@ -247,15 +259,18 @@ function Chart({
         )
       })}
       {points.map((p, i) => {
-        const x0 = PAD_L + i * groupW + (groupW - barW * visible.length) / 2
+        const x0 = PAD_L + i * groupW + (groupW - (stacked ? barW : barW * visible.length)) / 2
+        let acc = 0
         return (
           <g key={p.t}>
             {visible.map((m, mi) => {
               const v = p[m.key]
               const h = v > 0 ? Math.max(1, (PLOT_H * v) / max) : 0
-              const x = x0 + mi * barW
+              const x = stacked ? x0 : x0 + mi * barW
+              const y = stacked ? PAD_T + PLOT_H - acc - h : PAD_T + PLOT_H - h
+              acc += h
               return (
-                <rect key={m.key} x={x} y={PAD_T + PLOT_H - h} width={barW} height={h} fill={m.color} rx={1}>
+                <rect key={m.key} x={x} y={y} width={barW} height={h} fill={m.color} rx={1}>
                   <title>
                     {`${fullFmt.format(new Date(p.t))}\n${visible
                       .map((mm) => `${t(METRIC_LABELS[mm.key])}: ${full.format(p[mm.key])}`)
