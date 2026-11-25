@@ -33,13 +33,16 @@ const CARD_TITLE = 'SMOKE link chip card with a very long title for truncation c
   }, PROJECT)
   console.log('created:', card.cardId)
 
-  // открыть вкладку доски: если уже открыта — пропустить
-  const kanbanTabCount = await p.locator('.tab-bar .tab.kanban').count()
-  if (kanbanTabCount === 0) {
+  // закрыть старые канбан-табы, открыть вкладку доски через панель
+  while (await p.locator('.tab-bar .tab.kanban .tab-close').count() > 0) {
+    await p.locator('.tab-bar .tab.kanban .tab-close').first().click()
+    await p.waitForTimeout(300)
+  }
+  if ((await p.locator('.kanban-board-name').count()) === 0) {
     await p.locator('.right-bar button[title="Канбан"], .right-bar button[title="Kanban"]').first().click()
     await p.waitForTimeout(800)
-    await p.locator('.kanban-board-name').first().click()
   }
+  await p.locator('.kanban-board-name').first().click()
   await p.waitForTimeout(1200)
 
   // правый клик по карточке → контекстное меню → Copy task link
@@ -62,7 +65,7 @@ const CARD_TITLE = 'SMOKE link chip card with a very long title for truncation c
     const sessionTitle = history.length > 0 ? history[0].title : null
     const res = await window.piwright.kanbanCardComment(project, boardId, {
       cardId,
-      text: `see kanban:task:${cardId} and kanban:session:${sessionId ?? 'no-session'}`
+      text: `see kanban:task:${cardId} and session:${sessionId ?? 'no-session'}`
     })
     return { ok: res.ok, error: res.error ?? null, sessionId, sessionTitle }
   }, { project: PROJECT, cardId: card.cardId }).catch((e) => ({ ok: false, error: e.message }))

@@ -371,7 +371,7 @@ export function TabBar(): React.JSX.Element | null {
               onClick={() => {
                 setMenu(null)
                 const row = sessionRows.find((r) => r.hostId === menu.id)
-                if (row !== undefined && row.sessionId !== '') copyText(`kanban:session:${row.sessionId}`)
+                if (row !== undefined && row.sessionId !== '') copyText(`session:${row.sessionId}`)
               }}
             >
               {t('Copy session link')}

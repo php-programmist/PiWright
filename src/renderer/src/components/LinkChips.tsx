@@ -5,8 +5,8 @@ import { projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 
-/** Токен-ссылка в тексте: kanban:task:c-xxxxxxxx или kanban:session:<sessionId>. */
-const LINK_TOKEN_RE = /kanban:(task|session):([A-Za-z0-9-]+)/g
+/** Токен-ссылка в тексте: kanban:task:c-xxxxxxxx или session:<sessionId>. */
+const LINK_TOKEN_RE = /kanban:task:([A-Za-z0-9-]+)|session:([A-Za-z0-9-]+)/g
 
 export type LinkSegment =
   | { kind: 'text'; text: string }
@@ -19,7 +19,7 @@ export function splitLinkTokens(text: string): LinkSegment[] {
   for (const m of text.matchAll(LINK_TOKEN_RE)) {
     const start = m.index ?? 0
     if (start > last) parts.push({ kind: 'text', text: text.slice(last, start) })
-    parts.push(m[1] === 'task' ? { kind: 'task', id: m[2] } : { kind: 'session', id: m[2] })
+    parts.push(m[1] !== undefined ? { kind: 'task', id: m[1] } : { kind: 'session', id: m[2] ?? '' })
     last = start + m[0].length
   }
   if (last < text.length) parts.push({ kind: 'text', text: text.slice(last) })
@@ -208,7 +208,7 @@ export function RichText({
           const chunk = part.text
           return <span key={i}>{renderText !== undefined ? renderText(chunk) : chunk}</span>
         }
-        if (project === null) return <span key={i}>{`kanban:${part.kind}:${part.id}`}</span>
+        if (project === null) return <span key={i}>{part.kind === 'task' ? `kanban:task:${part.id}` : `session:${part.id}`}</span>
         return part.kind === 'task' ? (
           <TaskChip key={i} project={project} taskId={part.id} />
         ) : (
