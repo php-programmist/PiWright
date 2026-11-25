@@ -302,7 +302,7 @@ describe('PiHost', () => {
     await forked!.ensureStarted()
     expect(forkChild.sent.some((c) => c['type'] === 'clone')).toBe(true)
     // Название не сгенерировалось — родитель получил запасное из первых слов, форк наследует его.
-    expect(forked!.lastStatus()?.title).toBe('ping (fork)')
+    expect(forked!.lastStatus()?.title).toBe('(fork) ping')
     expect(forked!.lastStatus()?.sessionFile).toBe('C:\\proj\\branch.jsonl')
     expect(events.filter((e) => e.hostId === forked!.id).length).toBeGreaterThan(0)
     expect(statuses.some((s) => s.hostId === forked!.id)).toBe(true)

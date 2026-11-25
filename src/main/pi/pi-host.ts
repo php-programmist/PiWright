@@ -51,7 +51,7 @@ export class PiHost {
 
   /** Форк сессии в новую (порт openForkTab из jb-pi): новый хост стартует на файле родителя,
    *  первый запрос ветвляет его (fork на промпт/clone), родитель не трогается.
-   *  Имя — «<родитель> (fork)», уровень thinking переезжает от родителя. */
+   *  Имя — «(fork) <родитель>» — в начале, чтобы не обрезалось в конце; thinking переезжает от родителя. */
   createFork(parentHostId: string, fork: { userText: string | null; occurrence: number }): SessionHost | null {
     const parent = this.hosts.get(parentHostId)
     if (parent === undefined) return null
@@ -72,7 +72,7 @@ export class PiHost {
       installExtensions: this.installExtensions,
       seedModels: seed?.models,
       seedThinkingLevels: seed?.thinkingLevels,
-      initialSessionName: `${parent.displayTitle} (fork)`,
+      initialSessionName: `(fork) ${parent.displayTitle}`,
       initialThinkingLevel: parent.lastStatus()?.thinkingLevel ?? null
     })
     this.hosts.set(host.id, host)

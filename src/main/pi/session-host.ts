@@ -102,7 +102,7 @@ export interface SessionHostOptions {
   /** Последний выбор пользователя (настройки) — применяется в новой сессии сразу после хендшейка. */
   initialModel?: string | null
   initialThinkingLevel?: string | null
-  /** Имя сессии до подъёма процесса — уйдет в хендшейке (fork: «<родитель> (fork)»). */
+  /** Имя сессии до подъёма процесса — уйдет в хендшейке (fork: «(fork) <родитель>»). */
   initialSessionName?: string | null
   /** Форк при старте на файле родительской сессии: userText=null → clone всей сессии,
    *  иначе fork на user-промпт (точка после ответа агента) до хендшейка — порт handshake-fork из jb-pi. */
