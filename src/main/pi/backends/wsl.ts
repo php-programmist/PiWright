@@ -2,7 +2,7 @@
  *  со спайковыми поправками: `wsl.exe -l -q` отдаёт UTF-16LE с NUL, спавн только по схеме из §3 плана. */
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import type { PiSpawner } from './types'
+import type { PiSpawnRequest, PiSpawnSpec } from './types'
 import { buildBashCommand, buildWslSpawnArgs, shellQuote, stripWslUncPrefix } from './shell'
 
 export const KNOWN_PI_PATHS = ['$HOME/.local/bin/pi', '/usr/local/bin/pi', '/usr/bin/pi']
@@ -109,15 +109,19 @@ export async function wslPathFor(distro: string, hostPath: string): Promise<stri
   return converted
 }
 
-/** Спавн: `wsl.exe -d <distro> --cd <wslCwd> --exec bash -lic '<pi с аргументами>'`. */
-export function createWslSpawner(distro: string, piPath: string): PiSpawner {
-  return async (req) => {
-    const wslCwd = await wslPathFor(distro, req.cwd)
-    const bashCommand = buildBashCommand(piPath, req.args)
-    const child: ChildProcess = spawn('wsl.exe', buildWslSpawnArgs(distro, wslCwd, bashCommand), {
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
-    return child
-  }
+/** Спека WSL: cwd конвертируется в путь дистрибутива заранее (кэш конверсий в main);
+ *  null — конвертация не удалась, спавн без --cd (пи стартует в домашнем каталоге, как раньше). */
+export async function buildWslSpec(distro: string, piPath: string, req: PiSpawnRequest): Promise<PiSpawnSpec> {
+  const wslCwd = await wslPathFor(distro, req.cwd)
+  return { mode: 'wsl', piPath, args: req.args, cwd: req.cwd, env: null, wsl: { distro, cwd: wslCwd } }
+}
+
+/** Спавн по спеке: `wsl.exe -d <distro> [--cd <wslCwd>] --exec bash -lic '<pi с аргументами>'`. */
+export function spawnFromSpec(spec: PiSpawnSpec): ChildProcess {
+  const wslCwd = spec.wsl?.cwd ?? null
+  const bashCommand = buildBashCommand(spec.piPath, spec.args)
+  return spawn('wsl.exe', buildWslSpawnArgs(spec.wsl?.distro ?? '', wslCwd, bashCommand), {
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe']
+  })
 }

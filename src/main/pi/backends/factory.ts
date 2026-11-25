@@ -1,11 +1,14 @@
 /** Фабрика бэкенда из проекта и настроек: резолв pi, готовый спавнер. Вид бэкенда выбирается
- *  при добавлении проекта (native | wsl | ssh), глобального auto больше нет. */
+ *  при добавлении проекта (native | wsl | ssh), глобального auto больше нет.
+ *  Спавнер всегда демон-режим: спека строится здесь (резолв pi и секреты — только в main),
+ *  спавн уходит демону; недоступен демон — локальный фолбэк spawnFromSpec. */
 import { homedir } from 'node:os'
 import type { ProjectEntry, Settings } from '../../../shared/ipc-contracts'
 import type { PiBackend } from './types'
-import { createNativeSpawner, resolveNativePi } from './native'
-import { createWslSpawner, listWslDistros, resolveWslPi } from './wsl'
-import { createSshSpawner, resolveSshPi } from './ssh'
+import { buildNativeSpec, resolveNativePi } from './native'
+import { buildWslSpec, listWslDistros, resolveWslPi } from './wsl'
+import { buildSshSpec, resolveSshPi } from './ssh'
+import { createDaemonSpawner } from '../../daemon/spawner'
 import { getSshService } from '../../ssh/ssh-service'
 
 export type CreateBackendResult = { backend: PiBackend; error: null } | { backend: null; error: string }
@@ -25,7 +28,13 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
     if (piPath === null) {
       return { backend: null, error: 'Could not find the pi executable on the host. Set it in settings.' }
     }
-    return { backend: { displayName: 'Native (host)', spawner: createNativeSpawner(piPath) }, error: null }
+    return {
+      backend: {
+        displayName: 'Native (host)',
+        spawner: createDaemonSpawner({ buildSpec: (req) => buildNativeSpec(piPath, req) })
+      },
+      error: null
+    }
   }
   if (project.kind === 'ssh') {
     const server = settings.sshServers.find((s) => s.id === project.serverId)
@@ -38,7 +47,14 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
       if (piPath === null) {
         return { backend: null, error: `Could not find the pi executable on "${server.name}". Set it in settings.` }
       }
-      return { backend: { displayName: `SSH: ${server.name}`, spawner: createSshSpawner(ssh, server, piPath) }, error: null }
+      const secret = ssh.resolveSecret(server)
+      return {
+        backend: {
+          displayName: `SSH: ${server.name}`,
+          spawner: createDaemonSpawner({ buildSpec: (req) => buildSshSpec(server, secret, piPath, req) })
+        },
+        error: null
+      }
     } catch (err) {
       return { backend: null, error: err instanceof Error ? err.message : String(err) }
     }
@@ -52,5 +68,11 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
   if (piPath === null) {
     return { backend: null, error: `Could not find the pi executable in WSL distro "${distro}". Set it in settings.` }
   }
-  return { backend: { displayName: `WSL: ${distro}`, spawner: createWslSpawner(distro, piPath) }, error: null }
+  return {
+    backend: {
+      displayName: `WSL: ${distro}`,
+      spawner: createDaemonSpawner({ buildSpec: (req) => buildWslSpec(distro, piPath, req) })
+    },
+    error: null
+  }
 }

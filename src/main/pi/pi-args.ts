@@ -32,3 +32,10 @@ export function piArgs(
     ...extraArgs
   ]
 }
+
+/** Файл сессии из готовых аргументов (пара `--session <путь>` из piArgs) — ключ attach в демоне. */
+export function sessionFileFromArgs(args: readonly string[]): string | null {
+  const index = args.indexOf('--session')
+  const file = index >= 0 ? args[index + 1] : undefined
+  return typeof file === 'string' && file.length > 0 ? file : null
+}

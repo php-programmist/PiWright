@@ -8,7 +8,7 @@ import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from
 import type { SshServerEntry } from '../../shared/ipc-contracts'
 import type { PiChildProcess } from '../pi/backends/types'
 import { SshKnownHosts } from './known-hosts'
-import { SshSecretsService, type SshSecret } from './secrets'
+import { SshSecretsService, type SshSecret, type SshSecretsStore } from './secrets'
 import { SshChildProcess } from './ssh-child'
 import { buildRemoteCommand, loginShellCommand } from './remote-command'
 
@@ -49,7 +49,7 @@ export class SshService {
   private readonly pool = new Map<string, Pooled>()
 
   constructor(
-    private readonly secrets: SshSecretsService,
+    private readonly secrets: SshSecretsStore,
     private readonly knownHosts: SshKnownHosts
   ) {}
 

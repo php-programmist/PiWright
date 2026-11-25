@@ -1,9 +1,10 @@
 /** SSH-бэкенд: резолв pi на удалённом сервере и спавн через ssh2 exec-канал.
  *  cwd проекта — уже POSIX-путь на сервере (identity-конвертация). */
 import type { SshServerEntry } from '../../../shared/ipc-contracts'
-import type { PiChildProcess, PiSpawner } from './types'
+import type { PiChildProcess, PiSpawnRequest, PiSpawnSpec } from './types'
 import { buildBashCommand } from './shell'
 import type { SshService } from '../../ssh/ssh-service'
+import type { SshSecret } from '../../ssh/secrets'
 
 export const SSH_KNOWN_PI_PATHS = ['$HOME/.local/bin/pi', '/usr/local/bin/pi', '/usr/bin/pi']
 
@@ -20,9 +21,13 @@ export async function resolveSshPi(ssh: SshService, server: SshServerEntry, sett
   return result.stdout.split('\n').map((l) => l.trim()).find((l) => l.includes('/pi')) ?? null
 }
 
+/** Спека SSH: сервер + расшифрованный секрет живут только в памяти (в settings/логи не попадают). */
+export function buildSshSpec(server: SshServerEntry, secret: SshSecret, piPath: string, req: PiSpawnRequest): PiSpawnSpec {
+  return { mode: 'ssh', piPath, args: req.args, cwd: req.cwd, env: null, ssh: { server, secret } }
+}
+
 /** Спавн pi: `bash -lic 'cd <cwd> && pi …'` через SSH exec-канал под интерфейсом PiChildProcess. */
-export function createSshSpawner(ssh: SshService, server: SshServerEntry, piPath: string): PiSpawner {
-  return async (req): Promise<PiChildProcess> => {
-    return ssh.spawn(server, buildBashCommand(piPath, req.args), { cwd: req.cwd, login: true })
-  }
+export function spawnFromSpec(spec: PiSpawnSpec, ssh: SshService): Promise<PiChildProcess> {
+  if (spec.ssh === undefined) return Promise.reject(new Error('SSH spawn spec is missing the server entry'))
+  return ssh.spawn(spec.ssh.server, buildBashCommand(spec.piPath, spec.args), { cwd: spec.cwd, login: true })
 }

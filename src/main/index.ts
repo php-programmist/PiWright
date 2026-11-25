@@ -24,6 +24,7 @@ import { TelegramTokenStore } from './notifications/token-store'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
+import { initDaemonClient, getDaemonClient } from './daemon/client'
 import type { PiStatus } from '../shared/ipc-contracts'
 
 let mainWindow: BrowserWindow | null = null
@@ -152,6 +153,7 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
+  initDaemonClient({ userDataDir: app.getPath('userData'), appVersion: app.getVersion() })
   initSshService(
     app.getPath('userData'),
     (value) => safeStorage.encryptString(value),
@@ -249,14 +251,29 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-app.on('will-quit', () => {
-  piHost?.disposeAll()
-  scheduledService?.dispose()
-  fileService?.dispose()
-  terminalService?.disposeAll()
-  try {
-    getSshService().closeAll()
-  } catch {
-    // ssh-сервис мог не инициализироваться (ранний выход)
+let quitDisposalStarted = false
+app.on('will-quit', (event) => {
+  if (!quitDisposalStarted) {
+    quitDisposalStarted = true
+    event.preventDefault()
+    piHost?.disposeAll()
+    scheduledService?.dispose()
+    fileService?.dispose()
+    terminalService?.disposeAll()
+    try {
+      getSshService().closeAll()
+    } catch {
+      // ssh-сервис мог не инициализироваться (ранний выход)
+    }
+    // Дети убиваются командами close через демон; записи в сокет асинхронны — ждём флеш,
+    // иначе endInput/close теряются при выходе и pi переживает приложение.
+    const finish = (): void => {
+      void app.quit()
+    }
+    const client = getDaemonClient()
+    if (client === null) finish()
+    else void client.dispose().then(finish)
+    setTimeout(finish, 3000)
+    return
   }
 })

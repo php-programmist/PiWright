@@ -1,0 +1,470 @@
+/** Демон-держатель процессов pi: слушает канал, спавнит детей по спекам, пересылает
+ *  stdin/stdout/stderr, переживает отключение клиента. Тонкий: без хендшейка, реплея и
+ *  перевода событий — всё это остаётся в Electron main. stdout детей читается всегда
+ *  (иначе pi встаёт по backpressure), без клиента — только счётчики и хвост stderr. */
+import { createServer, connect, type Server, type Socket } from 'node:net'
+import { randomBytes } from 'node:crypto'
+import { unlinkSync } from 'node:fs'
+import type { BackendMode } from '../../shared/ipc-contracts'
+import type { PiChildProcess, PiSpawnSpec } from '../pi/backends/types'
+import { NdjsonAccumulator } from '../pi/ndjson'
+import {
+  DAEMON_PROTO_VERSION,
+  daemonChannelPath,
+  parseDaemonMessage,
+  type DaemonClientMessage,
+  type DaemonResponse,
+  type DaemonServerMessage,
+  type DaemonSessionInfo
+} from './protocol'
+import { ensureDaemonToken } from './token'
+
+export interface DaemonServerOptions {
+  userDataDir: string
+  /** Спавн ребёнка по спеке (прод: spawnFromSpec с ssh-сервисом демона; тесты: фейки). */
+  spawnChild: (spec: PiSpawnSpec) => Promise<PiChildProcess>
+  /** Переопределение канала — тесты. */
+  channelPath?: string
+  /** Версия приложения для welcome (демон сам не знает — передаётся в argv). */
+  appVersion?: string
+  idleExitMs?: number
+  helloTimeoutMs?: number
+  killAfterCloseMs?: number
+  log?: (line: string) => void
+}
+
+interface ConnState {
+  id: string
+  socket: Socket
+  authenticated: boolean
+  helloTimer: NodeJS.Timeout | null
+  accumulator: NdjsonAccumulator
+}
+
+interface ChildRecord {
+  key: string
+  sessionFile: string | null
+  mode: BackendMode
+  child: PiChildProcess
+  clients: Set<string>
+  exited: boolean
+  cause: string | null
+  stdoutLines: number
+  lastStdout: string | null
+  stderrTail: string[]
+  killTimer: NodeJS.Timeout | null
+  accumulator: NdjsonAccumulator
+}
+
+const STDERR_TAIL_LINES = 20
+const STDERR_LINE_LIMIT = 500
+const PROBE_TIMEOUT_MS = 1000
+
+export const DEFAULT_IDLE_EXIT_MS = 10 * 60_000
+export const DEFAULT_HELLO_TIMEOUT_MS = 5000
+export const DEFAULT_KILL_AFTER_CLOSE_MS = 2000
+
+export class DaemonServer {
+  private readonly options: DaemonServerOptions
+  private readonly connections = new Map<string, ConnState>()
+  private readonly children = new Map<string, ChildRecord>()
+  private readonly bySessionFile = new Map<string, string>()
+  private readonly pendingSpawns = new Map<string, Promise<ChildRecord>>()
+  private server: Server | null = null
+  private token = ''
+  private nextId = 1
+  private nextKey = 1
+  private idleTimer: NodeJS.Timeout | null = null
+  private shuttingDown = false
+
+  constructor(options: DaemonServerOptions) {
+    this.options = options
+  }
+
+  private log(line: string): void {
+    this.options.log?.(`${new Date().toISOString()} ${line}`)
+  }
+
+  private get idleExitMs(): number {
+    return this.options.idleExitMs ?? DEFAULT_IDLE_EXIT_MS
+  }
+
+  private get helloTimeoutMs(): number {
+    return this.options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS
+  }
+
+  private get killAfterCloseMs(): number {
+    return this.options.killAfterCloseMs ?? DEFAULT_KILL_AFTER_CLOSE_MS
+  }
+
+  /** Канал: занят — демон уже работает ('busy'), иначе слушаем. Токен пишется до listen —
+   *  клиент читает его после успешного подключения. */
+  async start(): Promise<'started' | 'busy'> {
+    const channel = this.options.channelPath ?? daemonChannelPath(this.options.userDataDir)
+    if (await channelAlive(channel)) return 'busy'
+    this.token = ensureDaemonToken(this.options.userDataDir)
+    if (process.platform !== 'win32') {
+      try {
+        unlinkSync(channel)
+      } catch {
+        // файла могло не быть
+      }
+    }
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer((socket) => this.onConnection(socket))
+      server.on('error', (err: Error) => {
+        if (server.listening) this.log(`server error: ${err.message}`)
+        else reject(err)
+      })
+      server.listen(channel, () => resolve())
+      this.server = server
+    })
+    this.log(`listening on ${channel}`)
+    this.scheduleIdleCheck()
+    return 'started'
+  }
+
+  /** Остановка для тестов: убить детей, закрыть соединения и сервер. */
+  async stop(): Promise<void> {
+    this.shuttingDown = true
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    for (const record of this.children.values()) {
+      if (record.killTimer !== null) clearTimeout(record.killTimer)
+      try {
+        record.child.kill()
+      } catch {
+        // ребёнок мог уже умереть
+      }
+    }
+    for (const conn of this.connections.values()) {
+      if (conn.helloTimer !== null) clearTimeout(conn.helloTimer)
+      conn.socket.destroy()
+    }
+    this.connections.clear()
+    const server = this.server
+    if (server === null) return
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    this.server = null
+  }
+
+  private onConnection(socket: Socket): void {
+    const id = `c${this.nextId++}`
+    const conn: ConnState = {
+      id,
+      socket,
+      authenticated: false,
+      helloTimer: null,
+      accumulator: new NdjsonAccumulator((line) => this.onClientLine(conn, line))
+    }
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk: string) => conn.accumulator.append(chunk))
+    socket.on('error', () => this.dropConnection(conn))
+    socket.on('close', () => this.dropConnection(conn))
+    conn.helloTimer = setTimeout(() => {
+      if (!conn.authenticated) {
+        this.log(`connection ${id} dropped: hello timeout`)
+        socket.destroy()
+      }
+    }, this.helloTimeoutMs)
+    this.connections.set(id, conn)
+    this.scheduleIdleCheck()
+  }
+
+  private dropConnection(conn: ConnState): void {
+    if (conn.helloTimer !== null) {
+      clearTimeout(conn.helloTimer)
+      conn.helloTimer = null
+    }
+    if (!this.connections.delete(conn.id)) return
+    for (const record of this.children.values()) record.clients.delete(conn.id)
+    this.scheduleIdleCheck()
+  }
+
+  private onClientLine(conn: ConnState, line: string): void {
+    const message = parseDaemonMessage(line)
+    if (message === null) return
+    if (!conn.authenticated) {
+      if (message.type !== 'hello') {
+        conn.socket.destroy()
+        return
+      }
+      if (message.token !== this.token) {
+        this.log(`connection ${conn.id} dropped: bad token`)
+        conn.socket.destroy()
+        return
+      }
+      conn.authenticated = true
+      if (conn.helloTimer !== null) {
+        clearTimeout(conn.helloTimer)
+        conn.helloTimer = null
+      }
+      this.send(conn, {
+        type: 'welcome',
+        protoVersion: DAEMON_PROTO_VERSION,
+        appVersion: this.options.appVersion ?? '',
+        sessions: this.sessionInfos()
+      })
+      return
+    }
+    void this.onRequest(conn, message as DaemonClientMessage)
+  }
+
+  private sessionInfos(): DaemonSessionInfo[] {
+    return [...this.children.values()]
+      .filter((record) => !record.exited)
+      .map((record) => ({ sessionKey: record.key, sessionFile: record.sessionFile, mode: record.mode }))
+  }
+
+  private async onRequest(conn: ConnState, message: DaemonClientMessage): Promise<void> {
+    if (message.type === 'hello') return
+    if (message.type === 'spawn') {
+      await this.handleSpawn(conn, message.id, message.spec, message.sessionFile)
+      return
+    }
+    if (message.type === 'input') {
+      const record = this.children.get(message.sessionKey)
+      if (record !== undefined && !record.exited) {
+        try {
+          record.child.stdin?.write(message.chunk)
+        } catch {
+          // процесс мог умереть между проверкой и записью
+        }
+      }
+      return
+    }
+    if (message.type === 'endInput') {
+      const record = this.children.get(message.sessionKey)
+      if (record !== undefined && !record.exited) {
+        try {
+          record.child.stdin?.end()
+        } catch {
+          // процесс мог умереть между проверкой и записью
+        }
+      }
+      return
+    }
+    if (message.type === 'close') {
+      this.handleClose(message.sessionKey)
+      return
+    }
+    if (message.type === 'list') {
+      this.respond(conn, message.id, { sessions: this.sessionInfos() })
+      return
+    }
+    if (message.type === 'shutdown') {
+      this.respond(conn, message.id, {})
+      this.log('shutdown requested')
+      await this.shutdown()
+    }
+  }
+
+  private async handleSpawn(conn: ConnState, id: string, spec: PiSpawnSpec, sessionFile: string | null): Promise<void> {
+    if (sessionFile !== null) {
+      const existingKey = this.bySessionFile.get(sessionFile)
+      const existing = existingKey !== undefined ? this.children.get(existingKey) : undefined
+      if (existing !== undefined && !existing.exited) {
+        existing.clients.add(conn.id)
+        this.respond(conn, id, { sessionKey: existing.key, attached: true })
+        return
+      }
+      const pending = this.pendingSpawns.get(sessionFile)
+      if (pending !== undefined) {
+        try {
+          const record = await pending
+          record.clients.add(conn.id)
+          this.respond(conn, id, { sessionKey: record.key, attached: true })
+        } catch (err) {
+          this.respondError(conn, id, err instanceof Error ? err.message : String(err))
+        }
+        return
+      }
+    }
+    const key = `s${this.nextKey++}-${randomBytes(4).toString('hex')}`
+    const promise = this.options.spawnChild(spec).then((child) => {
+      const record: ChildRecord = {
+        key,
+        sessionFile,
+        mode: spec.mode,
+        child,
+        clients: new Set([conn.id]),
+        exited: false,
+        cause: null,
+        stdoutLines: 0,
+        lastStdout: null,
+        stderrTail: [],
+        killTimer: null,
+        accumulator: new NdjsonAccumulator((line) => this.onChildStdoutLine(record, line))
+      }
+      this.registerChild(record)
+      return record
+    })
+    if (sessionFile !== null) this.pendingSpawns.set(sessionFile, promise)
+    try {
+      const record = await promise
+      this.respond(conn, id, { sessionKey: record.key, attached: false })
+    } catch (err) {
+      this.respondError(conn, id, err instanceof Error ? err.message : String(err))
+    } finally {
+      if (sessionFile !== null) this.pendingSpawns.delete(sessionFile)
+    }
+  }
+
+  private registerChild(record: ChildRecord): void {
+    this.children.set(record.key, record)
+    if (record.sessionFile !== null) this.bySessionFile.set(record.sessionFile, record.key)
+    const { stdout, stderr } = record.child
+    stdout?.setEncoding('utf8')
+    stdout?.on('data', (chunk: string) => record.accumulator.append(chunk))
+    stderr?.setEncoding('utf8')
+    stderr?.on('data', (chunk: string) => this.onChildStderr(record, chunk))
+    record.child.on('error', (err: Error) => {
+      if (record.cause === null) record.cause = err.message
+    })
+    record.child.on('close', (code: number | null) => this.onChildExit(record, code))
+    this.log(`child ${record.key} spawned (mode ${record.mode}, session ${record.sessionFile ?? '—'})`)
+    this.scheduleIdleCheck()
+  }
+
+  /** stdout ребёнка: читается всегда; клиентам уходит построчно, без них — только счётчики. */
+  private onChildStdoutLine(record: ChildRecord, line: string): void {
+    record.stdoutLines++
+    record.lastStdout = line
+    this.broadcast(record, { type: 'stdout', sessionKey: record.key, line })
+  }
+
+  private onChildStderr(record: ChildRecord, chunk: string): void {
+    for (const line of chunk.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed.length === 0) continue
+      record.stderrTail.push(trimmed.slice(0, STDERR_LINE_LIMIT))
+      while (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift()
+      this.broadcast(record, { type: 'stderr', sessionKey: record.key, line: trimmed })
+    }
+  }
+
+  /** Выход ребёнка: один exit-пуш (код + причина + хвост stderr), затем cleanup. */
+  private onChildExit(record: ChildRecord, code: number | null): void {
+    if (record.exited) return
+    record.exited = true
+    if (record.killTimer !== null) {
+      clearTimeout(record.killTimer)
+      record.killTimer = null
+    }
+    record.accumulator.flush()
+    this.broadcast(record, {
+      type: 'exit',
+      sessionKey: record.key,
+      code,
+      cause: record.cause,
+      stderrTail: record.stderrTail.join(' | ')
+    })
+    this.children.delete(record.key)
+    if (record.sessionFile !== null && this.bySessionFile.get(record.sessionFile) === record.key) {
+      this.bySessionFile.delete(record.sessionFile)
+    }
+    this.log(`child ${record.key} exited (code ${code ?? '?'}, cause ${record.cause ?? '—'}, stdout ${record.stdoutLines})`)
+    this.scheduleIdleCheck()
+  }
+
+  /** close: stdin.end + kill через 2 c — семантика PiConnection.close. */
+  private handleClose(sessionKey: string): void {
+    const record = this.children.get(sessionKey)
+    if (record === undefined || record.exited) return
+    try {
+      record.child.stdin?.end()
+    } catch {
+      // процесс мог умереть
+    }
+    if (record.killTimer === null) {
+      record.killTimer = setTimeout(() => {
+        record.killTimer = null
+        try {
+          record.child.kill()
+        } catch {
+          // ребёнок мог уже умереть
+        }
+      }, this.killAfterCloseMs)
+    }
+  }
+
+  private async shutdown(): Promise<void> {
+    this.shuttingDown = true
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    for (const record of this.children.values()) {
+      if (record.killTimer !== null) clearTimeout(record.killTimer)
+      try {
+        record.child.kill()
+      } catch {
+        // ребёнок мог уже умереть
+      }
+    }
+    for (const conn of this.connections.values()) conn.socket.destroy()
+    this.server?.close()
+    // дать ответу shutdown уйти в сокет
+    setTimeout(() => process.exit(0), 50)
+  }
+
+  private broadcast(record: ChildRecord, message: DaemonServerMessage): void {
+    for (const clientId of record.clients) {
+      const conn = this.connections.get(clientId)
+      if (conn !== undefined) this.send(conn, message)
+    }
+  }
+
+  private respond(conn: ConnState, id: string, data: Record<string, unknown>): void {
+    const response: DaemonResponse = { type: 'response', id, ok: true, data }
+    this.send(conn, response)
+  }
+
+  private respondError(conn: ConnState, id: string, error: string): void {
+    const response: DaemonResponse = { type: 'response', id, ok: false, error }
+    this.send(conn, response)
+  }
+
+  private send(conn: ConnState, message: DaemonServerMessage): void {
+    if (conn.socket.destroyed) return
+    try {
+      conn.socket.write(`${JSON.stringify(message)}\n`)
+    } catch {
+      // сокет мог умереть — error/close почистит
+    }
+  }
+
+  /** Авто-выход: нет детей и нет клиентов ~10 минут — демон завершается. */
+  private scheduleIdleCheck(): void {
+    if (this.idleTimer !== null) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+    }
+    if (this.shuttingDown) return
+    if (this.children.size > 0 || this.connections.size > 0) return
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = null
+      this.log('idle exit')
+      process.exit(0)
+    }, this.idleExitMs)
+  }
+}
+
+/** Живёт ли уже демон на канале: успешное подключение — да. */
+export function channelAlive(channel: string, timeoutMs = PROBE_TIMEOUT_MS): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect(channel)
+    let settled = false
+    const done = (value: boolean): void => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(value)
+    }
+    socket.on('connect', () => done(true))
+    socket.on('error', () => done(false))
+    setTimeout(() => done(false), timeoutMs).unref()
+  })
+}

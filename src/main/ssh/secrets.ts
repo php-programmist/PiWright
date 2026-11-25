@@ -8,11 +8,22 @@ export interface SshSecret {
   keyPassphrase?: string
 }
 
+/** Минимальный интерфейс хранилища секретов для SshService: настоящий SshSecretsService (файл
+ *  с safeStorage) или шим демона (секреты приходят в спеках по каналу). */
+export interface SshSecretsStore {
+  get(serverId: string): SshSecret
+  hasPassword(serverId: string): boolean
+  hasKeyPassphrase(serverId: string): boolean
+  set(serverId: string, patch: { password?: string | null; keyPassphrase?: string | null }): void
+  remove(serverId: string): void
+  ids(): string[]
+}
+
 interface SecretsFile {
   servers: Record<string, SshSecret>
 }
 
-export class SshSecretsService {
+export class SshSecretsService implements SshSecretsStore {
   private cache: SecretsFile | null = null
 
   constructor(

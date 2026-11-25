@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
-import type { PiSpawner } from './types'
+import type { PiSpawnRequest, PiSpawnSpec } from './types'
 import { quoteWindowsArg } from './shell'
 
 /** Pure-резолв: настройка → каталоги PATH × имена → известные кандидаты. `exists` инжектится. */
@@ -51,25 +51,33 @@ export function resolveNativePi(settingsPath: string | null, home: string): stri
   )
 }
 
-/** Спавн через `cmd.exe /d /s /c "<pi.cmd> <args>"`: напрямую .cmd Node спавнить нельзя (EINVAL),
- *  PATH пополняется каталогом pi — так делал спайк. windowsVerbatimArguments: Node иначе сам
- *  заквотит аргумент бэкслешами, cmd.exe их не понимает. */
-export function createNativeSpawner(piPath: string): PiSpawner {
-  return async (req) => {
-    const binDir = dirname(piPath)
-    const env = { ...process.env, PATH: `${binDir};${process.env['PATH'] ?? ''}` }
-    if (process.platform === 'win32') {
-      const commandLine = [piPath, ...req.args].map(quoteWindowsArg).join(' ')
-      return spawn('cmd.exe', ['/d', '/s', '/c', `"${commandLine}"`], {
-        cwd: req.cwd,
-        env,
-        windowsHide: true,
-        windowsVerbatimArguments: true,
-        stdio: ['pipe', 'pipe', 'pipe']
-      })
-    }
-    return spawn(piPath, req.args, { cwd: req.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+/** env для спавна: окружение процесса + каталог pi в начале PATH (так делал спайк).
+ *  env в спеке уже собран — демон спавнит без доступа к окружению main. */
+export function buildNativeSpec(piPath: string, req: PiSpawnRequest): PiSpawnSpec {
+  const binDir = dirname(piPath)
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) env[key] = value
   }
+  env['PATH'] = `${binDir};${env['PATH'] ?? ''}`
+  return { mode: 'native', piPath, args: req.args, cwd: req.cwd, env }
+}
+
+/** Спавн по спеке: `cmd.exe /d /s /c "<pi.cmd> <args>"` на Windows (напрямую .cmd Node спавнить
+ *  нельзя — EINVAL), иначе прямой спавн. windowsVerbatimArguments: Node иначе сам заквотит
+ *  аргумент бэкслешами, cmd.exe их не понимает. */
+export function spawnFromSpec(spec: PiSpawnSpec): ChildProcess {
+  if (process.platform === 'win32') {
+    const commandLine = [spec.piPath, ...spec.args].map(quoteWindowsArg).join(' ')
+    return spawn('cmd.exe', ['/d', '/s', '/c', `"${commandLine}"`], {
+      cwd: spec.cwd,
+      env: spec.env ?? undefined,
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+  }
+  return spawn(spec.piPath, spec.args, { cwd: spec.cwd, env: spec.env ?? undefined, stdio: ['pipe', 'pipe', 'pipe'] })
 }
 
 export type { ChildProcess }
