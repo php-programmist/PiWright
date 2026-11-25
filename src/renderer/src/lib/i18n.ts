@@ -128,6 +128,7 @@ const RU: Record<string, string> = {
   'Attach file': 'Прикрепить файл',
   'Drag to resize, double-click to reset': 'Потяните, чтобы изменить высоту; двойной клик — сбросить',
   'Remove image': 'Убрать изображение',
+  'Click to view': 'Открыть просмотр',
   'Loop': 'Петля',
   'Loop iterations left': 'Осталось итераций петли',
   'Loop: repeat this prompt in fresh sessions; the loop stops when the agent calls loop_stop over the exit condition': 'Петля: повторять промпт в новых сессиях; остановится, когда агент вызовет loop_stop по условию выхода',

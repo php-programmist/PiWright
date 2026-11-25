@@ -302,6 +302,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   useEffect(() => {
     if (activeHostId !== null) pendingImagesMap.set(activeHostId, pendingImages)
   }, [pendingImages, activeHostId])
+  const [pendingZoom, setPendingZoom] = useState<{ src: string; name: string } | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const transcriptRef = useRef<HTMLElement | null>(null)
   const autoScrollRef = useRef(true)
@@ -1086,7 +1087,17 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           <div className="pending-images">
             {pendingImages.map((img) => (
               <div className="pending-image" key={img.name} title={img.name}>
-                {img.dataUrl.length > 0 ? <img src={img.dataUrl} alt={img.name} draggable={false} /> : <span className="pending-image-name">{img.name}</span>}
+                {img.dataUrl.length > 0 ? (
+                  <img
+                    src={img.dataUrl}
+                    alt={img.name}
+                    draggable={false}
+                    title={t('Click to view')}
+                    onClick={() => setPendingZoom({ src: img.dataUrl, name: img.name })}
+                  />
+                ) : (
+                  <span className="pending-image-name">{img.name}</span>
+                )}
                 <button
                   className="pending-image-remove"
                   title={t('Remove image')}
@@ -1098,6 +1109,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             ))}
           </div>
         )}
+        {pendingZoom !== null && <Lightbox src={pendingZoom.src} alt={pendingZoom.name} onClose={() => setPendingZoom(null)} />}
         <textarea
           ref={promptRef}
           value={input}
