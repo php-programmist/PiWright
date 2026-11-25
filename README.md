@@ -25,6 +25,7 @@
 - **Scheduled prompts**: right-click Send to run a prompt after another session's turn ends or at a set time, with loop iterations and exit condition; cancel from the Scheduled panel
 - Live tok/s during streaming, turn timer, per-bucket context token breakdown popover
 - **Prompt editing with fork**: edit a sent prompt and fork the session from that point, after any agent reply
+- **Rewind**: roll back to any assistant answer — the session forks to a new branch and the working directory is restored from a snapshot taken before the next prompt (current state saved to git stash as a safety net)
 - **Built-in `/loop`**: run the agent in iterations with an exit condition, `loop_stop` tool, loop flags in session names and icons
 - Interactive question cards (ask_question) with options, free-text answers and multi-select
 - Todo widget pinned above the chat, live context-usage indicator with color grading and cache stats
@@ -41,7 +42,7 @@
 - Kanban boards in a right-rail panel as a task tree: board → columns → tasks with theme accents, counters and collapsible columns; card modal with properties rail and activity feed
 - Session status dots on cards (busy, waiting for answer, unread turn) survive session close until the card is opened; live board updates without manual refresh
 - Card comments with images and clickable session/commit chips; agent tools for cards, columns and workflow — the agent picks tasks, moves them and reports via comments
-- Copyable task and session links (card and session tab context menus) that render as clickable chips in the chat, card description and comments — a task chip opens the card, a session chip opens the session
+- Copyable task and session links (card and session tab context menus) that render as clickable chips in the chat, card description and comments — a task chip opens the card, a session chip opens the session; in input fields tokens render as badges with task/session names, Backspace deletes a badge whole
 - A card can open as its own tab with the full card editor, persisted across restarts; cards linked to the current session show as chips in the chat header
 - Board themes (built-in + custom via Appearance manager, JSON import/export)
 - Durable board storage: cross-process file locking, atomic writes, corrupt-file quarantine
@@ -51,6 +52,7 @@
 - Multiple projects in a sidebar, each with its own sessions, git repo and settings; drag to reorder projects
 - Project and branch in the app header (IDE style): project switcher, branch popup, ahead/behind arrows with automatic fetch
 - Two pi backends: native Windows and WSL (per-project choice, auto-detection)
+- **SSH backend**: run pi on a remote Linux server over SSH (password, key + passphrase or ssh-agent) — remote projects with file browsing, git, terminal and kanban over SFTP/exec; add projects via a remote directory browser, manage servers in Settings → SSH
 - Git worktree support: create, reuse and delete worktrees, sessions grouped under the project
 
 ### Git panel
@@ -98,6 +100,7 @@
 
 - Project tabs: sessions, files, diffs, kanban boards and task cards, MCP and skills open as tabs in a single window; MRU tab restore on close and Ctrl+Tab switcher, type icons per tab
 - **Search Everywhere** overlay on double Shift
+- Token usage statistics (File → Statistics): in/out/cached-read charts per day, month, year or custom range with project, model and metric filters, totals and stacked mode
 - Resizable/collapsible projects sidebar, new-session and new-worktree buttons in the tab bar
 - Dark and light themes, adjustable chat font size
 - Settings in the application File menu (Ctrl+,)
@@ -116,7 +119,7 @@
 
 ## Installation
 
-Download the latest installer from [Releases](https://github.com/php-programmist/PiWright/releases/latest). The app checks this feed for updates automatically (configurable in Settings → Launch → Update feed URL).
+Download the latest installer from [Releases](https://github.com/php-programmist/PiWright/releases/latest). The app checks this feed for updates automatically (configurable in Settings → Launch → Update feed URL). Updates are never downloaded silently — a banner offers to download and install or skip the version; click the version in the projects panel footer to see What's new.
 ## Building from source
 ```sh
 npm install
