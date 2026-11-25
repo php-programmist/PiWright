@@ -9,6 +9,7 @@ import { KanbanService } from './kanban/kanban-service'
 import { KanbanThemeService } from './kanban/kanban-theme-service'
 import { TerminalService } from './terminal/terminal-service'
 import { startAutoUpdater } from './updater'
+import { consumeUpdateInfo } from './update-state'
 import { PiHost } from './pi/pi-host'
 import { LoopController } from './pi/loop-controller'
 import { ScheduleService } from './schedule/schedule-service'
@@ -104,7 +105,7 @@ function createWindow(bg: string): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
   const kanbanThemes = new KanbanThemeService(join(app.getPath('userData'), 'kanban-themes.json'))
@@ -181,7 +182,7 @@ app.whenReady().then(() => {
       bridge?.applySettings(next)
       rebuildMenu()
     }
-  }, scheduledService, statsService)
+  }, scheduledService, statsService, await consumeUpdateInfo(app.getPath('userData'), app.getVersion()))
   startAutoUpdater(() => settings.get().updateUrl)
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg)

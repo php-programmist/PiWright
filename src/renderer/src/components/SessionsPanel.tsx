@@ -6,6 +6,7 @@ import { useLang, useT } from '../lib/i18n'
 import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
+import { ChangelogModal } from './ChangelogModal'
 import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
@@ -520,6 +521,8 @@ export function SessionsPanel(): React.JSX.Element {
   const t = useT()
   const [adding, setAdding] = useState(false)
   const [version, setVersion] = useState('')
+  const [changelogOpen, setChangelogOpen] = useState(false)
+  const [updateFrom, setUpdateFrom] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
@@ -576,6 +579,9 @@ export function SessionsPanel(): React.JSX.Element {
 
   useEffect(() => {
     void window.piwright.appVersion().then(setVersion)
+    void window.piwright.updateInfo().then((info) => {
+      if (info.updatedFrom !== null) setUpdateFrom(info.updatedFrom)
+    })
   }, [])
 
   const collapse = (): void => {
@@ -671,8 +677,41 @@ export function SessionsPanel(): React.JSX.Element {
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
-        {version.length > 0 && <span className="app-version" title={t('Version')}>v{version}</span>}
+        {updateFrom !== null && !changelogOpen && (
+          <div className="update-popup" onClick={() => {
+            setUpdateFrom(null)
+            setChangelogOpen(true)
+          }}>
+            <div className="update-popup-text">
+              <b>{t('PiWright updated to {version}', { version: updateFrom })}</b>
+              <span>{t('Click the version to see what changed')}</span>
+            </div>
+            <button
+              className="update-popup-close"
+              title={t('Close')}
+              onClick={(e) => {
+                e.stopPropagation()
+                setUpdateFrom(null)
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+        {version.length > 0 && (
+          <span
+            className="app-version clickable"
+            title={t('Changelog')}
+            onClick={() => {
+              setUpdateFrom(null)
+              setChangelogOpen(true)
+            }}
+          >
+            v{version}
+          </span>
+        )}
       </div>
+      {changelogOpen && <ChangelogModal onClose={() => setChangelogOpen(false)} />}
     </aside>
   )
 }

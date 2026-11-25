@@ -118,6 +118,8 @@ import {
   SESSION_CONTEXT_BREAKDOWN_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   APP_VERSION_CHANNEL,
+  APP_CHANGELOG_CHANNEL,
+  APP_UPDATE_INFO_CHANNEL,
   APP_MENU_SETTINGS_CHANNEL,
   APP_MENU_STATS_CHANNEL,
   STATS_QUERY_CHANNEL,
@@ -163,6 +165,8 @@ const api: PiWrightApi = {
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   revealSettings: () => ipcRenderer.invoke(SETTINGS_REVEAL_CHANNEL),
   appVersion: () => ipcRenderer.invoke(APP_VERSION_CHANNEL),
+  changelog: () => ipcRenderer.invoke(APP_CHANGELOG_CHANNEL),
+  updateInfo: () => ipcRenderer.invoke(APP_UPDATE_INFO_CHANNEL),
   listSessions: () => ipcRenderer.invoke(SESSIONS_LIST_CHANNEL),
   sessionHistory: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_HISTORY_CHANNEL, project),
   sessionTranscript: (project: ProjectEntry, sessionPath: string) =>

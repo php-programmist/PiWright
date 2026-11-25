@@ -108,6 +108,8 @@ import {
   SESSION_CONTEXT_BREAKDOWN_CHANNEL,
   SESSION_SET_THINKING_CHANNEL,
   APP_VERSION_CHANNEL,
+  APP_CHANGELOG_CHANNEL,
+  APP_UPDATE_INFO_CHANNEL,
   SETTINGS_GET_CHANNEL,
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
@@ -130,7 +132,8 @@ import {
   WORKTREE_REMOVE_CHANNEL
 } from '../../shared/ipc-contracts'
 import type { DialogAnswer } from '../../shared/agent-events'
-import type { BackendMode, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId } from '../../shared/ipc-contracts'
+import type { BackendMode, ChangelogResult, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId, UpdateInfo } from '../../shared/ipc-contracts'
+import { fetchChangelog } from '../changelog'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
@@ -261,7 +264,8 @@ export function registerIpc(
   kanbanThemes: KanbanThemeService,
   notifications?: NotificationServices,
   scheduled?: ScheduleService,
-  stats?: TokenStatsService
+  stats?: TokenStatsService,
+  updateInfo: UpdateInfo = { updatedFrom: null }
 ): void {
   ipcMain.handle(SETTINGS_GET_CHANNEL, () => settings.get())
 
@@ -283,6 +287,12 @@ export function registerIpc(
   })
 
   ipcMain.handle(APP_VERSION_CHANNEL, () => app.getVersion())
+
+  ipcMain.handle(APP_CHANGELOG_CHANNEL, async (): Promise<ChangelogResult> =>
+    fetchChangelog(settings.get().updateUrl, app.getPath('userData'))
+  )
+
+  ipcMain.handle(APP_UPDATE_INFO_CHANNEL, (): UpdateInfo => updateInfo)
 
   ipcMain.handle(SETTINGS_SET_CHANNEL, (_event, patch: unknown) => {
     const safe: Partial<Settings> = {}

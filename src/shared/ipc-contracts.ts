@@ -704,6 +704,30 @@ export interface StatsResult {
   updatedAt: number
 }
 
+/** Один релиз в истории изменений (тело без хэшей коммитов). */
+export interface ChangelogRelease {
+  /** Версия без ведущего 'v' (из тега). */
+  version: string
+  /** Дата публикации (YYYY-MM-DD). */
+  date: string
+  /** Markdown-тело релиза. */
+  body: string
+}
+
+export interface ChangelogResult {
+  ok: boolean
+  /** Новые сверху. */
+  releases: ChangelogRelease[]
+  /** true — сеть недоступна, показан кэш из прошлого успешного запроса. */
+  stale: boolean
+  error: string | null
+}
+
+/** Обновление установлено: с какой версии перезапустилось приложение (null — обновления не было). */
+export interface UpdateInfo {
+  updatedFrom: string | null
+}
+
 export interface PiWrightApi {
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
@@ -715,6 +739,10 @@ export interface PiWrightApi {
   /** Агрегаты токенов по всем проектам за выбранное окно. */
   statsQuery(query: StatsQuery): Promise<StatsResult>
   appVersion(): Promise<string>
+  /** История изменений с фида GitHub Releases (кэш в userData на случай офлайна). */
+  changelog(): Promise<ChangelogResult>
+  /** Обнаружение обновления: сравнение версии прошлого запуска с текущей. */
+  updateInfo(): Promise<UpdateInfo>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
   /** Транскрипт сессии без запуска pi: UiEvent-ы из JSONL (для просмотра сессии субагента). */
@@ -891,6 +919,8 @@ export const APP_MENU_SETTINGS_CHANNEL = 'app:menu-settings'
 export const APP_MENU_STATS_CHANNEL = 'app:menu-stats'
 export const STATS_QUERY_CHANNEL = 'stats:query'
 export const APP_VERSION_CHANNEL = 'app:version'
+export const APP_CHANGELOG_CHANNEL = 'app:changelog'
+export const APP_UPDATE_INFO_CHANNEL = 'app:update-info'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'
 export const SESSIONS_HISTORY_CHANNEL = 'sessions:history'
 export const SESSIONS_TRANSCRIPT_CHANNEL = 'sessions:transcript'
