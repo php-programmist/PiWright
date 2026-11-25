@@ -321,8 +321,8 @@ export function BoardView({ tab }: { tab: ProjectTab }): React.JSX.Element {
     draftMap.set(
       ref.hostId,
       multiBoard
-        ? t('Kanban. Take the task with ID {id} on the {board} board and complete it', { id: card.id, board: board.name })
-        : t('Kanban. Take the task with ID {id} and complete it', { id: card.id }),
+        ? t('Kanban. Take the task {task} on the {board} board and complete it', { task: `kanban:task:${card.id}`, board: board.name })
+        : t('Kanban. Take the task {task} and complete it', { task: `kanban:task:${card.id}` }),
     )
     useTabsStore.getState().setActiveProject(parentTabKey(tab.project))
     useTabsStore.getState().activateSession(tab.project)

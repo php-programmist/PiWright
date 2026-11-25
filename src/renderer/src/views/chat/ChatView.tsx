@@ -3,6 +3,7 @@ import { DialogCard } from '../../components/DialogCard'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
 import { RichText, SessionTaskChips } from '../../components/LinkChips'
+import { TokenField } from '../../components/TokenField'
 import { Lightbox } from '../../components/Lightbox'
 import { QueuePanel } from '../../components/QueuePanel'
 import { ScheduledPanel } from '../../components/ScheduledPanel'
@@ -1113,7 +1114,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           </div>
         )}
         {pendingZoom !== null && <Lightbox src={pendingZoom.src} alt={pendingZoom.name} onClose={() => setPendingZoom(null)} />}
-        <textarea
+        <TokenField
           ref={promptRef}
           value={input}
           placeholder={

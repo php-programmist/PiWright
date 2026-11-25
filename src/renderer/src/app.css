@@ -5310,8 +5310,32 @@ pre.code-block {
   border-color: var(--accent);
 }
 
-.board-description-refs {
-  margin: -4px 0 8px;
+/* Живой бейдж токенов-ссылок в полях ввода (TokenField): бэкдроп с тем же текстом
+   лежит поверх textarea, токены выделены чипом; стили textarea копируются в JS. */
+.token-field {
+  position: relative;
+}
+
+.token-field > textarea {
+  display: block;
+  width: 100%;
+}
+
+.token-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.token-chip {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .board-chip.commit {

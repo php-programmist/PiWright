@@ -1,5 +1,6 @@
-/* Smoke: task chip in card description preview renders in inline flow (not flex rows) —
- * parentheses stay glued to the chip, text wraps naturally. Regression for c-36a80069. */
+/* Smoke: токен kanban:task: в описании карточки рендерится бейджем прямо в поле ввода
+ * (TokenField-бэкдроп), бейдж на первой строке внутри поля. Регрессия c-93510c30
+ * (был отдельный strip предпросмотра под textarea — заменён инлайн-бейджем). */
 const { chromium } = require('playwright-core')
 
 const CDP = process.env.SMOKE_CDP || 'http://localhost:9223'
@@ -81,30 +82,28 @@ const MARK = `smoke-desc-${Date.now()}`
   await p.waitForTimeout(400)
 
   const check = await p.evaluate(() => {
-    const container = document.querySelector('.board-card-modal .board-description-refs')
-    if (container === null) return { found: false }
-    const chip = container.querySelector('.board-chip.task')
-    const cs = getComputedStyle(container)
-    const chipRect = chip?.getBoundingClientRect()
-    // Text span right after the chip must share its line (inline flow), not a separate flex row.
-    let closeParenSameLine = false
-    if (chip !== null && chip !== undefined) {
-      for (const span of container.querySelectorAll(':scope > span:not(.board-chip)')) {
-        const r = span.getBoundingClientRect()
-        if (r.width === 0 && r.height === 0) continue
-        if (span.textContent?.includes(')') && chipRect !== undefined && Math.abs(r.top - chipRect.top) <= 6) closeParenSameLine = true
-      }
-    }
+    const ta = document.querySelector('.board-card-modal .board-modal-description')
+    if (ta === null) return { found: false }
+    const field = ta.closest('.token-field')
+    const backdrop = field !== null && field !== undefined ? field.querySelector('.token-backdrop') : null
+    const chip = backdrop !== null && backdrop !== undefined ? backdrop.querySelector('.token-chip') : null
+    const taRect = ta.getBoundingClientRect()
+    const chipRect = chip !== null && chip !== undefined ? chip.getBoundingClientRect() : null
     return {
       found: true,
-      display: cs.display,
-      whiteSpace: cs.whiteSpace,
-      chipPresent: chip !== null,
+      fieldPresent: field !== null && field !== undefined,
+      backdropPresent: backdrop !== null && backdrop !== undefined,
+      chipPresent: chip !== null && chip !== undefined,
       chipText: chip?.textContent ?? null,
-      closeParenSameLine,
+      chipInsideField: chipRect !== null && chipRect.top >= taRect.top && chipRect.top < taRect.bottom,
+      chipOnFirstLine: chipRect !== null && Math.abs(chipRect.top - taRect.top) < 30,
     }
   })
   console.log('check:', JSON.stringify(check, null, 1))
+  if (!check.found || !check.fieldPresent || !check.backdropPresent) throw new Error('TokenField not rendered for description')
+  if (!check.chipPresent) throw new Error('token badge not rendered in description field')
+  if (check.chipText !== `kanban:task:${setup.refId}`) throw new Error('badge text mismatch: ' + check.chipText)
+  if (!check.chipInsideField || !check.chipOnFirstLine) throw new Error('badge misaligned: ' + JSON.stringify(check))
 
   await p.screenshot({ path: process.env.TEMP + '\\desc-chip-inline.png' })
 
@@ -123,7 +122,7 @@ const MARK = `smoke-desc-${Date.now()}`
   console.log('cleanup deleted:', cleanup)
 
   await b.close()
-  const ok = check.found && check.display !== 'flex' && check.chipPresent && check.closeParenSameLine
+  const ok = check.found && check.fieldPresent && check.backdropPresent && check.chipPresent && check.chipInsideField && check.chipOnFirstLine
   console.log(ok ? 'SMOKE PASS' : 'SMOKE FAIL')
   if (!ok) process.exit(1)
 })().catch((e) => {

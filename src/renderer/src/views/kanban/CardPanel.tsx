@@ -9,7 +9,8 @@ import { persistPanel } from '../../stores/panels-prefs'
 import { useLang, useT } from '../../lib/i18n'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Lightbox } from '../../components/Lightbox'
-import { hasLinkTokens, RichText, SessionChip } from '../../components/LinkChips'
+import { RichText, SessionChip } from '../../components/LinkChips'
+import { TokenField } from '../../components/TokenField'
 
 /** dataUrl превью по пути вложения — кэш на модуль, чтобы не перечитывать файл. */
 const thumbCache = new Map<string, string>()
@@ -272,18 +273,13 @@ export function CardPanel({
       <div className="board-card-split">
         <div className="board-modal-body" ref={bodyRef}>
           <div className="board-section-label">{t('Description')}</div>
-          <textarea
+          <TokenField
             className="board-modal-description"
             placeholder={t('Description')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => void saveDetails()}
           />
-          {hasLinkTokens(description) && (
-            <div className="board-comment-text board-description-refs">
-              <RichText text={description} project={project} />
-            </div>
-          )}
           <div className="board-section-label">
             {t('Activity')} <span className="board-section-count">({card.comments.length})</span>
           </div>
@@ -310,7 +306,7 @@ export function CardPanel({
                   </div>
                   {editingCommentId === item.id ? (
                     <>
-                      <textarea
+                      <TokenField
                         className="board-comment-edit"
                         value={editCommentText}
                         autoFocus
@@ -423,7 +419,7 @@ export function CardPanel({
             ))}
           </div>
         )}
-        <textarea
+        <TokenField
           className="board-comment-input"
           placeholder={t('Add comment')}
           value={comment}

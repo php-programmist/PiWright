@@ -139,31 +139,15 @@ async function setProject(page, dir) {
   await p.waitForTimeout(500)
   check('escape closes task tab', (await taskTabs.count()) === 0 && (await p.locator('.task-view').count()) === 0)
 
-  // 2. чип kanban:task: в описании CARD2 открывает вкладку CARD1
+  // 2. токен kanban:task: в описании CARD2 виден бейджем прямо в поле описания (TokenField)
   await column('Backlog').locator('.board-card', { hasText: CARD2 }).dblclick()
   await p.waitForTimeout(600)
-  const chip = p.locator('.board-card-overlay .board-description-refs .board-chip.task')
-  check('task chip rendered in card2', (await chip.count()) === 1)
-  await chip.evaluate((el) => el.click())
-  await p.waitForTimeout(800)
-  check('chip opens task tab', (await taskTabs.count()) === 1)
-  const title2 = await p.locator('.task-view .board-modal-title').inputValue()
-  check('chip tab shows card1', title2 === CARD1)
-  check('card2 modal closed by tab open', (await p.locator('.board-card-overlay').count()) === 0)
-
-  // вкладка задачи не дублируется при повторном клике по чипу
-  await p.locator('.tab-bar .tab', { hasText: BOARD }).last().click()
-  await p.waitForTimeout(600)
-  // модалка CARD2 переживает смену вкладки — закрыть перед следующим dblclick
-  if ((await p.locator('.board-card-overlay').count()) > 0) {
-    await p.keyboard.press('Escape')
-    await p.waitForTimeout(400)
-  }
-  await column('Backlog').locator('.board-card', { hasText: CARD2 }).dblclick()
-  await p.waitForTimeout(400)
-  await chip.evaluate((el) => el.click())
-  await p.waitForTimeout(600)
-  check('no duplicate task tab', (await taskTabs.count()) === 1)
+  const chip = p.locator('.board-card-overlay .token-backdrop .token-chip')
+  check('task token badge in card2 description field', (await chip.count()) === 1)
+  check('badge text is the token', /^kanban:task:c-[0-9a-f]+$/.test((await chip.textContent()) ?? ''))
+  const taBox = await p.locator('.board-card-overlay .board-modal-description').boundingBox()
+  const chipBox = await chip.boundingBox()
+  check('badge inside description field', taBox !== null && chipBox !== null && chipBox.y >= taBox.y && chipBox.y < taBox.y + taBox.height)
 
   // уборка: закрыть вкладку, удалить доску
   await p.keyboard.press('Escape')
