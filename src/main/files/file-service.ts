@@ -2,8 +2,10 @@
  *  wsl — UNC `\\wsl.localhost\…`, читается из Windows напрямую). Автообновление открытых
  *  файлов — chokidar на набор путей; для WSL — polling (fs.watch по UNC ненадёжен). */
 import { promises as fs } from 'node:fs'
-import { win32 } from 'node:path'
+import { execFile } from 'node:child_process'
+import { posix, win32 } from 'node:path'
 import * as chokidar from 'chokidar'
+import { buildWslUncPath, parseWslUnc } from '../pi/backends/shell'
 import { imageMimeTypeForExtension } from '../../shared/attachments'
 import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FilesSearchResult, FileWriteResult, ProjectEntry } from '../../shared/ipc-contracts'
 
@@ -14,6 +16,46 @@ const LARGE_PLACEHOLDER = '(file too large to display)'
 const WSL_POLL_INTERVAL_MS = 1500
 const SEARCH_SKIP_DIRS = new Set(['node_modules', 'dist', 'out', 'build', 'coverage', 'venv', '.venv', '__pycache__'])
 const MAX_SEARCH_FILES = 3000
+const SYMLINK_MAX_DEPTH = 8
+const WSL_READLINK_TIMEOUT_MS = 5000
+
+/** `readlink -n` внутри дистрибутива; null — не symlink/ошибка. */
+function wslReadlink(distro: string, linuxPath: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile('wsl.exe', ['-d', distro, '--exec', 'readlink', '-n', '--', linuxPath], { timeout: WSL_READLINK_TIMEOUT_MS, encoding: 'utf8' }, (err, stdout) => {
+      const target = typeof stdout === 'string' ? stdout.trim() : ''
+      resolve(err !== null || target.length === 0 ? null : target)
+    })
+  })
+}
+
+/** Windows не резолвит Linux-symlinks через UNC `\\wsl.localhost` (stat/read → ENOENT,
+ *  абсолютный POSIX-таргет выпадает на текущий диск). Цепочка таргетов резолвится через
+ *  `wsl.exe readlink` и проверяется по UNC; не-symlink и неуспех — исходный путь. */
+async function resolveHostPath(abs: string): Promise<string> {
+  try {
+    await fs.stat(abs)
+    return abs
+  } catch {
+    // не stat-ится — возможно, symlink
+  }
+  const unc = parseWslUnc(abs)
+  if (unc === null) return abs
+  let current = unc.wslPath
+  for (let i = 0; i < SYMLINK_MAX_DEPTH; i++) {
+    const target = await wslReadlink(unc.distro, current)
+    if (target === null) return abs
+    current = target.startsWith('/') ? target : posix.join(posix.dirname(current), target)
+    const host = win32.normalize(buildWslUncPath(unc.distro, current))
+    try {
+      await fs.stat(host)
+      return host
+    } catch {
+      // цель тоже не видна — возможно, ещё один symlink
+    }
+  }
+  return abs
+}
 
 /** relPath (`a/b/c`, слэши вперёд) → хост-путь внутри root; null — путь наружу корня. */
 export function resolveWithinRoot(root: string, relPath: string): string | null {
@@ -40,8 +82,9 @@ export class FileService {
   constructor(private readonly events: FileServiceEvents) {}
 
   async listDir(project: ProjectEntry, relDir: string): Promise<FileListResult> {
-    const abs = resolveWithinRoot(project.dir, relDir)
-    if (abs === null) return { ok: false, error: 'Path is outside the project', entries: [] }
+    const resolved = resolveWithinRoot(project.dir, relDir)
+    if (resolved === null) return { ok: false, error: 'Path is outside the project', entries: [] }
+    const abs = await resolveHostPath(resolved)
     try {
       const dirents = await fs.readdir(abs, { withFileTypes: true })
       const entries = dirents
@@ -84,8 +127,9 @@ export class FileService {
   }
 
   async read(project: ProjectEntry, relPath: string): Promise<FileReadResult> {
-    const abs = resolveWithinRoot(project.dir, relPath)
-    if (abs === null) return { ok: false, error: 'Path is outside the project', content: '' }
+    const resolved = resolveWithinRoot(project.dir, relPath)
+    if (resolved === null) return { ok: false, error: 'Path is outside the project', content: '' }
+    const abs = await resolveHostPath(resolved)
     try {
       const stat = await fs.stat(abs)
       if (!stat.isFile()) return { ok: false, error: 'Not a regular file', content: '' }
@@ -98,8 +142,9 @@ export class FileService {
   }
 
   async readImage(project: ProjectEntry, relPath: string): Promise<FileReadImageResult> {
-    const abs = resolveWithinRoot(project.dir, relPath)
-    if (abs === null) return { ok: false, error: 'Path is outside the project', dataUrl: '' }
+    const resolved = resolveWithinRoot(project.dir, relPath)
+    if (resolved === null) return { ok: false, error: 'Path is outside the project', dataUrl: '' }
+    const abs = await resolveHostPath(resolved)
     const ext = relPath.slice(relPath.lastIndexOf('.') + 1)
     const mime = imageMimeTypeForExtension(ext)
     if (mime === null) return { ok: false, error: 'Not an image file', dataUrl: '' }

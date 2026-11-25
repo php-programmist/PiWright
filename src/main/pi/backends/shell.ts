@@ -15,6 +15,20 @@ export function stripWslUncPrefix(path: string): string | null {
   return null
 }
 
+/** UNC-путь WSL → distro + путь внутри дистрибутива; иначе null. */
+export function parseWslUnc(path: string): { distro: string; wslPath: string } | null {
+  const normalized = path.replace(/\\/g, '/')
+  for (const prefix of ['//wsl.localhost/', '//wsl$/']) {
+    if (normalized.toLowerCase().startsWith(prefix)) {
+      const afterDistro = normalized.slice(prefix.length)
+      const slash = afterDistro.indexOf('/')
+      if (slash < 0) return null
+      return { distro: afterDistro.slice(0, slash), wslPath: afterDistro.slice(slash) }
+    }
+  }
+  return null
+}
+
 /** Обратно к stripWslUncPrefix: WSL-путь → UNC со слэшами `/`. */
 export function buildWslUncPath(distro: string, wslPath: string): string {
   return `//wsl.localhost/${distro}/${wslPath.replace(/^\//, '')}`
