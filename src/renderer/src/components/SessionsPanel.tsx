@@ -696,13 +696,13 @@ export function SessionsPanel(): React.JSX.Element {
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
-        {updateFrom !== null && !changelogOpen && (
+        {updateFrom !== null && version !== '' && !changelogOpen && (
           <div className="update-popup" onClick={() => {
             setUpdateFrom(null)
             setChangelogOpen(true)
           }}>
             <div className="update-popup-text">
-              <b>{t('PiWright updated to {version}', { version: updateFrom })}</b>
+              <b>{t('PiWright updated to {version}', { version })}</b>
               <span>{t('Click the version to see what changed')}</span>
             </div>
             <button

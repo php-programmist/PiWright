@@ -22,10 +22,13 @@ async function main() {
   await page.reload()
   await page.waitForSelector('.panel-foot', { timeout: 30000 })
 
-  // 1. Попап обновления (update-state.json посеян с lastVersion 0.3.9 до старта)
+  // 1. Попап обновления (update-state.json посеян с lastVersion 0.3.9 до старта;
+  //    попап показывает ТЕКУЩУЮ версию приложения, а не 0.3.9)
   await page.waitForSelector('.update-popup', { timeout: 15000 })
   const popupText = await page.locator('.update-popup').innerText()
-  check('popup visible', popupText.includes('0.3.9'))
+  const currentVersion = (await page.locator('.app-version').innerText()).replace(/^v/, '')
+  check('popup shows current version', popupText.includes(currentVersion))
+  check('popup does not show old version', !popupText.includes('0.3.9'))
   check('popup mentions changelog hint', popupText.length > 10)
 
   // Попап не вылезает за пределы окна
@@ -45,7 +48,8 @@ async function main() {
   await page.waitForSelector('.changelog-release', { timeout: 30000 })
   const versions = await page.locator('.changelog-version').allInnerTexts()
   check('releases rendered', versions.length >= 2)
-  check('newest first', versions[0] === 'v0.4.1' || Number(versions[0].slice(1)) >= Number(versions[1].slice(1)))
+  const verNum = (v) => { const [x, y, z] = v.replace(/^v/, '').split('.').map(Number); return x * 10000 + y * 100 + z }
+  check('newest first', verNum(versions[0]) >= verNum(versions[1]))
   const bodyText = await page.locator('.changelog-body').innerText()
   check('no commit hashes', !/[0-9a-f]{7,40}/.test(bodyText.replace(/v?\d+\.\d+\.\d+/g, '')))
   const dates = await page.locator('.changelog-date').allInnerTexts()
