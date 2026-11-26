@@ -132,6 +132,7 @@ import {
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
   LOOP_GET_CHANNEL,
+  LOOPS_SNAPSHOT_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_COMMANDS_CHANNEL,
@@ -230,6 +231,7 @@ const api: PiWrightApi = {
   loopStop: (hostId: string) => ipcRenderer.invoke(LOOP_STOP_CHANNEL, hostId),
   loopSetRemaining: (hostId: string, remaining: number) => ipcRenderer.invoke(LOOP_SET_REMAINING_CHANNEL, hostId, remaining),
   loopGet: (hostId: string) => ipcRenderer.invoke(LOOP_GET_CHANNEL, hostId),
+  loopsSnapshot: () => ipcRenderer.invoke(LOOPS_SNAPSHOT_CHANNEL),
   abort: (hostId: string) => ipcRenderer.invoke(SESSION_ABORT_CHANNEL, hostId),
   queueClear: (hostId: string) => ipcRenderer.invoke(SESSION_QUEUE_CLEAR_CHANNEL, hostId),
   queueRemove: (hostId: string, kind: keyof QueueTexts, index: number) =>

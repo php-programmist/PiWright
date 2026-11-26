@@ -864,4 +864,18 @@ describe('LoopController worktree sessions (branch sync + prompt notice)', () =>
     expect(loopState(controller, 'host-9')).toMatchObject({ active: false, reason: 'error' })
     expect(persisted.at(-1)).toEqual([])
   })
+
+  it('snapshot lists every tracked loop state for the post-load push', () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    expect(controller.snapshot()).toEqual([])
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.start('host-3', 'q', 2, '')
+    controller.stop('host-3')
+    expect(controller.snapshot()).toEqual([
+      { hostId: 'host-1', info: { active: true, remaining: 5, reason: null } },
+      { hostId: 'host-3', info: { active: false, remaining: 2, reason: 'user' } }
+    ])
+  })
 })

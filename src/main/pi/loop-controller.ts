@@ -265,6 +265,12 @@ export class LoopController {
     this.stopLoop(status.hostId, state, 'error')
   }
 
+  /** Снимок всех состояний — пуш в рендерер после загрузки окна: loop_state реаттачей,
+   *  случившихся до создания окна (recovery-вкладки при старте), до рендерера не дошли. */
+  snapshot(): { hostId: string; info: LoopInfo }[] {
+    return [...this.states.entries()].map(([hostId, state]) => ({ hostId, info: this.info(state) }))
+  }
+
   /** Настройка «Петли» выключена — гасим все активные петли, включая отвязанные. */
   stopAll(): void {
     for (const [hostId, state] of this.states) {

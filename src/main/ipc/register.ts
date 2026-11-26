@@ -113,6 +113,7 @@ import {
   LOOP_STOP_CHANNEL,
   LOOP_SET_REMAINING_CHANNEL,
   LOOP_GET_CHANNEL,
+  LOOPS_SNAPSHOT_CHANNEL,
   SESSION_RESPOND_DIALOG_CHANNEL,
   SESSION_SET_MODEL_CHANNEL,
   SESSION_COMMANDS_CHANNEL,
@@ -788,6 +789,8 @@ export function registerIpc(
   ipcMain.handle(LOOP_GET_CHANNEL, (_event, hostId: unknown) => {
     return typeof hostId === 'string' ? loops.get(hostId) : null
   })
+
+  ipcMain.handle(LOOPS_SNAPSHOT_CHANNEL, () => loops.snapshot())
 
   ipcMain.handle(SESSION_QUEUE_CLEAR_CHANNEL, (_event, hostId: unknown) => {
     const h = host(piHost, hostId)

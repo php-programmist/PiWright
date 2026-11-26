@@ -272,6 +272,11 @@ export function App(): React.JSX.Element {
     void window.piwright.getPendingDialogs().then((pending) => {
       for (const p of pending) applyEvent({ hostId: p.hostId, event: { type: 'dialog_open', id: p.id, dialog: p.dialog } })
     })
+    // Состояния петель, восстановленных до создания окна (recovery-вкладки при старте):
+    // их loop_state ушел в пустоту — дотягиваем снимком на маунте, как pending-диалоги.
+    void window.piwright.loopsSnapshot().then((loops) => {
+      for (const { hostId, info } of loops) applyEvent({ hostId, event: { type: 'loop_state', info, previousHostId: null } })
+    })
     return () => {
       offEvent()
       offStatus()

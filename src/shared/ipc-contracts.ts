@@ -949,6 +949,9 @@ export interface PiWrightApi {
   loopSetRemaining(hostId: string, remaining: number): Promise<PromptResult>
   /** Состояние петли сессии (после перезагрузки renderer'а); null — петли нет. */
   loopGet(hostId: string): Promise<LoopInfo | null>
+  /** Снимок всех состояний петель — App дотягивает его на маунте: loop_state реаттачей до
+   *  создания окна (recovery-вкладки при старте) до рендерера не доходят. */
+  loopsSnapshot(): Promise<{ hostId: string; info: LoopInfo }[]>
   abort(hostId: string): Promise<PromptResult>
   /** Очистить очередь целиком, тексты вернутся в cleared. */
   queueClear(hostId: string): Promise<PromptResult>
@@ -1158,6 +1161,7 @@ export const LOOP_START_CHANNEL = 'loop:start'
 export const LOOP_STOP_CHANNEL = 'loop:stop'
 export const LOOP_SET_REMAINING_CHANNEL = 'loop:set-remaining'
 export const LOOP_GET_CHANNEL = 'loop:get'
+export const LOOPS_SNAPSHOT_CHANNEL = 'loops:snapshot'
 export const SESSION_ABORT_CHANNEL = 'session:abort'
 export const SESSION_QUEUE_CLEAR_CHANNEL = 'session:queue-clear'
 export const SESSION_QUEUE_REMOVE_CHANNEL = 'session:queue-remove'
