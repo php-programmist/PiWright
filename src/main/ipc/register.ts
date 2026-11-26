@@ -1,7 +1,6 @@
 /** Регистрация каналов RPC в роутере (транспорт-агностично, провод — адаптеры): настройки,
  *  проекты, сессии (список/история/новая/открыть/закрыть/переименовать), prompt/abort/модель/thinking,
  *  диалоги расширений. */
-import { app, dialog, shell } from 'electron'
 import { homedir } from 'node:os'
 import { win32 } from 'node:path'
 import type { RpcRouter } from './router'
@@ -325,6 +324,17 @@ export interface NotificationServices {
   onSettingsChanged: (settings: Settings) => void
 }
 
+/** Хостовые возможности вне роутера: в Electron — app/dialog/shell, в headless (веб-режим)
+ *  — заглушки с внятной ошибкой (браузерные замены — задача 3/4). */
+export interface IpcHost {
+  appVersion: string
+  userDataPath: string
+  showItemInFolder(path: string): void
+  openExternal(url: string): Promise<void>
+  /** Нативный выбор каталога; canceled — юзер отказался или возможность недоступна. */
+  chooseDirectory(defaultPath?: string): Promise<{ canceled: boolean; paths: string[] }>
+}
+
 export function registerIpc(
   router: RpcRouter,
   settings: SettingsService,
@@ -335,6 +345,7 @@ export function registerIpc(
   loops: LoopController,
   kanban: KanbanService,
   kanbanThemes: KanbanThemeService,
+  ipc: IpcHost,
   notifications?: NotificationServices,
   scheduled?: ScheduleService,
   stats?: TokenStatsService,
@@ -355,14 +366,14 @@ export function registerIpc(
   })
 
   router.handle(SETTINGS_REVEAL_CHANNEL, () => {
-    shell.showItemInFolder(settings.path)
+    ipc.showItemInFolder(settings.path)
     return { ok: true, error: null }
   })
 
-  router.handle(APP_VERSION_CHANNEL, () => app.getVersion())
+  router.handle(APP_VERSION_CHANNEL, () => ipc.appVersion)
 
   router.handle(APP_CHANGELOG_CHANNEL, async (): Promise<ChangelogResult> =>
-    fetchChangelog(settings.get().updateUrl, app.getPath('userData'))
+    fetchChangelog(settings.get().updateUrl, ipc.userDataPath)
   )
 
   router.handle(APP_UPDATE_INFO_CHANNEL, (): UpdateInfo => updateInfo)
@@ -590,7 +601,7 @@ export function registerIpc(
       if (distro === undefined) return { ok: false, error: 'WSL distro not found' }
       target = buildWslUncPath(distro, stripWslUncPrefix(target)!)
     }
-    shell.showItemInFolder(target)
+    ipc.showItemInFolder(target)
     return { ok: true, error: null }
   })
 
@@ -703,12 +714,9 @@ export function registerIpc(
   router.handle(SESSIONS_CHOOSE_DIR_CHANNEL, async (kind: unknown) => {
     if (kind !== 'native' && kind !== 'wsl') return { ok: false, dir: null }
     const defaultPath = await chooseDefaultPath(kind, settings.get())
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory', 'createDirectory'],
-      defaultPath
-    })
-    if (result.canceled || result.filePaths.length === 0) return { ok: false, dir: null }
-    return { ok: true, dir: result.filePaths[0] }
+    const result = await ipc.chooseDirectory(defaultPath)
+    if (result.canceled || result.paths.length === 0) return { ok: false, dir: null }
+    return { ok: true, dir: result.paths[0] }
   })
 
   router.handle(SESSION_PROMPT_CHANNEL, async (hostId: unknown, text: unknown, images: unknown, behavior: unknown) => {
@@ -1166,7 +1174,7 @@ export function registerIpc(
       if (distro === undefined) return { ok: false, error: 'WSL distro not found' }
       target = buildWslUncPath(distro, stripWslUncPrefix(target)!)
     }
-    shell.showItemInFolder(target)
+    ipc.showItemInFolder(target)
     return { ok: true, error: null }
   })
 
@@ -1175,7 +1183,7 @@ export function registerIpc(
       return { ok: false, error: 'Invalid url' }
     }
     try {
-      await shell.openExternal(url.trim())
+      await ipc.openExternal(url.trim())
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }

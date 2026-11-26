@@ -2,8 +2,8 @@
  *  (вшита ?raw-импортами), апгрейдит любой Upgrade в WebSocket. Порт `RemoteWebServer.kt`;
  *  вместо ручного HTTP-парсинга — node:http, WebSocket остался ручным (ws.ts). */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { join, resolve, sep } from 'node:path'
 import { app } from 'electron'
 import { createServer as createNetServer } from 'node:net'
 import type { AddressInfo, Socket as NetSocket } from 'node:net'
@@ -160,9 +160,19 @@ function parseForm(body: string): Map<string, string> {
 }
 
 function mimeTypeFor(name: string): string {
-  if (name.endsWith('.js')) return 'text/javascript; charset=utf-8'
+  if (name.endsWith('.js') || name.endsWith('.mjs')) return 'text/javascript; charset=utf-8'
   if (name.endsWith('.css')) return 'text/css; charset=utf-8'
-  return 'text/html; charset=utf-8'
+  if (name.endsWith('.html')) return 'text/html; charset=utf-8'
+  if (name.endsWith('.json') || name.endsWith('.map')) return 'application/json; charset=utf-8'
+  if (name.endsWith('.svg')) return 'image/svg+xml'
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.ico')) return 'image/x-icon'
+  if (name.endsWith('.woff2')) return 'font/woff2'
+  if (name.endsWith('.woff')) return 'font/woff'
+  if (name.endsWith('.ttf')) return 'font/ttf'
+  if (name.endsWith('.wasm')) return 'application/wasm'
+  if (name.endsWith('.txt')) return 'text/plain; charset=utf-8'
+  return 'application/octet-stream'
 }
 
 export class RemoteWebServer {
@@ -177,7 +187,12 @@ export class RemoteWebServer {
     private readonly auth: RemoteAuth,
     private readonly listener: RemoteWebServerListener,
     private readonly getLanguage: () => UiLanguage = () => 'en',
-    private readonly rpcUpgrade?: RpcUpgradeHandler
+    private readonly rpcUpgrade?: RpcUpgradeHandler,
+    /** Статический корень SPA (веб-режим): отдаётся вместо вшитого телефонного UI.
+     *  Путь '/' и неизвестные пути без расширения → index.html (SPA-роутинг). */
+    private readonly staticRoot?: string,
+    /** Интерфейс привязки: телефонный мост слушает LAN, headless по умолчанию — localhost. */
+    private readonly bindHost: string = '0.0.0.0'
   ) {}
 
   async start(): Promise<RemoteStartResult> {
@@ -199,7 +214,7 @@ export class RemoteWebServer {
         resolve({ ok: false, error: code ?? String(error) })
       }
       server.once('error', once)
-      server.listen(this.requestedPort, '0.0.0.0', () => {
+      server.listen(this.requestedPort, this.bindHost, () => {
         server.removeListener('error', once)
         const address = server.address() as AddressInfo
         this.port = address.port
@@ -259,6 +274,10 @@ export class RemoteWebServer {
       writeRedirect(res, '/login', null)
       return
     }
+    if (this.staticRoot !== undefined) {
+      await this.serveStatic(path, res)
+      return
+    }
     const lang = this.getLanguage()
     const resource =
       path === '/' || path === '/index.html'
@@ -273,6 +292,50 @@ export class RemoteWebServer {
       return
     }
     writeHttp(res, 200, mimeTypeFor(path), resource)
+  }
+
+  /** Статика SPA (веб-режим): защита от выхода за корень, index.html для '/' и без расширения. */
+  private async serveStatic(path: string, res: ServerResponse): Promise<void> {
+    const root = resolve(this.staticRoot ?? '.')
+    const relative = path === '/' || path === '/index.html' ? 'index.html' : decodeURIComponent(path.slice(1))
+    let target = resolve(root, relative)
+    if (target !== root && !target.startsWith(root + sep)) {
+      writeHttp(res, 404, 'text/plain', 'Not found')
+      return
+    }
+    try {
+      const info = await stat(target)
+      if (info.isDirectory()) target = join(target, 'index.html')
+    } catch {
+      // не файл и не каталог — SPA-фолбэк ниже
+    }
+    if (!target.startsWith(root + sep)) {
+      writeHttp(res, 404, 'text/plain', 'Not found')
+      return
+    }
+    try {
+      const body = await readFile(target)
+      const isHtml = target.endsWith('.html')
+      res.writeHead(200, {
+        'Content-Type': mimeTypeFor(target),
+        'Content-Length': body.length,
+        'Cache-Control': isHtml ? 'no-store' : 'public, max-age=3600',
+        Connection: 'close'
+      })
+      res.end(body)
+    } catch {
+      // Неизвестный путь без расширения — SPA-роутинг отдаёт index.html.
+      if (!relative.includes('.')) {
+        try {
+          const index = await readFile(join(root, 'index.html'))
+          writeHttp(res, 200, 'text/html; charset=utf-8', index.toString('utf8'))
+          return
+        } catch {
+          // нет и index.html — 404
+        }
+      }
+      writeHttp(res, 404, 'text/plain', 'Not found')
+    }
   }
 
   private handleUpgrade(req: IncomingMessage, socket: NetSocket): void {
@@ -294,6 +357,11 @@ export class RemoteWebServer {
     if (path === '/rpc' && this.rpcUpgrade !== undefined) {
       acceptUpgrade(socket, key)
       this.rpcUpgrade(req, socket)
+      return
+    }
+    if (this.staticRoot !== undefined) {
+      // Веб-режим обслуживает только RPC-транспорт — прочие апгрейды не нужны.
+      socket.destroy()
       return
     }
     acceptUpgrade(socket, key)

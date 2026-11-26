@@ -1,64 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron'
-import {
-  APP_UPDATE_EVENT_CHANNEL,
-  DAEMON_RESOLVE_SKEW_CHANNEL,
-  DAEMON_SKEW_CHANNEL,
-  DAEMON_STATUS_CHANNEL,
-  DAEMON_STOP_BACKGROUND_CHANNEL,
-  FILES_CHANGED_CHANNEL,
-  PI_EVENT_CHANNEL,
-  PI_STATUS_CHANNEL,
-  SCHEDULED_CHANGED_CHANNEL,
-  TERM_DATA_CHANNEL,
-  TERM_EXIT_CHANNEL
-} from '../shared/ipc-contracts'
-import { registerIpc } from './ipc/register'
-import { RpcRouter } from './ipc/router'
-import { EventBroadcaster } from './ipc/events'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { APP_UPDATE_EVENT_CHANNEL } from '../shared/ipc-contracts'
+import { createAppContext, type AppContext } from './bootstrap'
 import { attachIpcServer } from './ipc/ipc-server'
-import { attachRpcWs } from './remote/rpc-ws'
-import type { RpcPlatform } from '../shared/rpc-transport'
-import { GitService } from './git/git-service'
-import { CodeCheckpoints } from './git/code-checkpoints'
-import { FileService } from './files/file-service'
-import { KanbanService } from './kanban/kanban-service'
-import { KanbanThemeService } from './kanban/kanban-theme-service'
-import { TerminalService, createSshPty } from './terminal/terminal-service'
-import { getSshService, initSshService } from './ssh/ssh-service'
+import type { IpcHost } from './ipc/register'
 import { startAutoUpdater } from './updater'
 import { consumeUpdateInfo } from './update-state'
-import { PiHost } from './pi/pi-host'
-import { LoopController } from './pi/loop-controller'
-import { ScheduleService } from './schedule/schedule-service'
-import { TokenStatsService } from './stats/stats-service'
-import { SettingsService } from './settings/settings'
 import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
 import { appendCrashLog, crashDialogPlan, isRecoverableCrash, readSandboxOverride, writeSandboxOverride } from './crash-recovery'
-import { TelegramTokenStore } from './notifications/token-store'
-import { createSecretCodec } from './secrets/secret-codec'
-import { NotificationHub } from './notifications/hub'
-import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
-import { RemoteBridge } from './remote/bridge'
-import { initDaemonClient, getDaemonClient } from './daemon/client'
-import type { DaemonSkewInfo, DaemonStatus, DaemonStopResult, PiStatus } from '../shared/ipc-contracts'
 
 let mainWindow: BrowserWindow | null = null
-let piHost: PiHost | null = null
-let gitService: GitService | null = null
-let kanbanService: KanbanService | null = null
-let fileService: FileService | null = null
-let terminalService: TerminalService | null = null
-let bridge: RemoteBridge | null = null
-let hub: NotificationHub | null = null
-let loopController: LoopController | null = null
-let scheduledService: ScheduleService | null = null
-let statsService: TokenStatsService | null = null
-let windowStatePath = ''
-/** Нерешённое расхождение версии протокола демона (диалог в renderer). */
-let daemonSkew: DaemonSkewInfo | null = null
+let context: AppContext | null = null
+let rebuildMenu: (() => void) | null = null
 
 // Смоук-режим: окно вне всех мониторов, чтобы не красть фокус. Без этих переключателей
 // Chromium режет таймеры/rAF у невидимого окна и смоук начинает таймаутить.
@@ -95,7 +50,7 @@ function offscreenPosition(): { x: number; y: number } {
 }
 
 function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
-  const state = loadWindowState(windowStatePath, screen.getPrimaryDisplay().workArea)
+  const state = loadWindowState(join(app.getPath('userData'), 'window-state.json'), screen.getPrimaryDisplay().workArea)
   const offscreen = smokeMode ? offscreenPosition() : undefined
   mainWindow = new BrowserWindow({
     x: offscreen?.x,
@@ -160,7 +115,7 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
   if (!smokeMode && state.maximized) mainWindow.maximize()
   mainWindow.on('close', () => {
     if (smokeMode) return
-    saveWindowState(windowStatePath, mainWindow as BrowserWindow)
+    saveWindowState(join(app.getPath('userData'), 'window-state.json'), mainWindow as BrowserWindow)
   })
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -173,204 +128,42 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 }
 
 app.whenReady().then(async () => {
-  windowStatePath = join(app.getPath('userData'), 'window-state.json')
-  // Транспорт-агностичный диспетчер каналов + шина событий: провода — IPC (окно)
-  // и WS-RPC (веб-режим, путь /rpc remote-сервера).
-  const router = new RpcRouter()
-  const events = new EventBroadcaster()
-  events.addSink((channel, ...values) => mainWindow?.webContents.send(channel, ...values))
-  const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
-  const secretCodec = createSecretCodec()
-  initSshService(
-    app.getPath('userData'),
-    (value) => secretCodec.encrypt(value),
-    (buffer) => secretCodec.decrypt(buffer)
-  )
-  const kanbanThemes = new KanbanThemeService(join(app.getPath('userData'), 'kanban-themes.json'))
-  gitService = new GitService(() => settings.get())
-  kanbanService = new KanbanService(() => settings.get())
-  fileService = new FileService({
-    onChanged: (project, path) => events.emit(FILES_CHANGED_CHANNEL, { project, path })
-  }, () => settings.get())
-  const tokenStore = new TelegramTokenStore(
-    app.getPath('userData'),
-    (value) => secretCodec.encrypt(value),
-    (buffer) => secretCodec.decrypt(buffer)
-  )
-  // Демон фоновых сессий: токен бота — для фоновых telegram-уведомлений (safeStorage — только main);
-  // version-skew — диалог «остановить или продолжить» в renderer.
-  initDaemonClient({
-    userDataDir: app.getPath('userData'),
+  // Сборка сервисов и каналов — общая с headless-сервером (bootstrap.ts); Electron-специфика
+  // здесь: окно, меню, IPC-провод, автоапдейтер.
+  context = await createAppContext({
+    userDataPath: app.getPath('userData'),
     appVersion: app.getVersion(),
-    getTelegramToken: () => tokenStore.read(),
-    // Настройка «Фоновые сессии» выключена — демон не подключается/не запускается, спавны локальные.
-    isEnabled: () => settings.get().backgroundSessions,
-    onVersionSkew: (info) => {
-      daemonSkew = info
-      events.emit(DAEMON_SKEW_CHANNEL, info)
-    }
-  })
-  const sendStatus = (status: PiStatus): void => {
-    loopController?.onStatus(status)
-    scheduledService?.onStatus(status)
-    events.emit(PI_STATUS_CHANNEL, {
-      ...status,
-      telegram: bridge?.telegramEnabledFor(status.hostId) ?? false,
-      shared: bridge?.sharedFor(status.hostId) ?? false
-    })
-  }
-  piHost = new PiHost(
-    () => settings.get(),
-    {
-      onStatus: sendStatus,
-      onEvent: (message) => {
-        loopController?.onEvent(message)
-        scheduledService?.onEvent(message)
-        events.emit(PI_EVENT_CHANNEL, message)
-        hub?.onEvent(message)
+    updateInfo: await consumeUpdateInfo(app.getPath('userData'), app.getVersion()),
+    ipc: {
+      appVersion: app.getVersion(),
+      userDataPath: app.getPath('userData'),
+      showItemInFolder: (path) => {
+        shell.showItemInFolder(path)
+      },
+      openExternal: (url) => shell.openExternal(url),
+      chooseDirectory: async (defaultPath) => {
+        const result = await dialog.showOpenDialog({
+          properties: ['openDirectory', 'createDirectory'],
+          defaultPath
+        })
+        return { canceled: result.canceled, paths: result.filePaths }
       }
-    },
-    undefined,
-    undefined,
-    new CodeCheckpoints(gitService, join(app.getPath('userData'), 'checkpoints')),
-    // Персист открытых вкладок сессий — восстановление после рестарта (эффект Herdr).
-    (tabs) => {
-      settings.set({ openSessionTabs: tabs })
-    },
-    // Тогглы сессии (telegram/shared) восстанавливаются по файлу при открытии существующей сессии;
-    // там же возвращается петля, отвязанная вместе с вкладкой (или пережавшая рестарт в настройках).
-    (host, sessionFile) => {
-      if (settings.get().loopsEnabled) loopController?.reattach(sessionFile, host.id)
-      const toggles = settings.get().sessionToggles[sessionFile]
-      if (toggles === undefined) return
-      if (toggles.telegram && !host.telegramEnabled) {
-        host.telegramEnabled = true
-        bridge?.setTelegramEnabledByHost(host.id, true)
-      }
-      if (toggles.shared && !(bridge?.sharedFor(host.id) ?? false)) bridge?.setSharedByHost(host.id, true)
-    },
-    // Файл сессии итерации петли стал известен (хендшейк/форк) — обновить ключ персиста петли.
-    (host, sessionFile) => {
-      loopController?.noteSessionFile(host.id, sessionFile)
-    }
-  )
-  const git = gitService
-  loopController = new LoopController(piHost, (hostId, event) => {
-    events.emit(PI_EVENT_CHANNEL, { hostId, event })
-    if (event.type === 'loop_state') {
-      bridge?.loopState(hostId, event.info)
-      if (!event.info.active && event.info.reason !== null) hub?.onLoopStopped(hostId, event.info.reason)
-    }
-  }, (previousHostId, createdHostId) => {
-    const previous = piHost?.get(previousHostId) ?? null
-    if (previous === null) return
-    if (previous.telegramEnabled) bridge?.setTelegramEnabledByHost(createdHostId, true)
-    if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
-    const createdStatus = piHost?.get(createdHostId)?.lastStatus()
-    if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
-  }, undefined, undefined, (project) => git.worktreeMergeBase(project), (loops) => {
-    settings.set({ loops })
-  }, () => settings.get().loops)
-  scheduledService = new ScheduleService(
-    join(app.getPath('userData'), 'scheduled-prompts.json'),
-    piHost,
-    loopController,
-    () => settings.get(),
-    () => {
-      events.emit(SCHEDULED_CHANGED_CHANNEL)
-    }
-  )
-  const staticPin = settings.get().notifications.remote.staticPin
-  const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
-  const rpcWs = attachRpcWs({ router, events, platform: process.platform as RpcPlatform, appVersion: app.getVersion() })
-  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController, kanbanService, rpcWs.upgrade)
-  bridge.applySettings(settings.get())
-  hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
-  statsService = new TokenStatsService(join(app.getPath('userData'), 'token-stats.json'), () => settings.get())
-  void statsService.ensureScanned().catch(() => {})
-  terminalService = new TerminalService({
-    onData: (id, data) => events.emit(TERM_DATA_CHANNEL, { id, data }),
-    onExit: (id, code) => events.emit(TERM_EXIT_CHANNEL, { id, code })
-  }, undefined, (server, cwd) => createSshPty(getSshService(), server, cwd))
-  const rebuildMenu = installAppMenu(() => settings.get().language, events)
-  registerIpc(router, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
-    tokenStore,
-    bridge,
-    onSettingsChanged: (next) => {
-      bridge?.applySettings(next)
-      rebuildMenu()
-    }
-  }, scheduledService, statsService, await consumeUpdateInfo(app.getPath('userData'), app.getVersion()))
-  attachIpcServer(ipcMain, router)
-  startAutoUpdater(() => settings.get().updateUrl, settings, (status) => {
-    events.emit(APP_UPDATE_EVENT_CHANNEL, status)
-  })
-  // Каналы демона: статус (индикатор «N в фоне»), остановка фоновых, решение version-skew.
-  // Здесь: нужны skew-состояние и клиент демона этого модуля.
-  router.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
-    // Настройка «Фоновые сессии» выключена — индикатор фона скрыт, даже если старый демон ещё жив.
-    if (!settings.get().backgroundSessions) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
-    const client = getDaemonClient()
-    if (client === null || !client.connectedNow) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
-    try {
-      const sessions = await client.list()
-      // Старый демон новые поля не присылает — защищаемся (пустой проект/без имени/не стримит).
-      const background = sessions
-        .filter((s) => s.clients === 0)
-        .map((s) => ({
-          sessionKey: s.sessionKey,
-          sessionFile: s.sessionFile,
-          mode: s.mode,
-          projectDir: typeof s.projectDir === 'string' ? s.projectDir : '',
-          title: typeof s.title === 'string' ? s.title : null,
-          streaming: s.streaming === true
-        }))
-      return { alive: true, background: background.length, skew: daemonSkew, sessions: background }
-    } catch {
-      return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
+    } satisfies IpcHost,
+    onSettingsChanged: () => {
+      rebuildMenu?.()
     }
   })
-  router.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {
-    if (!settings.get().backgroundSessions) return { ok: false, stopped: 0, error: 'Background sessions are disabled in settings' }
-    const client = getDaemonClient()
-    if (client === null || !client.connectedNow) return { ok: false, stopped: 0, error: 'Daemon is not running' }
-    try {
-      return { ok: true, stopped: await client.killBackground(), error: null }
-    } catch (err) {
-      return { ok: false, stopped: 0, error: err instanceof Error ? err.message : String(err) }
-    }
+  // Пуш-события в окно: sink замыкается на переменную — окно может появиться позже контекста.
+  context.events.addSink((channel, ...values) => mainWindow?.webContents.send(channel, ...values))
+  rebuildMenu = installAppMenu(() => context?.settings.get().language ?? 'en', context.events)
+  attachIpcServer(ipcMain, context.router)
+  startAutoUpdater(() => context?.settings.get().updateUrl ?? '', context.settings, (status) => {
+    context?.events.emit(APP_UPDATE_EVENT_CHANNEL, status)
   })
-  router.handle(DAEMON_RESOLVE_SKEW_CHANNEL, (stop: unknown) => {
-    const client = getDaemonClient()
-    if (client === null) return { ok: false }
-    if (stop === true) {
-      // Старый демон гасится (дети прерваны) — следующий спавн поднимет свежий.
-      void client.shutdownDaemon().then((ok) => {
-        if (!ok) return
-        daemonSkew = null
-        client.clearDisabled()
-        piHost?.ensureAllStarted()
-      }).catch(() => {})
-    } else {
-      // Продолжаем со старым демоном: пересылка стабильна, новые фичи демона — после следующего обновления.
-      daemonSkew = null
-      client.clearDisabled()
-      piHost?.ensureAllStarted()
-    }
-    return { ok: true }
-  })
-  // Раннее подключение к демону: обнаружение version-skew до восстановления вкладок
-  // (спавнеры при skew не делают локальный фолбэк — иначе дубли процессов на файл сессии).
-  void getDaemonClient()?.connect().catch(() => {})
-  // Восстановление открытых вкладок сессий: хосты создаются сразу (видны в панели), подъём —
-  // на первом sessions:list из рендерера, чтобы реплей транскрипта не ушёл в пустоту.
-  for (const tab of settings.get().openSessionTabs) {
-    piHost.create(tab.project, tab.sessionFile)
-  }
-  const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
-  createWindow(bg, () => settings.get().language)
+  const bg = context.settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
+  createWindow(bg, () => context?.settings.get().language ?? 'en')
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow(bg, () => settings.get().language)
+    if (BrowserWindow.getAllWindows().length === 0) createWindow(bg, () => context?.settings.get().language ?? 'en')
   })
 })
 
@@ -383,28 +176,7 @@ app.on('will-quit', (event) => {
   if (!quitDisposalStarted) {
     quitDisposalStarted = true
     event.preventDefault()
-    // Ход идёт — сессия отвязывается и дозает ход в фоне (вотчер демона закроет её через грейс
-    // без нового хода); ход не идёт — процесс останавливается сразу (память дороже транскрипта).
-    // Вкладки восстановления сохраняются: при старте откроются снова — живые аттачатся,
-    // остановленные восстановятся из транскрипта. Явная остановка — «Остановить сессию» в UI
-    // и «Остановить все фоновые сессии» (piHost.disposeAll, задача 3).
-    piHost?.quiesceForQuit()
-    scheduledService?.dispose()
-    fileService?.dispose()
-    terminalService?.disposeAll()
-    try {
-      getSshService().closeAll()
-    } catch {
-      // ssh-сервис мог не инициализироваться (ранний выход)
-    }
-    const finish = (): void => {
-      void app.quit()
-    }
-    // Ждём закрытия сокета: записи (rekey и т.п.) асинхронны и без флеша теряются при выходе.
-    const client = getDaemonClient()
-    if (client === null) finish()
-    else void client.dispose().then(finish)
-    setTimeout(finish, 3000)
+    void context?.dispose().then(() => app.quit())
     return
   }
 })

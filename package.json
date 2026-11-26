@@ -14,6 +14,7 @@
     "dev": "electron-vite dev",
     "dev:min": "electron-vite dev -- --smoke",
     "build": "electron-vite build",
+  "serve": "node out/headless/index.js",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",

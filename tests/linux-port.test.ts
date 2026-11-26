@@ -125,6 +125,14 @@ describe('secret codec', () => {
     const legacy = Buffer.from(`b64:${Buffer.from('token', 'utf8').toString('base64')}`, 'utf8')
     expect(codec.decrypt(legacy)).toBe('token')
   })
+
+  it('works without safeStorage at all (node host): fallback both ways, safeStorage blobs rejected', () => {
+    const codec = createSecretCodec(undefined)
+    const encrypted = codec.encrypt('token')
+    expect(encrypted.toString('utf8').startsWith('b64:')).toBe(true)
+    expect(codec.decrypt(encrypted)).toBe('token')
+    expect(() => codec.decrypt(Buffer.from('dpapi-blob', 'utf8'))).toThrow('safeStorage')
+  })
 })
 
 describe('default sounds', () => {

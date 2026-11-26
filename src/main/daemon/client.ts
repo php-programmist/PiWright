@@ -61,6 +61,9 @@ export interface DaemonClientOptions {
   /** Живой предикат настройки «Фоновые сессии»: false — подключение/спавн в демона запрещены
    * (DaemonUnavailableError → локальный фолбэк спавнера), демон не запускается. */
   isEnabled?: () => boolean
+  /** Хост — чистый node (headless-сервер, веб-режим): демон форкается напрямую без
+   * ELECTRON_RUN_AS_NODE и без посредника PowerShell (нужен только Electron-хосту). */
+  nodeHost?: boolean
 }
 
 /** Расхождение версии протокола: демон от старой версии пережил обновление. */
@@ -343,6 +346,18 @@ export class DaemonClient implements DaemonChildTransport {
   private launchDaemon(): void {
     const daemonJs = this.options.daemonJsPath ?? join(__dirname, '..', 'daemon', 'index.js')
     if (!existsSync(daemonJs)) return
+    if (this.options.nodeHost === true) {
+      // node-хост: process.execPath уже node (или Electron в node-режиме — тогда
+      // ELECTRON_RUN_AS_NODE уже в env и наследуется) — обычный detached-fork.
+      const child = spawn(
+        process.execPath,
+        [daemonJs, '--user-data', this.options.userDataDir, '--app-version', this.options.appVersion],
+        { detached: true, stdio: 'ignore' }
+      )
+      child.on('error', () => {})
+      child.unref()
+      return
+    }
     if (process.platform === 'win32') {
       const command = daemonLaunchCommand(process.execPath, daemonJs, this.options.userDataDir, this.options.appVersion)
       const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
