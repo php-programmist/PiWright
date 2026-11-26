@@ -3,7 +3,7 @@
  *  remote-моста). Запуск: npm run serve (dev) или ELECTRON_RUN_AS_NODE=1 <binary>
  *  <app>/out/headless/index.js (упакованный). userData — те же каталоги, что у Electron
  *  (XDG_CONFIG_HOME на linux), настройки/проекты/сессии общие с десктопом. */
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createAppContext } from '../bootstrap'
 import type { IpcHost } from '../ipc/register'
@@ -47,6 +47,10 @@ async function main(): Promise<void> {
     nodeHost: true
   })
   const rendererRoot = join(__dirname, '..', 'renderer')
+  const tls =
+    args.tlsCert !== null && args.tlsKey !== null
+      ? { cert: readFileSync(args.tlsCert), key: readFileSync(args.tlsKey) }
+      : undefined
   const server = new RemoteWebServer(
     args.port,
     context.auth,
@@ -54,14 +58,17 @@ async function main(): Promise<void> {
     () => context.settings.get().language,
     context.rpcWs.upgrade,
     rendererRoot,
-    args.bindHost
+    args.bindHost,
+    tls
   )
   const started = await server.start()
   if (!started.ok) {
     console.error(`PiWright web: failed to bind ${args.bindHost}:${args.port} — ${started.error}`)
     process.exit(1)
   }
-  console.log(`PiWright web: http://${args.bindHost === '127.0.0.1' ? 'localhost' : args.bindHost}:${server.port}/ (PIN ${context.auth.groupedPin})`)
+  const scheme = tls !== undefined ? 'https' : 'http'
+  const hostLabel = args.bindHost === '127.0.0.1' ? 'localhost' : args.bindHost
+  console.log(`PiWright web: ${scheme}://${hostLabel}:${server.port}/ (PIN ${context.auth.groupedPin})`)
   console.log(`PiWright web: userData ${args.userData}`)
 
   let closing = false

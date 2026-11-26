@@ -2,6 +2,7 @@
  *  (вшита ?raw-импортами), апгрейдит любой Upgrade в WebSocket. Порт `RemoteWebServer.kt`;
  *  вместо ручного HTTP-парсинга — node:http, WebSocket остался ручным (ws.ts). */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import { readFile, stat } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { app } from 'electron'
@@ -85,6 +86,22 @@ function cookieToken(req: IncomingMessage): string | null {
   return null
 }
 
+/** CSRF/DNS-rebinding защита для браузерных запросов с телом или апгрейдом (POST /login, WS):
+ *  присутствующий Origin должен совпадать с Host (или первым X-Forwarded-Host за reverse proxy).
+ *  Вне браузера (curl, RPC-клиенты) Origin нет — пропускаем; куки всё равно нет. */
+function sameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin
+  if (origin === undefined) return true
+  const rawForwarded = req.headers['x-forwarded-host']
+  const firstForwarded = Array.isArray(rawForwarded) ? rawForwarded[0] : rawForwarded
+  const host = firstForwarded?.split(',')[0]?.trim() || req.headers.host
+  try {
+    return new URL(origin).host === host
+  } catch {
+    return false
+  }
+}
+
 function writeHttp(res: ServerResponse, status: number, contentType: string, body: string): void {
   res.writeHead(status, {
     'Content-Type': contentType,
@@ -95,10 +112,11 @@ function writeHttp(res: ServerResponse, status: number, contentType: string, bod
   res.end(body)
 }
 
-function writeRedirect(res: ServerResponse, location: string, cookieTokenValue: string | null): void {
+function writeRedirect(res: ServerResponse, location: string, cookieTokenValue: string | null, secure = false): void {
   const headers: Record<string, string> = { Location: location, Connection: 'close' }
   if (cookieTokenValue !== null) {
-    headers['Set-Cookie'] = `${COOKIE_NAME}=${cookieTokenValue}; HttpOnly; SameSite=Strict; Path=/`
+    headers['Set-Cookie'] =
+      `${COOKIE_NAME}=${cookieTokenValue}; HttpOnly; SameSite=Strict; Path=/${secure ? '; Secure' : ''}`
   }
   res.writeHead(303, headers)
   res.end()
@@ -176,7 +194,7 @@ function mimeTypeFor(name: string): string {
 }
 
 export class RemoteWebServer {
-  private server: Server | null = null
+  private server: Server | HttpsServer | null = null
   private nextSeq = 1
   private stopped = false
 
@@ -192,11 +210,13 @@ export class RemoteWebServer {
      *  Путь '/' и неизвестные пути без расширения → index.html (SPA-роутинг). */
     private readonly staticRoot?: string,
     /** Интерфейс привязки: телефонный мост слушает LAN, headless по умолчанию — localhost. */
-    private readonly bindHost: string = '0.0.0.0'
+    private readonly bindHost: string = '0.0.0.0',
+    /** TLS (веб-режим для LAN): задан — сервер говорит HTTPS, cookie получает Secure. */
+    private readonly tls?: { cert: Buffer; key: Buffer }
   ) {}
 
   async start(): Promise<RemoteStartResult> {
-    const server = createServer((req, res) => {
+    const handler = (req: IncomingMessage, res: ServerResponse): void => {
       void this.handleRequest(req, res).catch(() => {
         try {
           res.destroy()
@@ -204,7 +224,11 @@ export class RemoteWebServer {
           // соединение уже закрыто
         }
       })
-    })
+    }
+    const server =
+      this.tls !== undefined
+        ? createHttpsServer({ cert: this.tls.cert, key: this.tls.key }, handler)
+        : createServer(handler)
     server.on('upgrade', (req, socket) => this.handleUpgrade(req, socket as NetSocket))
     server.on('clientError', (_err, socket) => socket.destroy())
     return await new Promise<RemoteStartResult>((resolve) => {
@@ -239,6 +263,10 @@ export class RemoteWebServer {
       return
     }
     if (path === '/login' && req.method === 'POST') {
+      if (!sameOrigin(req)) {
+        writeHttp(res, 403, 'text/plain', 'Forbidden')
+        return
+      }
       const body = await readBody(req)
       const pin = parseForm(body).get('pin') ?? ''
       const peer = req.socket.remoteAddress ?? '?'
@@ -248,7 +276,7 @@ export class RemoteWebServer {
       }
       if (this.auth.checkPin(pin)) {
         this.auth.clearFailures(peer)
-        writeRedirect(res, '/', this.auth.newBrowserSession())
+        writeRedirect(res, '/', this.auth.newBrowserSession(), this.tls !== undefined)
         return
       }
       this.auth.noteFailure(peer)
@@ -340,6 +368,11 @@ export class RemoteWebServer {
 
   private handleUpgrade(req: IncomingMessage, socket: NetSocket): void {
     if (this.stopped) {
+      socket.destroy()
+      return
+    }
+    if (!sameOrigin(req)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
       socket.destroy()
       return
     }

@@ -45,12 +45,17 @@ export class RemoteAuth {
     this.pin = pin
   }
 
-  /** Статичный пин из настроек: задан — применяется; снят — возврат к случайному (один раз). */
+  /** Статичный пин из настроек: задан — применяется; снят — возврат к случайному (один раз).
+   *  Реальная смена пина отзывает все cookie-сессии (известные браузеры проходят повторный вход);
+   *  повторный вызов с тем же значением (applySettings на каждом settings:set) — no-op. */
   setStaticPin(pin: string | null): void {
     if (pin !== null) {
+      if (this.fromStatic && this.pin === pin) return
+      this.browserSessions.clear()
       this.pin = pin
       this.fromStatic = true
     } else if (this.fromStatic) {
+      this.browserSessions.clear()
       this.pin = generatePin()
       this.fromStatic = false
     }

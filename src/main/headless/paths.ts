@@ -7,19 +7,32 @@ export interface HeadlessArgs {
   port: number
   userData: string
   bindHost: string
+  tlsCert: string | null
+  tlsKey: string | null
 }
 
 export function parseArgs(argv: string[]): HeadlessArgs {
-  const args: HeadlessArgs = { port: 7691, userData: defaultUserData(), bindHost: '127.0.0.1' }
+  const args: HeadlessArgs = {
+    port: 7691,
+    userData: defaultUserData(),
+    bindHost: '127.0.0.1',
+    tlsCert: null,
+    tlsKey: null
+  }
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1]
     if (value === undefined) continue
     if (argv[i] === '--port') args.port = Number(value)
     else if (argv[i] === '--user-data') args.userData = resolve(value)
     else if (argv[i] === '--host') args.bindHost = value
+    else if (argv[i] === '--tls-cert') args.tlsCert = resolve(value)
+    else if (argv[i] === '--tls-key') args.tlsKey = resolve(value)
   }
   if (!Number.isInteger(args.port) || args.port < 1 || args.port > 65535) {
     throw new Error(`Invalid --port: ${args.port}`)
+  }
+  if ((args.tlsCert === null) !== (args.tlsKey === null)) {
+    throw new Error('--tls-cert and --tls-key must be used together')
   }
   return args
 }

@@ -136,6 +136,42 @@ npm run lint           # eslint
 ```
 ## Settings
 App settings live in `%APPDATA%\PiWright\settings.json` and are editable from the in-app settings window: backends, WSL distro, pi path, update feed, appearance, notifications, remote access.
+
+## Web mode (headless server)
+Besides the desktop window, PiWright can run as a headless web server serving the full UI to a browser:
+
+```sh
+npm run serve                                   # dev build required first (npm run build)
+# packaged (Windows/Linux):
+ELECTRON_RUN_AS_NODE=1 <binary> <app>/out/headless/index.js
+```
+
+Options: `--port` (default 7691), `--user-data` (defaults to the same directory the desktop app uses, so settings/projects/sessions are shared), `--host` (bind address, default `127.0.0.1`), `--tls-cert`/`--tls-key` (PEM files, enable HTTPS).
+
+### Security model
+
+- **PIN auth**: a 6-digit PIN is printed to the console on start (or the static PIN from Settings → Notifications → Remote); login sets an `HttpOnly; SameSite=Strict` session cookie. Changing the static PIN revokes all sessions. 5 failed attempts lock the peer out for 30 seconds.
+- **Loopback by default**: the server binds `127.0.0.1` unless `--host` is given. An authenticated browser gets full access to the host (file system, terminal, RPC), so only expose it on the LAN if you accept that.
+- **Origin checks**: `POST /login` and WebSocket upgrades with an `Origin` header are rejected unless it matches `Host` (or `X-Forwarded-Host` behind a reverse proxy) — CSRF and DNS-rebinding protection on top of `SameSite=Strict`.
+- **HTTPS for LAN**: pass a certificate and key:
+
+  ```sh
+  # one-off self-signed certificate (browsers will warn; accept to proceed)
+  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=piwright"
+  node out/headless/index.js --host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem
+  ```
+
+  With TLS the session cookie is additionally marked `Secure`.
+- **Reverse proxy**: terminate TLS at the proxy and forward WebSocket upgrades; the proxy must pass `Host` or `X-Forwarded-Host` matching the public URL. Caddy example:
+
+  ```caddyfile
+  piwright.example.com {
+      reverse_proxy 127.0.0.1:7691
+  }
+  ```
+
+  (Caddy sets `X-Forwarded-Host` and upgrades WebSockets automatically; for nginx add `proxy_set_header X-Forwarded-Host $host;` and the usual `Upgrade`/`Connection` headers.)
+
 ## Project structure
 - `src/main` — Electron main process: pi RPC client, backends (native/WSL), settings, git, files, terminal, MCP, notifications, remote bridge
 - `src/preload` — contextBridge, the only IPC boundary
