@@ -169,7 +169,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeLoops, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -464,6 +464,9 @@ export function registerIpc(
       if (raw['sessionToggles'] !== undefined) {
         safe.sessionToggles = mergeSessionToggles(raw['sessionToggles'])
       }
+      if (raw['loops'] !== undefined) {
+        safe.loops = mergeLoops(raw['loops'])
+      }
       if (raw['pinnedBranches'] !== null && typeof raw['pinnedBranches'] === 'object' && !Array.isArray(raw['pinnedBranches'])) {
         safe.pinnedBranches = mergePinnedBranches(raw['pinnedBranches'])
       }
@@ -653,7 +656,10 @@ export function registerIpc(
 
   ipcMain.handle(SESSIONS_CLOSE_CHANNEL, (_event, hostId: unknown, keepAlive: unknown) => {
     if (typeof hostId === 'string') {
-      loops.forget(hostId)
+      // keepAlive — крестик вкладки: активную петлю не выбрасываем, а отвязываем — она
+      // вернётся при переоткрытии вкладки (или после рестарта — из настроек).
+      if (keepAlive === true) loops.detach(hostId)
+      else loops.forget(hostId)
       scheduled?.forgetHost(hostId)
     }
     // keepAlive=true — крестик вкладки: отключиться, ребёнок демона живёт. Иначе — остановить процесс.

@@ -7,6 +7,11 @@
  *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
  *  Ход, закончившийся ошибкой модели (turn_end.error), останавливает петлю с reason 'error' —
  *  сессия не закрывается, продолжение вручную.
+ *  Детач-аттач (крестик вкладки во время хода, keepAlive): состояние активной петли
+ *  отвязывается по файлу сессии (detach) и возвращается при переоткрытии вкладки (reattach);
+ *  первый статус сессии решает — ход ещё идёт (дослеживаем) или уже дозрел в фоне (цикл
+ *  продолжается: check-промпт или спавн). Активные петли персистятся в настройки
+ *  (settings.loops) — переживают и рестарт приложения (восстановление открытых вкладок).
  *  Спавн в worktree-сессии: перед create ветка worktree синкается merge'ем с базовой (ветка
  *  корневого checkout'а), а промпт итерации получает префикс «ты в worktree …» — без этого
  *  агент с чистым контекстом видит устаревший код и создаёт свой worktree.
@@ -15,7 +20,7 @@
  *  Страховки: счётчик итераций, 3 итерации подряд быстрее 10 с, снятый чекбокс / закрытие,
  *  watchdog на ход, который не разрешился ни по одному из путей. */
 import type { LoopInfo, LoopStopReason, UiEvent } from '../../shared/agent-events'
-import type { PiEventMessage, ProjectEntry } from '../../shared/ipc-contracts'
+import type { PersistedLoop, PiEventMessage, PiStatus, ProjectEntry } from '../../shared/ipc-contracts'
 import { splitWorktreeHostDir, worktreeBranchFor } from '../../shared/worktree'
 import type { PiHost } from './pi-host'
 import { LOOP_STOP_TOOL_NAME } from './loop-stop-extension'
@@ -72,10 +77,20 @@ interface LoopState {
   iteration: number
   /** Имя стартовой сессии без индекса — база для имён «имя (2)», «имя (3)»… */
   baseName: string
+  /** Последний hostId, под которым состояние было в states (для carry-over флагов рендерера при реаттаче). */
+  lastHostId: string
+  /** Последний известный файл сессии текущей итерации — ключ восстановления из настроек. */
+  lastSessionFile: string | null
+  /** Состояние восстановлено (детач-аттач/рестарт) и ждёт первого статуса сессии, чтобы
+   *  решить: ход ещё идёт (дослеживаем) или уже завершился в фоне (продолжаем цикл). */
+  pendingAttach: boolean
 }
 
 export class LoopController {
   private readonly states = new Map<string, LoopState>()
+  /** Петли отвязанных сессий (крестик вкладки во время хода): файл сессии → состояние.
+   *  Живут до реаттача той же сессии; в persist() участвуют наравне с активными. */
+  private readonly detached = new Map<string, LoopState>()
 
   constructor(
     private readonly piHost: PiHost,
@@ -87,7 +102,11 @@ export class LoopController {
     /** Пауза watchdog перед форс-разрешением хода (переопределяется в тестах). */
     private readonly resolveWatchdogMs: number = TURN_RESOLVE_WATCHDOG_MS,
     /** Синк worktree-ветки перед спавном итерации; undefined — спавн без синка. */
-    private readonly syncWorktree?: LoopWorktreeSync
+    private readonly syncWorktree?: LoopWorktreeSync,
+    /** Персист активных петель в настройки — пережить детач-аттач и рестарт приложения. */
+    private readonly persistLoops?: (loops: PersistedLoop[]) => void,
+    /** Активные петли из настроек — источник восстановления, когда в памяти detached-состояния нет. */
+    private readonly getPersistedLoops?: () => PersistedLoop[]
   ) {}
 
   start(hostId: string, prompt: string, maxIterations: number, exitCondition: string): LoopInfo | null {
@@ -115,10 +134,14 @@ export class LoopController {
       subagents: new Set(),
       workflows: new Set(),
       iteration: 1,
-      baseName: cleanLoopTitle(host.displayTitle)
+      baseName: cleanLoopTitle(host.displayTitle),
+      lastHostId: hostId,
+      lastSessionFile: host.sessionFilePath,
+      pendingAttach: false
     }
     this.states.set(hostId, state)
     this.emitState(hostId, state, null)
+    this.persistNow()
     return this.info(state)
   }
 
@@ -130,6 +153,7 @@ export class LoopController {
     state.active = false
     state.reason = 'user'
     this.emitState(hostId, state, null)
+    this.persistNow()
     return this.info(state)
   }
 
@@ -138,6 +162,7 @@ export class LoopController {
     if (state === undefined) return null
     state.remaining = clampIterations(remaining)
     this.emitState(hostId, state, null)
+    this.persistNow()
     return this.info(state)
   }
 
@@ -153,9 +178,94 @@ export class LoopController {
       this.clearResolveWatchdog(state)
     }
     this.states.delete(hostId)
+    this.persistNow()
   }
 
-  /** Настройка «Петли» выключена — гасим все активные петли. */
+  /** Крестик вкладки (keepAlive): состояние активной петли не выбрасываем, а отвязываем —
+   *  по файлу сессии она будет восстановлена при переоткрытии вкладки (или после рестарта
+   *  приложения — из настроек). Без файла сессии (локальный спавн без демона) петля умирает. */
+  detach(hostId: string): void {
+    const state = this.states.get(hostId)
+    if (state === undefined) return
+    this.clearCheckTimer(state)
+    this.clearResolveWatchdog(state)
+    this.states.delete(hostId)
+    if (!state.active) {
+      this.persistNow()
+      return
+    }
+    const file = this.piHost.get(hostId)?.sessionFilePath ?? null
+    if (file !== null) state.lastSessionFile = file
+    if (state.lastSessionFile === null) {
+      this.persistNow()
+      return
+    }
+    this.detached.set(state.lastSessionFile, state)
+    this.persistNow()
+  }
+
+  /** Переоткрытие вкладки (аттач): вернуть петлю под новым hostId. Источник — в памяти
+   *  (detached), иначе настройки (рестарт приложения). Дальнейшее решает onStatus.
+   *  Петля под этим файлом уже живёт (сессию открыли второй раз) — не дублируем. */
+  reattach(sessionFile: string, hostId: string): void {
+    for (const state of this.states.values()) {
+      if (state.active && state.lastSessionFile === sessionFile) return
+    }
+    const memory = this.detached.get(sessionFile)
+    const state = memory ?? this.stateFromPersisted(this.getPersistedLoops?.().find((l) => l.sessionFile === sessionFile))
+    if (state === null) return
+    this.detached.delete(sessionFile)
+    const previousHostId = memory !== undefined ? state.lastHostId : null
+    state.lastHostId = hostId
+    state.pendingAttach = true
+    this.states.set(hostId, state)
+    this.emit(hostId, { type: 'loop_state', info: this.info(state), previousHostId })
+    this.persistNow()
+  }
+
+  /** Файл сессии текущей итерации стал известен (хендшейк/форк) — обновляем ключ персиста. */
+  noteSessionFile(hostId: string, sessionFile: string): void {
+    const state = this.states.get(hostId)
+    if (state === undefined || state.lastSessionFile === sessionFile) return
+    state.lastSessionFile = sessionFile
+    this.persistNow()
+  }
+
+  /** Первый статус после реаттача решает судьбу восстановленной петли: ход ещё идёт —
+   *  дослеживаем (оптимистично считаем рабочим с инструментами: ход начался до аттача,
+   *  его turn_start петля не видела); сессия уже ready — ход завершился в фоне, продолжаем
+   *  цикл как после turn_end; ошибка старта — петля останавливается. */
+  onStatus(status: PiStatus): void {
+    const state = this.states.get(status.hostId)
+    if (state === undefined || !state.pendingAttach) return
+    if (status.state === 'idle' || status.state === 'starting') return
+    state.pendingAttach = false
+    if (!state.active) return
+    if (status.state === 'streaming' || status.state === 'waiting') {
+      state.workTurnOpen = true
+      state.toolSeenThisTurn = true
+      return
+    }
+    if (status.state === 'ready') {
+      if (state.remaining <= 0) {
+        this.stopLoop(status.hostId, state, 'max')
+        return
+      }
+      if (this.isShortCircuit(state)) {
+        this.stopLoop(status.hostId, state, 'short-circuit')
+        return
+      }
+      if (state.exitCondition.trim().length === 0) {
+        this.spawnNext(status.hostId, state)
+        return
+      }
+      this.scheduleCheck(status.hostId, state)
+      return
+    }
+    this.stopLoop(status.hostId, state, 'error')
+  }
+
+  /** Настройка «Петли» выключена — гасим все активные петли, включая отвязанные. */
   stopAll(): void {
     for (const [hostId, state] of this.states) {
       this.clearCheckTimer(state)
@@ -165,6 +275,8 @@ export class LoopController {
       state.reason = 'user'
       this.emitState(hostId, state, null)
     }
+    if (this.detached.size > 0) this.detached.clear()
+    this.persistNow()
   }
 
   onEvent(message: PiEventMessage): void {
@@ -183,6 +295,7 @@ export class LoopController {
       return
     }
     if (event.type === 'turn_start') {
+      state.pendingAttach = false
       if (event.external === true) {
         // Внешний ход (nudge субагента) поверх петли: флаги рабочего хода и запланированный
         // check не трогаем, ход целиком игнорируем вплоть до его turn_end.
@@ -406,6 +519,7 @@ export class LoopController {
     state.active = false
     state.reason = reason
     this.emitState(hostId, state, null)
+    this.persistNow()
   }
 
   /** Check-ход: агент в той же сессии проверяет условие выхода — у него весь контекст работы. */
@@ -477,9 +591,14 @@ export class LoopController {
       thinkingLevel: parentStatus?.thinkingLevel ?? null
     })
     this.states.delete(previousHostId)
+    // Файл родителя больше не ключ этой петли: итерация — новая сессия, её файл придёт
+    // с хендшейком (noteSessionFile). До тех пор в настройках петля восстанавлению не подлежит.
+    state.lastHostId = created.id
+    state.lastSessionFile = null
     this.states.set(created.id, state)
     this.onSpawned?.(previousHostId, created.id)
     this.emitState(created.id, state, previousHostId)
+    this.persistNow()
     if (syncError !== null) {
       this.emit(created.id, {
         type: 'notify',
@@ -512,6 +631,61 @@ export class LoopController {
 
   private info(state: LoopState): LoopInfo {
     return { active: state.active, remaining: state.remaining, reason: state.reason }
+  }
+
+  /** Активные петли (включая отвязанные) для настроек; без файла сессии восстановление невозможно. */
+  private persisted(): PersistedLoop[] {
+    const out: PersistedLoop[] = []
+    for (const state of [...this.states.values(), ...this.detached.values()]) {
+      if (!state.active || state.lastSessionFile === null) continue
+      out.push({
+        sessionFile: state.lastSessionFile,
+        project: state.project,
+        prompt: state.prompt,
+        exitCondition: state.exitCondition,
+        remaining: state.remaining,
+        iteration: state.iteration,
+        baseName: state.baseName
+      })
+    }
+    return out
+  }
+
+  private persistNow(): void {
+    this.persistLoops?.(this.persisted())
+  }
+
+  /** Состояние из настроек (после рестарта приложения): ходовые флаги чистые, дальше решает onStatus. */
+  private stateFromPersisted(saved: PersistedLoop | undefined): LoopState | null {
+    if (saved === undefined) return null
+    return {
+      prompt: saved.prompt,
+      exitCondition: saved.exitCondition,
+      // remaining 0 валиден (итерация заспавнена, лимит исчерпан) — clamp с минимумом 1 тут не нужен.
+      remaining: Math.min(MAX_ITERATIONS, Math.max(0, Math.round(saved.remaining))),
+      active: true,
+      reason: null,
+      project: saved.project,
+      spawnTimes: [],
+      toolSeenThisTurn: false,
+      stopRequested: false,
+      checkingCondition: false,
+      turnEndHandled: false,
+      turnEndPending: false,
+      externalTurn: false,
+      workTurnOpen: false,
+      waitingSubagents: false,
+      turnError: null,
+      checkTimer: null,
+      resolveWatchdog: null,
+      subagents: new Set(),
+      workflows: new Set(),
+      iteration: Math.max(1, Math.round(saved.iteration)),
+      baseName: saved.baseName,
+      lastHostId: '',
+      lastSessionFile: saved.sessionFile,
+      pendingAttach: true
+    }
   }
 }
 

@@ -32,7 +32,9 @@ export class PiHost {
     /** Персист открытых вкладок сессий (settings.openSessionTabs) — восстановление после рестарта. */
     private readonly persistOpenTabs?: (tabs: SavedSessionTab[]) => void,
     /** Восстановление тогглов сессии (telegram/shared) по файлу — при открытии существующей сессии. */
-    private readonly restoreToggles?: (host: SessionHost, sessionFile: string) => void
+    private readonly restoreToggles?: (host: SessionHost, sessionFile: string) => void,
+    /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — подписка вне реестра вкладок. */
+    private readonly onSessionFileKnown?: (host: SessionHost, sessionFile: string) => void
   ) {}
 
   /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
@@ -72,9 +74,12 @@ export class PiHost {
   /** Вкладка восстановления: новая/переименованная (fork меняет файл) — с записью в настройки. */
   private trackOpenTab(hostId: string, project: ProjectEntry, sessionFile: string): void {
     const existing = this.openTabs.get(hostId)
-    if (existing !== undefined && existing.sessionFile === sessionFile) return
-    this.openTabs.set(hostId, { project, sessionFile })
-    this.persistOpenTabs?.([...this.openTabs.values()])
+    if (existing === undefined || existing.sessionFile !== sessionFile) {
+      this.openTabs.set(hostId, { project, sessionFile })
+      this.persistOpenTabs?.([...this.openTabs.values()])
+    }
+    const host = this.hosts.get(hostId)
+    if (host !== undefined) this.onSessionFileKnown?.(host, sessionFile)
   }
 
   private forgetOpenTab(hostId: string): void {

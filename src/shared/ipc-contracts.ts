@@ -90,6 +90,8 @@ export interface Settings {
   openSessionTabs: SavedSessionTab[]
   /** Тогглы сессии по файлу (telegram/shared) — восстанавливаются при открытии сессии из истории. Пишет только main. */
   sessionToggles: Record<string, SessionToggles>
+  /** Активные петли — переживают детач-аттач сессии и рестарт приложения. Пишет только main. */
+  loops: PersistedLoop[]
   /** Закреплённые ветки проекта (ключ projectKey) — всегда вверху списка переключателя веток. */
   pinnedBranches: Record<string, string[]>
   /** Последний активный проект (ключ projectKey) — восстанавливается при старте. */
@@ -144,6 +146,19 @@ export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'se
 export interface SavedSessionTab {
   project: ProjectEntry
   sessionFile: string
+}
+
+/** Активная петля для восстановления после детач-аттача сессии и рестарта приложения
+ *  (пишет только main): настройки серии итераций, привязанные к файлу сессии. */
+export interface PersistedLoop {
+  /** Файл сессии текущей итерации; null — ещё не известен (хендшейк не дошёл), восстановлению не подлежит. */
+  sessionFile: string | null
+  project: ProjectEntry
+  prompt: string
+  exitCondition: string
+  remaining: number
+  iteration: number
+  baseName: string
 }
 
 /** Тогглы сессии, переживают закрытие: telegram-уведомления и шаринг на телефон. */

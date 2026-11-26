@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects, mergeOpenSessionTabs, mergeTerminalTabs } from '../src/main/settings/settings'
+import { SettingsService, DEFAULT_SETTINGS, mergeExpandedProjects, mergeLoops, mergeOpenSessionTabs, mergeTerminalTabs } from '../src/main/settings/settings'
 
 async function tempSettings(initial: unknown): Promise<SettingsService> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-settings-'))
@@ -126,5 +126,39 @@ describe('SettingsService (projects + РјРёРіСЂР°С†РёСЏ)', () =>
     expect(service.get().openSessionTabs).toEqual([good, ssh])
     expect(mergeOpenSessionTabs(null)).toEqual([])
     expect(mergeOpenSessionTabs('x')).toEqual([])
+  })
+
+  it('loops are kept from file and sanitized by mergeLoops', async () => {
+    const good = {
+      sessionFile: 'C:\\x\\.pi\\a.jsonl',
+      project: { kind: 'native', dir: 'C:\\x' },
+      prompt: 'do the task',
+      exitCondition: 'stop when done',
+      remaining: 4,
+      iteration: 2,
+      baseName: 'base'
+    }
+    const service = await tempSettings({
+      loops: [
+        good,
+        { ...good, sessionFile: null },
+        { ...good, prompt: '' },
+        { ...good, baseName: '  ' },
+        { ...good, remaining: 12.5 },
+        { ...good, iteration: 0 },
+        { ...good, project: { kind: 'nope', dir: 'C:\\y' } },
+        { ...good, project: { kind: 'native' } },
+        'junk',
+        null
+      ]
+    })
+    expect(service.get().loops).toEqual([
+      good,
+      { ...good, sessionFile: null },
+      { ...good, remaining: 0 },
+      { ...good, iteration: 1 }
+    ])
+    expect(mergeLoops(null)).toEqual([])
+    expect(mergeLoops('x')).toEqual([])
   })
 })

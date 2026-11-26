@@ -3,7 +3,7 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type SessionToggles, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { TERMINAL_PROFILE_IDS, type NotificationSettings, type PersistedLoop, type ProjectEntry, type SessionToggles, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -47,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   projectTabs: {},
   openSessionTabs: [],
   sessionToggles: {},
+  loops: [],
   pinnedBranches: {},
   dismissedUpdateVersion: null,
   lastProjectKey: null,
@@ -173,6 +174,43 @@ export function mergeSessionToggles(value: unknown): Record<string, SessionToggl
   return out
 }
 
+/** Лимит активных петель в настройках (санитайзер). */
+export const LOOPS_MAX = 50
+
+/** loops из файла/settings:set: валидный проект, непустые prompt/baseName, целые remaining/iteration. */
+export function mergeLoops(value: unknown): PersistedLoop[] {
+  const out: PersistedLoop[] = []
+  if (!Array.isArray(value)) return out
+  for (const item of value) {
+    if (out.length >= LOOPS_MAX) break
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const project = raw['project']
+    if (project === null || typeof project !== 'object' || Array.isArray(project)) continue
+    const p = project as Record<string, unknown>
+    const kind = p['kind']
+    const dir = p['dir']
+    if (typeof kind !== 'string' || typeof dir !== 'string' || dir.length === 0) continue
+    if (!PROJECT_KINDS.includes(kind as (typeof PROJECT_KINDS)[number])) continue
+    const entry: PersistedLoop = {
+      sessionFile: typeof raw['sessionFile'] === 'string' && raw['sessionFile'].length > 0 ? raw['sessionFile'] : null,
+      project: { kind: kind as ProjectEntry['kind'], dir },
+      prompt: typeof raw['prompt'] === 'string' ? raw['prompt'] : '',
+      exitCondition: typeof raw['exitCondition'] === 'string' ? raw['exitCondition'] : '',
+      remaining: typeof raw['remaining'] === 'number' && Number.isInteger(raw['remaining']) ? Math.min(999, Math.max(0, raw['remaining'])) : 0,
+      iteration: typeof raw['iteration'] === 'number' && Number.isInteger(raw['iteration']) && raw['iteration'] >= 1 ? raw['iteration'] : 1,
+      baseName: typeof raw['baseName'] === 'string' && raw['baseName'].trim().length > 0 ? raw['baseName'] : ''
+    }
+    if (typeof p['name'] === 'string' && p['name'].length > 0) entry.project = { ...entry.project, name: p['name'] }
+    if (kind === 'ssh' && typeof p['serverId'] === 'string' && p['serverId'].length > 0) {
+      entry.project = { ...entry.project, serverId: p['serverId'] }
+    }
+    if (entry.prompt.length === 0 || entry.baseName.length === 0) continue
+    out.push(entry)
+  }
+  return out
+}
+
 /** Лимит SSH-серверов в настройках. */
 export const SSH_SERVERS_MAX = 20
 
@@ -291,6 +329,7 @@ export class SettingsService {
       merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
       merged.openSessionTabs = mergeOpenSessionTabs((raw as Partial<Settings>)['openSessionTabs'])
       merged.sessionToggles = mergeSessionToggles((raw as Partial<Settings>)['sessionToggles'])
+      merged.loops = mergeLoops((raw as Partial<Settings>)['loops'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
       merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null

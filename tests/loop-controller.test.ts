@@ -1,7 +1,7 @@
 ﻿import { describe, expect, it } from 'vitest'
 import { LoopController } from '../src/main/pi/loop-controller'
 import type { LoopInfo, UiEvent } from '../src/shared/agent-events'
-import type { PiEventMessage, ProjectEntry } from '../src/shared/ipc-contracts'
+import type { PersistedLoop, PiEventMessage, PiStatus, ProjectEntry } from '../src/shared/ipc-contracts'
 import type { PiHost } from '../src/main/pi/pi-host'
 import type { SessionHost } from '../src/main/pi/session-host'
 
@@ -14,7 +14,12 @@ interface CreatedSession {
 }
 
 /** Р¤РµР№РєРѕРІС‹Р№ PiHost: create() РІС‹РґР°С‘С‚ СЃРµСЃСЃРёРё host-2, host-3вЂ¦; host-1 СѓРјРµРµС‚ РїСЂРёРЅРёРјР°С‚СЊ check-РїСЂРѕРјРїС‚С‹. */
-function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle', projectOverride?: ProjectEntry): {
+function fakePiHost(
+  pendingDialogs: string[] = [],
+  statusState = 'idle',
+  projectOverride?: ProjectEntry,
+  sessionFile: string | null = null
+): {
   piHost: PiHost
   created: CreatedSession[]
   checks: string[]
@@ -36,6 +41,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle', project
           id: hostId,
           project: proj,
           displayTitle: 'base',
+          sessionFilePath: sessionFile,
           getPendingDialogs: () => pendingDialogs.map((id) => ({ id })),
           lastStatus: () => ({ state: status, model: 'anthropic/claude-opus-4', thinkingLevel: 'high' }),
           markCheckTurn: () => {},
@@ -51,6 +57,7 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle', project
           id: hostId,
           project: proj,
           displayTitle: 'base',
+          sessionFilePath: null,
           getPendingDialogs: () => [],
           lastStatus: () => null,
           markCheckTurn: () => {},
@@ -60,7 +67,19 @@ function fakePiHost(pendingDialogs: string[] = [], statusState = 'idle', project
           }
         }
       }
-      return { id: hostId, project: proj, displayTitle: 'base', getPendingDialogs: () => [], lastStatus: () => null }
+      return {
+        id: hostId,
+        project: proj,
+        displayTitle: 'base',
+        sessionFilePath: null,
+        getPendingDialogs: () => [],
+        lastStatus: () => null,
+        markCheckTurn: () => {},
+        prompt: (text: string) => {
+          checks.push(text)
+          return Promise.resolve({ ok: true, error: null })
+        }
+      }
     },
     create: (_project: unknown, _sessionFile: unknown, overrides?: { model: string | null; thinkingLevel: string | null }) => {
       createProjects.push(_project)
@@ -652,5 +671,180 @@ describe('LoopController worktree sessions (branch sync + prompt notice)', () =>
     await flush()
     expect(created).toHaveLength(0)
     expect(loopState(controller, 'host-1')).toMatchObject({ active: false, reason: 'user' })
+  })
+
+  const LOOP_FILE = 'C:\\proj\\.pi\\s.json'
+
+  const st = (hostId: string, state: string): PiStatus => ({ hostId, state } as unknown as PiStatus)
+
+  it('detach keeps the active loop; reattach restores it under the new host id', () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { events, emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    expect(loopState(controller, 'host-1')).toBeNull()
+    controller.reattach(LOOP_FILE, 'host-9')
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true, remaining: 5 })
+    const states = (events.get('host-9') ?? []).filter((e) => e.type === 'loop_state')
+    expect(states).toHaveLength(1)
+    expect((states[0] as { previousHostId: string | null }).previousHostId).toBe('host-1')
+  })
+
+  it('reattach onto a streaming session tracks the turn and resolves it on turn_end', async () => {
+    const { piHost, checks } = fakePiHost([], 'streaming', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.reattach(LOOP_FILE, 'host-9')
+    controller.onStatus(st('host-9', 'streaming'))
+    controller.onEvent(ev('host-9', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(checks[0]).toContain(EXIT)
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true })
+  })
+
+  it('reattach onto a ready session continues the cycle with a check prompt', async () => {
+    const { piHost, checks } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.reattach(LOOP_FILE, 'host-9')
+    controller.onStatus(st('host-9', 'ready'))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(checks[0]).toContain(EXIT)
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true, reason: null })
+  })
+
+  it('reattach with empty exit condition onto a ready session spawns the next iteration', async () => {
+    const { piHost, created } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'do the task', 5, '')
+    controller.detach('host-1')
+    controller.reattach(LOOP_FILE, 'host-9')
+    controller.onStatus(st('host-9', 'ready'))
+    await flush()
+    expect(created).toHaveLength(1)
+    expect(created[0].prompts).toEqual(['do the task'])
+    expect(created[0].renames).toEqual(['base (2)'])
+    expect(loopState(controller, 'host-2')).toMatchObject({ active: true, remaining: 4 })
+  })
+
+  it('reattach restores from persisted settings when nothing is in memory (app restart)', async () => {
+    const { piHost, checks, created } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const saved: PersistedLoop = {
+      sessionFile: LOOP_FILE,
+      project,
+      prompt: 'do the task',
+      exitCondition: EXIT,
+      remaining: 4,
+      iteration: 2,
+      baseName: 'base'
+    }
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, undefined, undefined, () => [saved])
+    controller.reattach(LOOP_FILE, 'host-9')
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true, remaining: 4 })
+    controller.onStatus(st('host-9', 'ready'))
+    await flush()
+    expect(checks).toHaveLength(1)
+    for (const m of turnWithoutTool('host-9')) controller.onEvent(m)
+    await flush()
+    expect(created).toHaveLength(1)
+    expect(created[0].renames).toEqual(['base (3)'])
+    expect(loopState(controller, created[0].id)).toMatchObject({ active: true, remaining: 3 })
+  })
+
+  it('reattach is skipped when a loop for the same session file is already running', () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const saved: PersistedLoop = {
+      sessionFile: LOOP_FILE,
+      project,
+      prompt: 'p',
+      exitCondition: EXIT,
+      remaining: 4,
+      iteration: 2,
+      baseName: 'base'
+    }
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, undefined, undefined, () => [saved])
+    controller.reattach(LOOP_FILE, 'host-9')
+    controller.reattach(LOOP_FILE, 'host-8')
+    expect(loopState(controller, 'host-8')).toBeNull()
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true })
+  })
+
+  it('detach without a session file drops the loop', () => {
+    const { piHost } = fakePiHost()
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.reattach('C:\\other\\s.json', 'host-9')
+    expect(loopState(controller, 'host-9')).toBeNull()
+  })
+
+  it('persist callback tracks the loop lifecycle across mutations', async () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const persisted: PersistedLoop[][] = []
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, undefined, (loops) => {
+      persisted.push(loops)
+    })
+    controller.start('host-1', 'p', 5, EXIT)
+    expect(persisted.at(-1)).toEqual([
+      { sessionFile: LOOP_FILE, project, prompt: 'p', exitCondition: EXIT, remaining: 5, iteration: 1, baseName: 'base' }
+    ])
+    controller.setRemaining('host-1', 3)
+    expect(persisted.at(-1)?.[0]?.remaining).toBe(3)
+    controller.detach('host-1')
+    expect(persisted.at(-1)).toHaveLength(1)
+    controller.reattach(LOOP_FILE, 'host-9')
+    for (const m of turnWithTool('host-9')) controller.onEvent(m)
+    await flush()
+    for (const m of turnWithoutTool('host-9')) controller.onEvent(m)
+    await flush()
+    expect(persisted.at(-1)).toEqual([])
+    controller.noteSessionFile('host-2', 'C:\\proj\\.pi\\s2.json')
+    expect(persisted.at(-1)).toEqual([
+      { sessionFile: 'C:\\proj\\.pi\\s2.json', project, prompt: 'p', exitCondition: EXIT, remaining: 2, iteration: 2, baseName: 'base' }
+    ])
+    controller.stop('host-2')
+    expect(persisted.at(-1)).toEqual([])
+  })
+
+  it('stopAll clears detached loops and persists empty', () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const persisted: PersistedLoop[][] = []
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, undefined, (loops) => {
+      persisted.push(loops)
+    })
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.stopAll()
+    controller.reattach(LOOP_FILE, 'host-9')
+    expect(loopState(controller, 'host-9')).toBeNull()
+    expect(persisted.at(-1)).toEqual([])
+  })
+
+  it('status error after reattach stops the loop with reason error', () => {
+    const { piHost } = fakePiHost([], 'idle', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const persisted: PersistedLoop[][] = []
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS, undefined, undefined, (loops) => {
+      persisted.push(loops)
+    })
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.reattach(LOOP_FILE, 'host-9')
+    controller.onStatus(st('host-9', 'error'))
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: false, reason: 'error' })
+    expect(persisted.at(-1)).toEqual([])
   })
 })

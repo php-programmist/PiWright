@@ -195,6 +195,7 @@ app.whenReady().then(async () => {
     }
   })
   const sendStatus = (status: PiStatus): void => {
+    loopController?.onStatus(status)
     scheduledService?.onStatus(status)
     mainWindow?.webContents.send(PI_STATUS_CHANNEL, {
       ...status,
@@ -220,8 +221,10 @@ app.whenReady().then(async () => {
     (tabs) => {
       settings.set({ openSessionTabs: tabs })
     },
-    // Тогглы сессии (telegram/shared) восстанавливаются по файлу при открытии существующей сессии.
+    // Тогглы сессии (telegram/shared) восстанавливаются по файлу при открытии существующей сессии;
+    // там же возвращается петля, отвязанная вместе с вкладкой (или пережавшая рестарт в настройках).
     (host, sessionFile) => {
+      if (settings.get().loopsEnabled) loopController?.reattach(sessionFile, host.id)
       const toggles = settings.get().sessionToggles[sessionFile]
       if (toggles === undefined) return
       if (toggles.telegram && !host.telegramEnabled) {
@@ -229,6 +232,10 @@ app.whenReady().then(async () => {
         bridge?.setTelegramEnabledByHost(host.id, true)
       }
       if (toggles.shared && !(bridge?.sharedFor(host.id) ?? false)) bridge?.setSharedByHost(host.id, true)
+    },
+    // Файл сессии итерации петли стал известен (хендшейк/форк) — обновить ключ персиста петли.
+    (host, sessionFile) => {
+      loopController?.noteSessionFile(host.id, sessionFile)
     }
   )
   const git = gitService
@@ -245,7 +252,9 @@ app.whenReady().then(async () => {
     if (bridge?.sharedFor(previousHostId) ?? false) bridge?.setSharedByHost(createdHostId, true)
     const createdStatus = piHost?.get(createdHostId)?.lastStatus()
     if (createdStatus !== null && createdStatus !== undefined) sendStatus(createdStatus)
-  }, undefined, undefined, (project) => git.worktreeMergeBase(project))
+  }, undefined, undefined, (project) => git.worktreeMergeBase(project), (loops) => {
+    settings.set({ loops })
+  }, () => settings.get().loops)
   scheduledService = new ScheduleService(
     join(app.getPath('userData'), 'scheduled-prompts.json'),
     piHost,

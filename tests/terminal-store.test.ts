@@ -34,6 +34,7 @@ const baseSettings: Settings = {
   projectTabs: {},
   openSessionTabs: [],
   sessionToggles: {},
+  loops: [],
   pinnedBranches: {},
   dismissedUpdateVersion: null,
   lastProjectKey: null,
