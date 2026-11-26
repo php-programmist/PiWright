@@ -8,8 +8,19 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+
+  build:
+    needs: create-release
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,10 +29,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run rebuild
+      - run: npm run dist:linux
+        if: matrix.os == 'ubuntu-latest'
       - run: npm run dist
+        if: matrix.os == 'windows-latest'
       - uses: softprops/action-gh-release@v2
         with:
+          fail_on_unmatched_files: false
           files: |
             release/*.exe
             release/*.blockmap
             release/latest.yml
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
