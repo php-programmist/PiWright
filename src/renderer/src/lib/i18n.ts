@@ -443,6 +443,7 @@ const RU: Record<string, string> = {
   'Distro': 'Дистрибутив',
   'Auto (first distro)': 'Авто (первый дистрибутив)',
   'Auto (command -v pi)': 'Авто (command -v pi)',
+ 'Auto (~/.local/bin/pi)': 'Авто (~/.local/bin/pi)',
 
   // Настройки — Appearance
   'Chat toolbar': 'Панель чата',

@@ -76,6 +76,10 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "build/sounds",
+        "to": "sounds"
       }
     ],
     "npmRebuild": false,

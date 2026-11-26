@@ -59,6 +59,9 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
       return { backend: null, error: err instanceof Error ? err.message : String(err) }
     }
   }
+  if (process.platform !== 'win32') {
+    return { backend: null, error: 'WSL backend is only available on Windows.' }
+  }
   const distros = await listWslDistros()
   const distro = settings.wslDistro.trim() || distros[0]
   if (!distro) {

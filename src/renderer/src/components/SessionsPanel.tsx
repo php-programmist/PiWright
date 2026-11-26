@@ -3,6 +3,7 @@ import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
+import { isWindows } from '../lib/platform'
 import { closeSessionAndSweepWorktree, stopSession } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
@@ -27,7 +28,7 @@ function dirName(dir: string): string {
 }
 
 function kindLabel(kind: BackendMode): string {
-  return kind === 'wsl' ? 'WSL' : kind === 'ssh' ? 'SSH' : 'Win'
+  return kind === 'wsl' ? 'WSL' : kind === 'ssh' ? 'SSH' : isWindows ? 'Win' : 'Local'
 }
 
 function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Element {
@@ -48,8 +49,8 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
 
   return (
     <span className="add-project">
-      <button disabled={busy} onClick={() => void pick('native')}>Win</button>
-      <button disabled={busy} onClick={() => void pick('wsl')}>WSL</button>
+      <button disabled={busy} onClick={() => void pick('native')}>{isWindows ? 'Win' : 'Local'}</button>
+      {isWindows && <button disabled={busy} onClick={() => void pick('wsl')}>WSL</button>}
       <button disabled={busy} onClick={() => setSshOpen(true)}>SSH</button>
       <button className="cancel" onClick={onDone}>×</button>
       {sshOpen && (

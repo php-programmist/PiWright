@@ -7,6 +7,7 @@ import { useSessionsStore } from '../stores/sessions'
 import { parentTabKey, useCenterProject, useTabsStore } from '../stores/tabs'
 import { splitWorktreeHostDir } from '../../../shared/worktree'
 import { useT } from '../lib/i18n'
+import { isWindows } from '../lib/platform'
 import { BranchSelect } from './BranchSelect'
 
 function dirName(dir: string): string {
@@ -80,7 +81,7 @@ export function AppHeader(): React.JSX.Element | null {
                   }}
                 >
                   <span className="hdr-item-name">{row.project.name ?? dirName(row.project.dir)}</span>
-                  <span className="kind-badge">{row.project.kind === 'wsl' ? 'WSL' : 'Win'}</span>
+                  <span className="kind-badge">{row.project.kind === 'wsl' ? 'WSL' : isWindows ? 'Win' : 'Local'}</span>
                 </button>
               )
             })}

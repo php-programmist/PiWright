@@ -9,14 +9,12 @@ import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { isValidStaticPin } from '../remote/auth'
+import { defaultSoundPaths } from '../sounds/defaults'
 
-/** Дефолтные звуки — системные wav Windows; пустая строка = выключено. */
+/** Дефолтные звуки: системные wav Windows или свои wav из ресурсов (см. sounds/defaults.ts);
+ *  пустая строка = выключено. */
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
-  sounds: {
-    completion: 'C:\\Windows\\Media\\Windows Notify System Generic.wav',
-    await: 'C:\\Windows\\Media\\Windows Notify.wav',
-    error: 'C:\\Windows\\Media\\Windows Exclamation.wav'
-  },
+  sounds: defaultSoundPaths(),
   telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
   remote: { enabled: false, port: 7690, staticPin: '' },
   backgroundGraceMinutes: 10

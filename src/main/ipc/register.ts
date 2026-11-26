@@ -159,7 +159,7 @@ import { fetchChangelog } from '../changelog'
 import { getUpdateStatus, downloadUpdate, dismissUpdate, emitDevUpdate } from '../updater'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
-import { resolveWithinRoot } from '../files/file-service'
+import { resolveWithinRootHost } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
 import type { KanbanThemeService } from '../kanban/kanban-theme-service'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
@@ -1157,7 +1157,7 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request' }
     }
     if (project.kind === 'ssh') return { ok: false, error: 'Not available for SSH projects' }
-    const abs = resolveWithinRoot(project.dir, path)
+    const abs = resolveWithinRootHost(project.dir, path)
     if (abs === null) return { ok: false, error: 'Path is outside the project' }
     let target = abs
     if (project.kind === 'wsl' && stripWslUncPrefix(target) !== null) {

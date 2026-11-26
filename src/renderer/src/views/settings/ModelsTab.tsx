@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { cloneModel, cloneProvider, parseModelsDoc, serializeModelsDoc } from '../../../../shared/models-doc'
 import type { ModelEdit, ParsedModelsDoc, ProviderEdit } from '../../../../shared/models-doc'
 import { useT } from '../../lib/i18n'
+import { isWindows } from '../../lib/platform'
 import { useSessionsStore } from '../../stores/sessions'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import type { BackendMode } from '../../../../shared/ipc-contracts'
@@ -20,7 +21,7 @@ interface BackendRef {
 }
 
 function backendLabel(backend: BackendMode): string {
-  return backend === 'native' ? 'Windows' : backend === 'ssh' ? 'SSH' : 'WSL'
+  return backend === 'native' ? (isWindows ? 'Windows' : 'Linux') : backend === 'ssh' ? 'SSH' : 'WSL'
 }
 
 function emptyProvider(): ProviderEdit {
@@ -344,8 +345,8 @@ export function ModelsTab(): React.JSX.Element {
   const loading = loadedFor !== backend || (backend === 'ssh' && sshServerId.length === 0 && sshServers.length > 0)
 
   const copyTargets: BackendRef[] = [
-    ...(backend !== 'native' ? [{ backend: 'native' as const, label: 'Windows' }] : []),
-    ...(backend !== 'wsl' ? [{ backend: 'wsl' as const, label: 'WSL' }] : []),
+    ...(backend !== 'native' ? [{ backend: 'native' as const, label: isWindows ? 'Windows' : 'Linux' }] : []),
+    ...(isWindows && backend !== 'wsl' ? [{ backend: 'wsl' as const, label: 'WSL' }] : []),
     ...sshServers
       .filter((s) => !(backend === 'ssh' && s.id === sshServerId))
       .map((s) => ({ backend: 'ssh' as const, serverId: s.id, label: `SSH: ${s.name}` }))
@@ -547,11 +548,13 @@ export function ModelsTab(): React.JSX.Element {
       <div className="models-head">
         <div className="backend-tabs">
           <button className={backend === 'native' ? 'current' : ''} onClick={() => setBackend('native')}>
-            Windows
+            {isWindows ? 'Windows' : 'Linux'}
           </button>
-          <button className={backend === 'wsl' ? 'current' : ''} onClick={() => setBackend('wsl')}>
-            WSL
-          </button>
+          {isWindows && (
+            <button className={backend === 'wsl' ? 'current' : ''} onClick={() => setBackend('wsl')}>
+              WSL
+            </button>
+          )}
           {sshServers.length > 0 && (
             <button className={backend === 'ssh' ? 'current' : ''} onClick={() => setBackend('ssh')}>
               SSH

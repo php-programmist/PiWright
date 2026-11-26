@@ -191,6 +191,7 @@ function subscribe<T>(channel: string, cb: (value: T) => void): () => void {
 }
 
 const api: PiWrightApi = {
+  platform: process.platform as PiWrightApi['platform'],
   getSettings: () => ipcRenderer.invoke(SETTINGS_GET_CHANNEL),
   setSettings: (patch: Partial<Settings>) => ipcRenderer.invoke(SETTINGS_SET_CHANNEL, patch),
   revealSettings: () => ipcRenderer.invoke(SETTINGS_REVEAL_CHANNEL),

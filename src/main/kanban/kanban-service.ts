@@ -234,7 +234,9 @@ export class KanbanService {
       if (result.code === 0 && out.length > 0) {
         root =
           project.kind === 'native'
-            ? win32.dirname(win32.resolve(project.dir, out))
+            ? process.platform === 'win32'
+              ? win32.dirname(win32.resolve(project.dir, out))
+              : posix.dirname(posix.resolve(project.dir, out))
             : project.kind === 'ssh'
               ? this.sshRootFromCommonDir(project.dir, out)
               : await this.wslRootFromCommonDir(project, out)

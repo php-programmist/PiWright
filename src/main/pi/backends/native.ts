@@ -1,8 +1,8 @@
-/** Нативный (Windows/хост) бэкенд: резолв pi и спавн через cmd.exe. Порт `exec/LocalBackend.kt`
- *  с поправкой на спайк: на Windows .cmd нельзя спавнить напрямую, только через cmd.exe. */
+/** Нативный (хост) бэкенд: резолв pi и спавн. Порт `exec/LocalBackend.kt` с поправкой на спайк:
+ *  на Windows .cmd нельзя спавнить напрямую — только через cmd.exe; на POSIX — прямой спавн. */
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join, posix } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
 import type { PiSpawnRequest, PiSpawnSpec } from './types'
 import { quoteWindowsArg } from './shell'
@@ -33,20 +33,35 @@ export function windowsPiCandidates(home: string): string[] {
   return [join(h, '.pi', 'agent', 'bin', 'pi.cmd')]
 }
 
-export function pathDirsFromEnv(pathEnv: string | undefined): string[] {
+/** Известные места установки pi на POSIX (npm -g, инсталлятор-скрипт). */
+export function posixPiCandidates(home: string): string[] {
+  const h = home.replace(/[\\/]+$/, '')
+  return [`${h}/.local/bin/pi`, posix.join(h, '.pi', 'agent', 'bin', 'pi')]
+}
+
+export function pathDirsFromEnv(pathEnv: string | undefined, sep: string = delimiter): string[] {
   return (pathEnv ?? '')
-    .split(';')
+    .split(sep)
     .map((d) => d.trim().replace(/[\\/]+$/, ''))
     .filter((d) => d.length > 0)
 }
 
-/** Резолв pi на хосте: настройка → PATH (pi.cmd/pi.exe/pi) → известные кандидаты. */
+/** Резолв pi на хосте: настройка → PATH → известные кандидаты. Имена и кандидаты — по платформе. */
 export function resolveNativePi(settingsPath: string | null, home: string): string | null {
+  if (process.platform === 'win32') {
+    return resolveLocalPi(
+      settingsPath,
+      pathDirsFromEnv(process.env['PATH'] ?? process.env['Path'], ';'),
+      ['pi.cmd', 'pi.exe', 'pi'],
+      windowsPiCandidates(home),
+      (p) => existsSync(p)
+    )
+  }
   return resolveLocalPi(
     settingsPath,
-    pathDirsFromEnv(process.env['PATH'] ?? process.env['Path']),
-    ['pi.cmd', 'pi.exe', 'pi'],
-    windowsPiCandidates(home),
+    pathDirsFromEnv(process.env['PATH'], ':'),
+    ['pi'],
+    posixPiCandidates(home),
     (p) => existsSync(p)
   )
 }
@@ -56,7 +71,7 @@ export function resolveNativePi(settingsPath: string | null, home: string): stri
  *  На Windows ключ окружения лежит как 'Path' (process.env — proxy без регистра, копия через
  *  Object.entries регистр сохраняет): оставляем ровно один ключ 'PATH' — дубль другого регистра
  *  уводит поиск исполняемого в libuv на пустой PATH (spawn cmd.exe ENOENT). */
-export function buildNativeSpec(piPath: string, req: PiSpawnRequest): PiSpawnSpec {
+export function buildNativeSpec(piPath: string, req: PiSpawnRequest, pathSep: string = delimiter): PiSpawnSpec {
   const binDir = dirname(piPath)
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -69,7 +84,7 @@ export function buildNativeSpec(piPath: string, req: PiSpawnRequest): PiSpawnSpe
       delete env[key]
     }
   }
-  env['PATH'] = `${binDir};${originalPath}`
+  env['PATH'] = `${binDir}${pathSep}${originalPath}`
   return { mode: 'native', piPath, args: req.args, cwd: req.cwd, env }
 }
 

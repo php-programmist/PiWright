@@ -5,8 +5,7 @@ import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { promises as fs } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename as winBasename, dirname as winDirname, join as winJoin } from 'node:path'
-import { posix } from 'node:path'
+import { posix, win32 } from 'node:path'
 import type { SFTPWrapper } from 'ssh2'
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { getSshService } from '../ssh/ssh-service'
@@ -100,16 +99,23 @@ export interface ProjectFs {
 export class HostProjectFs implements ProjectFs {
   readonly backend = 'host' as const
 
+  /** Windows — win32-пути (в т.ч. UNC WSL); Linux/macOS — posix. Платформа не меняется в рантайме. */
+  private readonly path = process.platform === 'win32' ? win32 : posix
+
+  constructor(platform: NodeJS.Platform = process.platform) {
+    this.path = platform === 'win32' ? win32 : posix
+  }
+
   join(...parts: string[]): string {
-    return winJoin(...parts)
+    return this.path.join(...parts)
   }
 
   dirname(path: string): string {
-    return winDirname(path)
+    return this.path.dirname(path)
   }
 
   basename(path: string): string {
-    return winBasename(path)
+    return this.path.basename(path)
   }
 
   async readdir(path: string): Promise<FsEntry[]> {
@@ -153,7 +159,7 @@ export class HostProjectFs implements ProjectFs {
   async stat(path: string): Promise<FsEntry | null> {
     try {
       const st = await fs.stat(path)
-      return { name: winBasename(path), isDir: st.isDirectory(), size: st.size, mtimeMs: st.mtimeMs }
+      return { name: this.basename(path), isDir: st.isDirectory(), size: st.size, mtimeMs: st.mtimeMs }
     } catch {
       return null
     }

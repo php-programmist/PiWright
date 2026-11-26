@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron'
 import {
   APP_UPDATE_EVENT_CHANNEL,
   DAEMON_RESOLVE_SKEW_CHANNEL,
@@ -33,6 +33,7 @@ import { installAppMenu } from './menu'
 import { loadWindowState, saveWindowState } from './window-state'
 import { appendCrashLog, crashDialogPlan, isRecoverableCrash, readSandboxOverride, writeSandboxOverride } from './crash-recovery'
 import { TelegramTokenStore } from './notifications/token-store'
+import { createSecretCodec } from './secrets/secret-codec'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
@@ -169,10 +170,11 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
+  const secretCodec = createSecretCodec()
   initSshService(
     app.getPath('userData'),
-    (value) => safeStorage.encryptString(value),
-    (buffer) => safeStorage.decryptString(buffer)
+    (value) => secretCodec.encrypt(value),
+    (buffer) => secretCodec.decrypt(buffer)
   )
   const kanbanThemes = new KanbanThemeService(join(app.getPath('userData'), 'kanban-themes.json'))
   gitService = new GitService(() => settings.get())
@@ -182,8 +184,8 @@ app.whenReady().then(async () => {
   }, () => settings.get())
   const tokenStore = new TelegramTokenStore(
     app.getPath('userData'),
-    (value) => safeStorage.encryptString(value),
-    (buffer) => safeStorage.decryptString(buffer)
+    (value) => secretCodec.encrypt(value),
+    (buffer) => secretCodec.decrypt(buffer)
   )
   // Демон фоновых сессий: токен бота — для фоновых telegram-уведомлений (safeStorage — только main);
   // version-skew — диалог «остановить или продолжить» в renderer.

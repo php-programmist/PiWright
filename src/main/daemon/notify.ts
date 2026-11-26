@@ -15,21 +15,38 @@ export function readDaemonSettings(settingsPath: string): Settings | null {
   }
 }
 
-/** Проиграть wav; Windows — powershell SoundPlayer (процесс одноразовый, демона не блокирует).
- *  Вне Windows и для пустого пути — тишина. */
+/** Проиграть wav; Windows — powershell SoundPlayer, Linux — paplay с фолбэком aplay (процесс
+ *  одноразовый, демона не блокирует). Нет плеера/пустой путь — тишина. */
 export function playSoundFile(path: string): void {
-  if (process.platform !== 'win32' || path.trim().length === 0) return
-  const psq = `'${path.replace(/'/g, "''")}'`
+  if (path.trim().length === 0) return
   try {
-    const child = spawn(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', `(New-Object Media.SoundPlayer -ArgumentList ${psq}).PlaySync()`],
-      { stdio: 'ignore', windowsHide: true }
-    )
-    child.on('error', () => {})
-    child.unref()
+    if (process.platform === 'win32') {
+      const psq = `'${path.replace(/'/g, "''")}'`
+      const child = spawn(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', `(New-Object Media.SoundPlayer -ArgumentList ${psq}).PlaySync()`],
+        { stdio: 'ignore', windowsHide: true }
+      )
+      child.on('error', () => {})
+      child.unref()
+    } else if (process.platform === 'linux') {
+      spawnPlayer('paplay', path)
+    }
   } catch {
     // звук не критичен
+  }
+}
+
+/** paplay отсутствует (минимальный дистрибутив без PulseAudio) — фолбэк aplay (ALSA, wav). */
+function spawnPlayer(file: string, path: string, fallback?: string): void {
+  try {
+    const child = spawn(file, [path], { stdio: 'ignore' })
+    child.on('error', () => {
+      if (fallback !== undefined) spawnPlayer(fallback, path)
+    })
+    child.unref()
+  } catch {
+    if (fallback !== undefined) spawnPlayer(fallback, path)
   }
 }
 

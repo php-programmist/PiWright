@@ -69,7 +69,7 @@ export function resolveWithinRoot(root: string, relPath: string): string | null 
 }
 
 /** POSIX-вариант для ssh-проектов (пути сервера). */
-function resolveWithinRootPosix(root: string, relPath: string): string | null {
+export function resolveWithinRootPosix(root: string, relPath: string): string | null {
   if (posix.isAbsolute(relPath)) return null
   const normalizedRoot = posix.normalize(root)
   const abs = posix.join(normalizedRoot, ...relPath.split('/'))
@@ -78,8 +78,13 @@ function resolveWithinRootPosix(root: string, relPath: string): string | null {
   return abs
 }
 
+/** Хост-бэкенд: win32 на Windows (в т.ч. UNC WSL), posix на Linux/macOS. */
+export function resolveWithinRootHost(root: string, relPath: string, platform: NodeJS.Platform = process.platform): string | null {
+  return platform === 'win32' ? resolveWithinRoot(root, relPath) : resolveWithinRootPosix(root, relPath)
+}
+
 function resolveRootPath(pfs: ProjectFs, root: string, relPath: string): string | null {
-  return pfs.backend === 'host' ? resolveWithinRoot(root, relPath) : resolveWithinRootPosix(root, relPath)
+  return pfs.backend === 'host' ? resolveWithinRootHost(root, relPath) : resolveWithinRootPosix(root, relPath)
 }
 
 function sameSet(a: Set<string>, b: Set<string>): boolean {
@@ -123,7 +128,7 @@ export class FileService {
   /** Плоский обход проекта для «поиска везде»: файлы, скрытые и тяжёлые каталоги пропускаются. */
   async searchFiles(project: ProjectEntry): Promise<FilesSearchResult> {
     const pfs = this.pfs(project)
-    const root = pfs.backend === 'host' ? win32.normalize(project.dir) : posix.normalize(project.dir)
+    const root = pfs.backend === 'host' ? (process.platform === 'win32' ? win32.normalize(project.dir) : posix.normalize(project.dir)) : posix.normalize(project.dir)
     const files: string[] = []
     const walk = async (rel: string): Promise<void> => {
       if (files.length >= MAX_SEARCH_FILES) return
@@ -259,7 +264,7 @@ export class FileService {
     void this.watchers.get(key)?.close().catch(() => {})
     this.watchers.delete(key)
     const hostPaths = [...next]
-      .map((p) => resolveWithinRoot(project.dir, p))
+      .map((p) => resolveWithinRootHost(project.dir, p))
       .filter((p): p is string => p !== null)
     if (hostPaths.length === 0) return
     const watcher = chokidar.watch(hostPaths, {
@@ -267,7 +272,10 @@ export class FileService {
       ...(project.kind === 'wsl' ? { usePolling: true, interval: WSL_POLL_INTERVAL_MS } : {})
     })
     watcher.on('all', (_event, hostPath) => {
-      const rel = win32.relative(win32.normalize(project.dir), hostPath).replace(/\\/g, '/')
+      const rel =
+        process.platform === 'win32'
+          ? win32.relative(win32.normalize(project.dir), hostPath).replace(/\\/g, '/')
+          : posix.relative(posix.normalize(project.dir), hostPath)
       if (this.openPaths.get(key)?.has(rel) === true) this.events.onChanged(project, rel)
     })
     this.watchers.set(key, watcher)

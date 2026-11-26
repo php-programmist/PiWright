@@ -628,9 +628,18 @@ export interface PendingDialog {
   dialog: ExtensionDialog
 }
 
-export type TerminalProfileId = 'powershell' | 'cmd' | 'gitbash' | 'wsl' | 'ssh'
+export type TerminalProfileId = 'powershell' | 'cmd' | 'gitbash' | 'wsl' | 'ssh' | 'bash' | 'zsh' | 'fish'
 
-export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = ['powershell', 'cmd', 'gitbash', 'wsl', 'ssh']
+export const TERMINAL_PROFILE_IDS: readonly TerminalProfileId[] = [
+  'powershell',
+  'cmd',
+  'gitbash',
+  'wsl',
+  'ssh',
+  'bash',
+  'zsh',
+  'fish'
+]
 
 export interface TerminalProfile {
   id: TerminalProfileId
@@ -905,6 +914,8 @@ export interface UpdateStatus {
 }
 
 export interface PiWrightApi {
+  /** process.platform main-процесса: renderer платформо-слепой, UI-ветки (WSL и пр.) — отсюда. */
+  readonly platform: 'win32' | 'darwin' | 'linux'
   getSettings(): Promise<Settings>
   setSettings(patch: Partial<Settings>): Promise<Settings>
   revealSettings(): Promise<{ ok: boolean; error: string | null }>

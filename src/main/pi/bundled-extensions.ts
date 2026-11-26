@@ -2,7 +2,7 @@
  *  по маркеру версии. Каталоги лежат вне `~/.pi/agent/extensions` — расширения грузятся только
  *  из сессий PiWright (через `pi -e`), а не из любой сессии pi в терминале. SSH-проекты —
  *  выкладка через SFTP (ProjectFs). */
-import { join as winJoin } from 'node:path'
+import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { listWslDistros, resolveWslHome } from './backends/wsl'
@@ -20,14 +20,14 @@ export async function piwrightExtensionTarget(
   name: string
 ): Promise<ExtensionTarget | null> {
   if (project.kind === 'native') {
-    return { pfs: hostProjectFs, dir: winJoin(homedir(), '.pi', 'agent', 'piwright', name) }
+    return { pfs: hostProjectFs, dir: join(homedir(), '.pi', 'agent', 'piwright', name) }
   }
   if (project.kind === 'wsl') {
     const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
     if (distro === undefined) return null
     const home = await resolveWslHome(distro)
     if (home === null) return null
-    return { pfs: hostProjectFs, dir: winJoin(`\\\\wsl.localhost\\${distro}`, home, '.pi', 'agent', 'piwright', name) }
+    return { pfs: hostProjectFs, dir: join(`\\\\wsl.localhost\\${distro}`, home, '.pi', 'agent', 'piwright', name) }
   }
   const home = await resolveBackendHome(project, settings)
   if (home === null) return null

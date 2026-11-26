@@ -5,6 +5,7 @@ import { KanbanThemeSection } from './KanbanThemeSection'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
 import { previewSound } from '../../lib/sounds'
+import { isWindows } from '../../lib/platform'
 import type { TFunc } from '../../lib/i18n'
 import type { NotificationSounds, Settings, Theme, UiLanguage } from '../../../../shared/ipc-contracts'
 
@@ -132,12 +133,12 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 </label>
               </section>
               <section className="settings-section">
-                <h3>Windows</h3>
+                <h3>{isWindows ? 'Windows' : 'Linux'}</h3>
                 <label>
                   {t('Pi path')}
                   <input
                     value={draft.piPathNative}
-                    placeholder="Авто (%USERPROFILE%\.pi\agent\bin\pi.cmd)"
+                    placeholder={isWindows ? 'Авто (%USERPROFILE%\.pi\agent\bin\pi.cmd)' : t('Auto (~/.local/bin/pi)')}
                     onChange={(e) => update({ piPathNative: e.target.value })}
                   />
                 </label>
@@ -179,25 +180,27 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
                 {draft.notifications.remote.enabled && <RemoteStaticPinField draft={draft} update={update} />}
                 <RemoteStatus draft={draft} />
               </section>
-              <section className="settings-section">
-                <h3>WSL</h3>
-                <label>
-                  {t('Distro')}
-                  <input
-                    value={draft.wslDistro}
-                    placeholder={t('Auto (first distro)')}
-                    onChange={(e) => update({ wslDistro: e.target.value })}
-                  />
-                </label>
-                <label>
-                  {t('Pi path')}
-                  <input
-                    value={draft.piPathWsl}
-                    placeholder={t('Auto (command -v pi)')}
-                    onChange={(e) => update({ piPathWsl: e.target.value })}
-                  />
-                </label>
-              </section>
+              {isWindows && (
+                <section className="settings-section">
+                  <h3>WSL</h3>
+                  <label>
+                    {t('Distro')}
+                    <input
+                      value={draft.wslDistro}
+                      placeholder={t('Auto (first distro)')}
+                      onChange={(e) => update({ wslDistro: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    {t('Pi path')}
+                    <input
+                      value={draft.piPathWsl}
+                      placeholder={t('Auto (command -v pi)')}
+                      onChange={(e) => update({ piPathWsl: e.target.value })}
+                    />
+                  </label>
+                </section>
+              )}
             </>
           )}
           {tab === 'appearance' && (

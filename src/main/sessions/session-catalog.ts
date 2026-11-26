@@ -170,7 +170,7 @@ export async function listProjectHistory(project: ProjectEntry, settings: Settin
 
 /** Нормализованный путь файла сессии внутри корня и в каталогах проекта/его worktrees; иначе null. */
 function validatedSessionPath(pfs: ProjectFs, root: string, projectCwd: string, filePath: string): string | null {
-  const isWin = pfs.backend === 'host'
+  const isWin = pfs.backend === 'host' && process.platform === 'win32'
   const normalize = isWin ? win32.normalize : posix.normalize
   const relative = isWin ? win32.relative : posix.relative
   const isAbsolute = isWin ? win32.isAbsolute : posix.isAbsolute

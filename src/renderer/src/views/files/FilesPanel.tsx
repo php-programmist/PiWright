@@ -8,6 +8,7 @@ import { useTabsStore, useCenterProject } from '../../stores/tabs'
 import { persistPanel } from '../../stores/panels-prefs'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { useT } from '../../lib/i18n'
+import { isWindows } from '../../lib/platform'
 import { injectIntoPrompt } from '../../lib/prompt-inject'
 import { fileStatusClass } from '../../lib/git-file-class'
 import type { GitStatus, ProjectEntry } from '../../../../shared/ipc-contracts'
@@ -27,9 +28,10 @@ interface DialogState {
   value: string
 }
 
-/** dir проекта — хост-путь Windows (native `D:\…`, wsl UNC) → абсолютный путь файла. */
+/** dir проекта — хост-путь (native `D:\…` на Windows, posix на Linux, wsl UNC) → абсолютный путь. */
 function absolutePath(dir: string, rel: string): string {
-  return `${dir.replace(/[\\/]+$/, '')}\\${rel.replace(/\//g, '\\')}`
+  const sep = isWindows ? '\\' : '/'
+  return `${dir.replace(/[\\/]+$/, '')}${sep}${rel.replace(/\//g, sep)}`
 }
 
 async function copyText(text: string): Promise<void> {
