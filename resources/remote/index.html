@@ -14,7 +14,11 @@
     <div id="tabs" class="tabs" role="tablist" aria-label="Sessions" data-i18n-aria="Sessions"></div>
     <div class="side">
       <span id="dot" class="dot" title="PC link" data-i18n-title="PC link"></span>
-      <button id="newSession" class="ghost" title="New session" data-i18n-title="New session">+</button>
+      <button id="menuButton" class="ghost" title="Menu" data-i18n-title="Menu">⋮</button>
+      <div id="mainMenu" class="menu-popup" hidden>
+        <button id="menuNewSession" class="menu-item" data-i18n="New session">New session</button>
+        <button id="menuKanban" class="menu-item" data-i18n="Kanban">Kanban</button>
+      </div>
     </div>
   </div>
   <div class="row sub">
@@ -25,6 +29,8 @@
 </header>
 
 <main id="stream" aria-live="polite"></main>
+
+<main id="kanbanMain" hidden></main>
 
 <button id="readExit" class="read-exit" hidden title="Exit read mode" data-i18n-title="Exit read mode"></button>
 

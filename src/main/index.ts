@@ -257,7 +257,7 @@ app.whenReady().then(async () => {
   )
   const staticPin = settings.get().notifications.remote.staticPin
   const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
-  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController)
+  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController, kanbanService)
   bridge.applySettings(settings.get())
   hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
   statsService = new TokenStatsService(join(app.getPath('userData'), 'token-stats.json'), () => settings.get())

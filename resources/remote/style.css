@@ -490,8 +490,6 @@ a { color: var(--accent); }
   main, #dialogs, footer, header { max-width: 780px; margin: 0 auto; width: 100%; }
 }
 
-#newSession { flex: none; font-size: 16px; line-height: 1; padding: 4px 10px; }
-
 #createOverlay {
   position: fixed;
   inset: 0;
@@ -560,10 +558,156 @@ a { color: var(--accent); }
   font: inherit;
   font-size: 15px;
 }
+.modal-card textarea {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
 .modal-body { display: flex; flex-direction: column; gap: 10px; }
 .modal-card .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .menu-item { width: 100%; text-align: left; }
 .menu-item.danger, .modal-card .actions .danger { color: var(--red); border-color: #4a2a2a; }
+
+/* Меню «⋮» в шапке: новая сессия / канбан. */
+.side { position: relative; }
+#menuButton { flex: none; font-size: 18px; line-height: 1; padding: 4px 10px; }
+.menu-popup {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 25;
+  min-width: 170px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+.menu-popup[hidden] { display: none; }
+.menu-popup .menu-item { border: 0; background: transparent; padding: 9px 10px; }
+
+/* Канбан: скрытие чата при локальной вкладке + дерево доски/карточка. */
+main[hidden], #dialogs[hidden], footer[hidden] { display: none !important; }
+.tab .tab-icon { color: var(--muted); font-size: 12px; flex: none; }
+.kb-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.kb-board-name { font-size: 16px; font-weight: 650; }
+.kb-board-project { color: var(--muted); font-size: 12px; }
+.kb-card-big { font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+.kb-project { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+.kb-count {
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 0 7px;
+  flex: none;
+}
+.kb-columns { display: flex; flex-direction: column; gap: 8px; }
+.kb-col { border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); overflow: hidden; }
+.kb-col-head { display: flex; align-items: center; gap: 6px; padding: 7px 9px; background: var(--panel); }
+.kb-caret { border: 0; background: transparent; color: var(--muted); padding: 0 2px; font-size: 12px; }
+.kb-col-name {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.kb-col-btn { border: 0; background: transparent; color: var(--muted); padding: 2px 6px; font-size: 14px; flex: none; }
+.kb-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.kb-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-badges { color: var(--muted); font-size: 12px; flex: none; }
+.kb-col-row { display: flex; gap: 8px; align-items: center; }
+.kb-col-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px;
+  font: inherit;
+}
+.kb-run { flex: none; }
+.kb-desc, .kb-comments, .kb-edit { border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); padding: 10px; }
+.kb-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.kb-desc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.kb-desc-text { font-size: 14px; overflow-wrap: anywhere; }
+.kb-desc-text p { margin: 0 0 8px; }
+.kb-desc-text p:last-child { margin-bottom: 0; }
+.kb-edit input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.kb-edit textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.kb-edit .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.kb-comment { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.kb-comment:first-of-type { border-top: 0; padding-top: 0; margin-top: 4px; }
+.kb-comment-meta { color: var(--muted); font-size: 11.5px; margin-bottom: 2px; }
+.kb-comment-text { font-size: 13.5px; overflow-wrap: anywhere; }
+.kb-comment-text p { margin: 0 0 6px; }
+.kb-comment-text p:last-child { margin-bottom: 0; }
+.kb-add-comment { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
+.kb-add-comment textarea {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+}
+.kb-add-comment button { flex: none; }
 
 /* Режим чтения: вся высота под ленту, хром скрыт, выход — плавающая кнопка. */
 body.read-mode header,

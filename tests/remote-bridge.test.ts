@@ -5,6 +5,7 @@ import type { SessionHost } from '../src/main/pi/session-host'
 import type { PiHost } from '../src/main/pi/pi-host'
 import type { LoopController } from '../src/main/pi/loop-controller'
 import type { PiResponse, PiModelInfo } from '../src/shared/protocol-types'
+import type { KanbanBoard } from '../src/shared/kanban'
 import type { ProjectEntry, Settings } from '../src/shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { RemoteSocket } from '../src/main/remote/ws'
@@ -58,7 +59,8 @@ function fakeHost(
     },
     setThinkingLevel() {
       return Promise.resolve({ ok: true, error: null })
-    }
+    },
+    prompt: vi.fn(() => Promise.resolve({ ok: true, error: null }))
   }
   return host as unknown as SessionHost
 }
@@ -91,15 +93,69 @@ function fakeLoops(): LoopController {
   } as unknown as LoopController
 }
 
+const kanbanBoard: KanbanBoard = {
+  version: 1,
+  id: 'b-12345678',
+  name: 'Default',
+  rev: 3,
+  workflow: '',
+  columns: [
+    { id: 'col-aaaaaaaa', name: 'Todo' },
+    { id: 'col-bbbbbbbb', name: 'In Progress' }
+  ],
+  cards: [
+    {
+      id: 'c-11111111',
+      title: 'fix auth',
+      description: 'do it',
+      columnId: 'col-aaaaaaaa',
+      order: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      images: [],
+      comments: []
+    },
+    {
+      id: 'c-22222222',
+      title: 'second',
+      description: '',
+      columnId: 'col-aaaaaaaa',
+      order: 2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      images: [],
+      comments: []
+    }
+  ]
+}
+
+function fakeKanban(board: KanbanBoard | null = kanbanBoard) {
+  return {
+    listBoards: vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        error: null,
+        boards: [{ id: board?.id ?? 'b-12345678', name: board?.name ?? 'Default', rev: 1, columns: 2, cards: board?.cards.length ?? 0 }]
+      })
+    ),
+    getBoard: vi.fn(() => Promise.resolve({ ok: board !== null, error: board === null ? 'Board not found' : null, board })),
+    cardCreate: vi.fn(() => Promise.resolve({ ok: true, error: null, board })),
+    cardUpdate: vi.fn(() => Promise.resolve({ ok: true, error: null, board })),
+    cardMove: vi.fn(() => Promise.resolve({ ok: true, error: null, board })),
+    cardComment: vi.fn(() => Promise.resolve({ ok: true, error: null, board }))
+  }
+}
+
 function bridgeWith(
   hosts: SessionHost[],
   loops?: LoopController,
   settings?: Partial<Settings>,
-  catalog: { models: PiModelInfo[]; thinkingLevels: string[] } | null = null
+  catalog: { models: PiModelInfo[]; thinkingLevels: string[] } | null = null,
+  kanban?: ReturnType<typeof fakeKanban>
 ): { bridge: RemoteBridge; auth: RemoteAuth } {
   const auth = new RemoteAuth('123456')
   const getSettings = (): Settings => ({ ...DEFAULT_SETTINGS, ...settings })
-  return { bridge: new RemoteBridge(getSettings, fakePiHost(hosts, catalog), auth, null, loops), auth }
+  return { bridge: new RemoteBridge(getSettings, fakePiHost(hosts, catalog), auth, null, loops, kanban), auth }
 }
 
 /** Мост с расшаренной первой сессией (шаринг теперь явный — глобус в шапке чата). */
@@ -556,6 +612,157 @@ describe('RemoteBridge', () => {
     socket.lines.length = 0
     bridge.loopState('host-1', { active: false, remaining: 0, reason: 'exit' })
     expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'loop_state', info: { active: false, reason: 'exit' } })
+  })
+
+  it('kanban_boards: доски всех открытых проектов с именем проекта и флагом петель', async () => {
+    const kanban = fakeKanban()
+    const { bridge } = bridgeWith([fakeHost()], undefined, { loopsEnabled: true }, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_boards', id: 'p1' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(kanban.listBoards).toHaveBeenCalledTimes(1)
+    const frame = JSON.parse(socket.lines[0]) as { type: string; id: string; loopsEnabled: boolean; boards: { project: string; boardId: string; name: string; cards: number }[] }
+    expect(frame).toMatchObject({ type: 'kanban_boards', id: 'p1', loopsEnabled: true })
+    expect(frame.boards).toEqual([{ project: 'api', boardId: 'b-12345678', name: 'Default', columns: 2, cards: 2 }])
+  })
+
+  it('kanban_board: полная доска; неизвестный проект — success:false с ошибкой', async () => {
+    const kanban = fakeKanban()
+    const { bridge } = bridgeWith([fakeHost()], undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_board', id: 'p2', project: 'api', boardId: 'b-12345678' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const frame = JSON.parse(socket.lines[0]) as { type: string; id: string; success: boolean; board: KanbanBoard | null }
+    expect(frame).toMatchObject({ type: 'kanban_board', id: 'p2', success: true })
+    expect(frame.board?.columns).toHaveLength(2)
+
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_board', id: 'p3', project: 'nope', boardId: 'b-12345678' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const miss = JSON.parse(socket.lines[1]) as { type: string; success: boolean; error: string }
+    expect(miss).toMatchObject({ type: 'kanban_board', id: 'p3', success: false })
+    expect(miss.error).toContain('unavailable')
+  })
+
+  it('kanban_card_create: мутация возвращает обновлённую доску с тем же id', async () => {
+    const kanban = fakeKanban()
+    const { bridge } = bridgeWith([fakeHost()], undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](
+      socket,
+      JSON.stringify({ type: 'kanban_card_create', id: 'p4', project: 'api', boardId: 'b-12345678', columnId: 'col-aaaaaaaa', title: 'new task' })
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(kanban.cardCreate).toHaveBeenCalledWith(expect.objectContaining({ kind: 'native' }), 'b-12345678', {
+      title: 'new task',
+      description: undefined,
+      columnId: 'col-aaaaaaaa'
+    })
+    const frame = JSON.parse(socket.lines[0]) as { type: string; id: string; success: boolean; board: KanbanBoard | null }
+    expect(frame).toMatchObject({ type: 'kanban_board', id: 'p4', success: true })
+    expect(frame.board?.id).toBe('b-12345678')
+  })
+
+  it('kanban_card_move и kanban_card_comment доходят до сервиса', async () => {
+    const kanban = fakeKanban()
+    const { bridge } = bridgeWith([fakeHost()], undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_card_move', id: 'p5', project: 'api', boardId: 'b-12345678', cardId: 'c-11111111', columnId: 'col-bbbbbbbb' }))
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_card_comment', id: 'p6', project: 'api', boardId: 'b-12345678', cardId: 'c-11111111', text: 'hi' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(kanban.cardMove).toHaveBeenCalledWith(expect.objectContaining({ kind: 'native' }), 'b-12345678', { id: 'c-11111111', columnId: 'col-bbbbbbbb' })
+    expect(kanban.cardComment).toHaveBeenCalledWith(expect.objectContaining({ kind: 'native' }), 'b-12345678', { cardId: 'c-11111111', text: 'hi' })
+  })
+
+  it('kanban_run: новая сессия расшарена, промпт с задачей уходит сразу', async () => {
+    const kanban = fakeKanban()
+    const hosts: SessionHost[] = [fakeHost()]
+    const { bridge } = bridgeWith(hosts, undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_run', id: 'p7', project: 'api', boardId: 'b-12345678', cardId: 'c-11111111' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const created = socket.lines.map((l) => JSON.parse(l) as { type: string; id?: string }).find((f) => f.type === 'session_created')
+    expect(created?.id).toBeDefined()
+    expect(bridge.sharedFor('host-2')).toBe(true)
+    const host2 = hosts.find((h) => (h as unknown as { id: string }).id === 'host-2') as unknown as { prompt: ReturnType<typeof vi.fn>; ensureStarted: ReturnType<typeof vi.fn> }
+    expect(host2.ensureStarted).toHaveBeenCalled()
+    expect(host2.prompt).toHaveBeenCalledWith('Kanban. Take the task kanban:task:c-11111111 and complete it')
+  })
+
+  it('kanban_run: промпт упоминает доску, когда их несколько', async () => {
+    const kanban = fakeKanban()
+    kanban.listBoards.mockReturnValue(
+      Promise.resolve({
+        ok: true,
+        error: null,
+        boards: [
+          { id: 'b-12345678', name: 'Default', rev: 1, columns: 2, cards: 2 },
+          { id: 'b-99999999', name: 'Second', rev: 1, columns: 2, cards: 0 }
+        ]
+      })
+    )
+    const hosts: SessionHost[] = [fakeHost()]
+    const { bridge } = bridgeWith(hosts, undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_run', project: 'api', boardId: 'b-12345678', cardId: 'c-11111111' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const host2 = hosts.find((h) => (h as unknown as { id: string }).id === 'host-2') as unknown as { prompt: ReturnType<typeof vi.fn> }
+    expect(host2.prompt).toHaveBeenCalledWith('Kanban. Take the task kanban:task:c-11111111 on the Default board and complete it')
+  })
+
+  it('kanban_run: неизвестная карточка — error frame', async () => {
+    const kanban = fakeKanban()
+    const { bridge } = bridgeWith([fakeHost()], undefined, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_run', project: 'api', boardId: 'b-12345678', cardId: 'c-ffffffff' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(socket.lines.map((l) => JSON.parse(l) as { type: string })).toEqual([{ type: 'error', message: 'card not found' }])
+  })
+
+  it('kanban_loop count: лимит на единицу меньше числа задач в колонке', async () => {
+    const kanban = fakeKanban()
+    const loops = fakeLoops()
+    const hosts: SessionHost[] = [fakeHost()]
+    const { bridge } = bridgeWith(hosts, loops, { loopsEnabled: true }, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_loop', project: 'api', boardId: 'b-12345678', columnId: 'col-aaaaaaaa', mode: 'count' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(loops.start).toHaveBeenCalledWith('host-2', 'Kanban. Take a task from the Todo column and complete it', 1, '')
+    const created = socket.lines.map((l) => JSON.parse(l) as { type: string }).find((f) => f.type === 'session_created')
+    expect(created).toBeDefined()
+    const host2 = hosts.find((h) => (h as unknown as { id: string }).id === 'host-2') as unknown as { prompt: ReturnType<typeof vi.fn> }
+    expect(host2.prompt).toHaveBeenCalledWith('Kanban. Take a task from the Todo column and complete it')
+  })
+
+  it('kanban_loop while: условие выхода «в колонке нет задач», лимит по умолчанию', async () => {
+    const kanban = fakeKanban()
+    const loops = fakeLoops()
+    const { bridge } = bridgeWith([fakeHost()], loops, { loopsEnabled: true }, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_loop', project: 'api', boardId: 'b-12345678', columnId: 'col-bbbbbbbb', mode: 'while' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(loops.start).toHaveBeenCalledWith('host-2', 'Kanban. Take a task from the In Progress column and complete it', 20, 'The kanban column In Progress has no tasks')
+  })
+
+  it('kanban_loop при выключенных петлях — error frame', async () => {
+    const kanban = fakeKanban()
+    const loops = fakeLoops()
+    const { bridge } = bridgeWith([fakeHost()], loops, undefined, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_loop', project: 'api', boardId: 'b-12345678', columnId: 'col-aaaaaaaa', mode: 'count' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(loops.start).not.toHaveBeenCalled()
+    expect(JSON.parse(socket.lines[0])).toMatchObject({ type: 'error', message: 'Loops are disabled in settings' })
+  })
+
+  it('kanban промпты на русском, когда язык ПК ru', async () => {
+    const kanban = fakeKanban()
+    const hosts: SessionHost[] = [fakeHost()]
+    const { bridge } = bridgeWith(hosts, undefined, { language: 'ru' }, null, kanban)
+    const socket = fakeSocket(1)
+    bridge['onText'](socket, JSON.stringify({ type: 'kanban_run', project: 'api', boardId: 'b-12345678', cardId: 'c-11111111' }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const host2 = hosts.find((h) => (h as unknown as { id: string }).id === 'host-2') as unknown as { prompt: ReturnType<typeof vi.fn> }
+    expect(host2.prompt).toHaveBeenCalledWith('Канбан. Возьми задачу kanban:task:c-11111111 и выполни её')
   })
 })
 

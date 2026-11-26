@@ -4,8 +4,16 @@
 import { basename } from 'node:path'
 import type { DialogAnswer } from '../../shared/agent-events'
 import type { PiJsonObject, PiModelInfo } from '../../shared/protocol-types'
-import type { Settings } from '../../shared/ipc-contracts'
+import type {
+  KanbanBoardResult,
+  KanbanBoardsResult,
+  KanbanMutationResult,
+  ProjectEntry,
+  Settings,
+  UiLanguage
+} from '../../shared/ipc-contracts'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY } from '../../shared/todo'
+import { splitWorktreeHostDir } from '../../shared/worktree'
 import type { SessionHost } from '../pi/session-host'
 import type { PiHost } from '../pi/pi-host'
 import type { LoopController } from '../pi/loop-controller'
@@ -20,8 +28,12 @@ import {
   catalogFrame,
   catalogModelOf,
   errorFrame,
+  frameString,
+  kanbanBoardFrame,
+  kanbanBoardsFrame,
   loopStateFrame,
   normalizeCreateSessionRequest,
+  normalizeLoopMode,
   normalizePromptImages,
   normalizeSessionName,
   parseFrame,
@@ -34,12 +46,38 @@ import {
   stripRemoteRequestId,
   todosFrame,
   uiAnsweredFrame,
-  frameString,
   newRemoteSessionId,
   pickLanAddress,
+  type RemoteKanbanBoardRef,
   type RemoteSessionInfo
 } from './protocol'
 import type { RemoteSocket } from './ws'
+
+/** Подмножество KanbanService, нужное мосту (структурно — в тестах фейк). */
+export interface RemoteKanban {
+  listBoards(project: ProjectEntry): Promise<KanbanBoardsResult>
+  getBoard(project: ProjectEntry, boardId: string): Promise<KanbanBoardResult>
+  cardCreate(project: ProjectEntry, boardId: string, input: { title: string; description?: string; columnId?: string }): Promise<KanbanMutationResult>
+  cardUpdate(project: ProjectEntry, boardId: string, input: { id: string; title?: string; description?: string }): Promise<KanbanMutationResult>
+  cardMove(project: ProjectEntry, boardId: string, input: { id: string; columnId: string }): Promise<KanbanMutationResult>
+  cardComment(project: ProjectEntry, boardId: string, input: { cardId: string; text: string }): Promise<KanbanMutationResult>
+}
+
+/** Промпты задач/петель: язык — язык интерфейса ПК (как у renderer'а). */
+const KANBAN_TEXT_RU: Record<string, string> = {
+  'Kanban. Take the task {task} and complete it': 'Канбан. Возьми задачу {task} и выполни её',
+  'Kanban. Take the task {task} on the {board} board and complete it': 'Канбан. Возьми задачу {task} на доске {board} и выполни её',
+  'Kanban. Take a task from the {name} column and complete it': 'Канбан. Возьми задачу из колонки {name} и выполни её',
+  'Kanban. Take a task from the {name} column on the {board} board and complete it': 'Канбан. Возьми задачу из колонки {name} на доске {board} и выполни её',
+  'The kanban column {name} has no tasks': 'В колонке канбана {name} нет задач',
+  'The kanban column {name} on the {board} board has no tasks': 'В колонке канбана {name} на доске {board} нет задач'
+}
+
+function kanbanText(lang: UiLanguage, key: string, vars: Record<string, string>): string {
+  let text = lang === 'ru' && KANBAN_TEXT_RU[key] !== undefined ? KANBAN_TEXT_RU[key] : key
+  for (const [name, value] of Object.entries(vars)) text = text.replaceAll(`{${name}}`, value)
+  return text
+}
 
 const SNAPSHOT_ATTEMPTS = 5
 const SNAPSHOT_RETRY_MS = 700
@@ -107,7 +145,9 @@ export class RemoteBridge {
     private readonly auth: RemoteAuth,
     private server: RemoteWebServer | null = null,
     /** Контроллер петель: старт с телефона, рассылка loop_state. Не задан в тестах. */
-    private readonly loops?: LoopController
+    private readonly loops?: LoopController,
+    /** Канбан: доски и мутации с телефона. Не задан в тестах без канбана. */
+    private readonly kanban?: RemoteKanban
   ) {}
 
   // ------------------------------------------------------------- lifecycle
@@ -404,6 +444,53 @@ export class RemoteBridge {
       case 'catalog':
         void this.sendCatalog(socket, frame)
         return
+      case 'kanban_boards':
+        void this.sendKanbanBoards(socket, frame)
+        return
+      case 'kanban_board':
+        void this.kanbanOpen(socket, frame)
+        return
+      case 'kanban_card_create':
+        void this.kanbanMutate(socket, frame, (project, boardId) =>
+          this.kanban!.cardCreate(project, boardId, {
+            title: frameString(frame, 'title') ?? '',
+            description: frameString(frame, 'description') ?? undefined,
+            columnId: frameString(frame, 'columnId') ?? undefined
+          })
+        )
+        return
+      case 'kanban_card_update':
+        void this.kanbanMutate(socket, frame, (project, boardId) => {
+          const input: { id: string; title?: string; description?: string } = { id: frameString(frame, 'cardId') ?? '' }
+          const title = frameString(frame, 'title')
+          const description = frameString(frame, 'description')
+          if (title !== null) input.title = title
+          if (description !== null) input.description = description
+          return this.kanban!.cardUpdate(project, boardId, input)
+        })
+        return
+      case 'kanban_card_move':
+        void this.kanbanMutate(socket, frame, (project, boardId) =>
+          this.kanban!.cardMove(project, boardId, {
+            id: frameString(frame, 'cardId') ?? '',
+            columnId: frameString(frame, 'columnId') ?? ''
+          })
+        )
+        return
+      case 'kanban_card_comment':
+        void this.kanbanMutate(socket, frame, (project, boardId) =>
+          this.kanban!.cardComment(project, boardId, {
+            cardId: frameString(frame, 'cardId') ?? '',
+            text: frameString(frame, 'text') ?? ''
+          })
+        )
+        return
+      case 'kanban_run':
+        void this.kanbanRun(socket, frame)
+        return
+      case 'kanban_loop':
+        void this.kanbanLoop(socket, frame)
+        return
       default:
         socket.send(JSON.stringify(errorFrame('unknown frame type')))
         return
@@ -657,6 +744,166 @@ export class RemoteBridge {
     requestId: string | null
   ): void {
     socket.send(JSON.stringify(catalogFrame(models.map(catalogModelOf), thinkingLevels, defaultModel, defaultThinking, requestId)))
+  }
+
+  // ---------------------------------------------------------------- kanban
+
+  /** Открытые проекты с дедупликацией worktree-хостов до корневого каталога (доска одна). */
+  private rootProjects(): ProjectEntry[] {
+    const seen = new Set<string>()
+    const projects: ProjectEntry[] = []
+    for (const status of this.piHost.statuses()) {
+      const root = splitWorktreeHostDir(status.project.dir)?.root ?? status.project.dir
+      const key = `${root.replace(/\\/g, '/')}`.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      projects.push({ ...status.project, dir: root })
+    }
+    return projects
+  }
+
+  /** Проект по имени с телефона (basename корневого каталога, как в списке сессий). */
+  private kanbanProject(name: string | null): ProjectEntry | null {
+    if (name === null) return null
+    return this.rootProjects().find((project) => basename(project.dir) === name) ?? null
+  }
+
+  private async sendKanbanBoards(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
+    const kanban = this.kanban
+    const requestId = frameString(frame, 'id')
+    if (kanban === undefined) {
+      socket.send(JSON.stringify(kanbanBoardsFrame([], false, requestId)))
+      return
+    }
+    const boards: RemoteKanbanBoardRef[] = []
+    for (const project of this.rootProjects()) {
+      const result = await kanban.listBoards(project)
+      if (!result.ok) continue
+      for (const board of result.boards) {
+        boards.push({ project: basename(project.dir), boardId: board.id, name: board.name, columns: board.columns, cards: board.cards })
+      }
+    }
+    socket.send(JSON.stringify(kanbanBoardsFrame(boards, this.getSettings().loopsEnabled, requestId)))
+  }
+
+  private async kanbanOpen(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
+    const requestId = frameString(frame, 'id')
+    const project = this.kanbanProject(frameString(frame, 'project'))
+    const boardId = frameString(frame, 'boardId')
+    if (this.kanban === undefined || project === null || boardId === null) {
+      socket.send(JSON.stringify(kanbanBoardFrame(null, requestId, 'kanban is unavailable')))
+      return
+    }
+    const result = await this.kanban.getBoard(project, boardId)
+    socket.send(JSON.stringify(kanbanBoardFrame(result.ok ? result.board : null, requestId, result.error)))
+  }
+
+  /** Мутация с телефона: ответ — обновлённая доска с тем же id (renderer-паттерн «доска в ответе»). */
+  private async kanbanMutate(
+    socket: RemoteSocket,
+    frame: PiJsonObject,
+    run: (project: ProjectEntry, boardId: string) => Promise<KanbanMutationResult>
+  ): Promise<void> {
+    const requestId = frameString(frame, 'id')
+    const project = this.kanbanProject(frameString(frame, 'project'))
+    const boardId = frameString(frame, 'boardId')
+    if (this.kanban === undefined || project === null || boardId === null) {
+      socket.send(JSON.stringify(kanbanBoardFrame(null, requestId, 'kanban is unavailable')))
+      return
+    }
+    const result = await run(project, boardId)
+    socket.send(JSON.stringify(kanbanBoardFrame(result.ok ? result.board : null, requestId, result.error)))
+  }
+
+  /** «Выполнить в новой сессии»: сессия создаётся и промпт с задачей уходит сразу. */
+  private async kanbanRun(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
+    const project = this.kanbanProject(frameString(frame, 'project'))
+    const boardId = frameString(frame, 'boardId')
+    const cardId = frameString(frame, 'cardId')
+    if (this.kanban === undefined || project === null || boardId === null || cardId === null) {
+      socket.send(JSON.stringify(errorFrame('unknown project or card')))
+      return
+    }
+    const boardResult = await this.kanban.getBoard(project, boardId)
+    const board = boardResult.ok ? boardResult.board : null
+    const card = board?.cards.find((entry) => entry.id === cardId)
+    if (board === null || card === undefined) {
+      socket.send(JSON.stringify(errorFrame('card not found')))
+      return
+    }
+    const multiBoard = (await this.kanban.listBoards(project)).boards.length > 1
+    const lang = this.getSettings().language
+    const task = `kanban:task:${card.id}`
+    const text = multiBoard
+      ? kanbanText(lang, 'Kanban. Take the task {task} on the {board} board and complete it', { task, board: board.name })
+      : kanbanText(lang, 'Kanban. Take the task {task} and complete it', { task })
+    socket.send(JSON.stringify(sessionCreatedFrame(this.remoteIdOf(this.startKanbanSession(project, text)))))
+  }
+
+  /** Петля колонки: 'while' — пока в колонке есть задачи, 'count' — по числу задач сейчас. */
+  private async kanbanLoop(socket: RemoteSocket, frame: PiJsonObject): Promise<void> {
+    if (!this.getSettings().loopsEnabled || this.loops === undefined) {
+      socket.send(JSON.stringify(errorFrame('Loops are disabled in settings')))
+      return
+    }
+    const project = this.kanbanProject(frameString(frame, 'project'))
+    const boardId = frameString(frame, 'boardId')
+    const columnId = frameString(frame, 'columnId')
+    const mode = normalizeLoopMode(frame['mode'])
+    if (this.kanban === undefined || project === null || boardId === null || columnId === null || mode === null) {
+      socket.send(JSON.stringify(errorFrame('unknown project, board or column')))
+      return
+    }
+    const boardResult = await this.kanban.getBoard(project, boardId)
+    const board = boardResult.ok ? boardResult.board : null
+    const column = board?.columns.find((entry) => entry.id === columnId)
+    if (board === null || column === undefined) {
+      socket.send(JSON.stringify(errorFrame('column not found')))
+      return
+    }
+    const multiBoard = (await this.kanban.listBoards(project)).boards.length > 1
+    const lang = this.getSettings().language
+    const vars = { name: column.name, board: board.name }
+    const text = multiBoard
+      ? kanbanText(lang, 'Kanban. Take a task from the {name} column on the {board} board and complete it', vars)
+      : kanbanText(lang, 'Kanban. Take a task from the {name} column and complete it', vars)
+    let max = 20
+    let exit = ''
+    if (mode === 'while') {
+      exit = multiBoard
+        ? kanbanText(lang, 'The kanban column {name} on the {board} board has no tasks', vars)
+        : kanbanText(lang, 'The kanban column {name} has no tasks', vars)
+    } else {
+      // remaining тратится на спавны после первого хода — лимит на единицу меньше числа задач
+      // даёт ровно по итерации на задачу (как startLoopSession на ПК).
+      max = Math.max(1, board.cards.filter((card) => card.columnId === column.id).length - 1)
+    }
+    // Петля регистрируется до промпта: turn_start первого хода должен застать состояние.
+    // Промпт уходит асинхронно после ensureStarted — синхронный loops.start успевает раньше.
+    const host = this.startKanbanSession(project, text)
+    this.loops.start(host.id, text, max, exit)
+    socket.send(JSON.stringify(sessionCreatedFrame(this.remoteIdOf(host))))
+  }
+
+  /** Новая сессия проекта, расшаренная телефону; prompt != null — сразу отправить. */
+  private startKanbanSession(project: ProjectEntry, prompt: string | null): SessionHost {
+    const host = this.piHost.create(project)
+    this.sharedHostIds.add(host.id)
+    this.syncSessions()
+    this.broadcastSessions()
+    if (prompt !== null) {
+      void host
+        .ensureStarted()
+        .then(() => host.prompt(prompt))
+        .catch(() => {})
+    } else {
+      void host.ensureStarted().catch(() => {})
+    }
+    return host
+  }
+
+  private remoteIdOf(host: SessionHost): string {
+    return this.sessionsByHost.get(host.id)?.id ?? host.id
   }
 
   // ------------------------------------------------------------ pi → phone

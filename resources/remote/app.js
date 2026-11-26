@@ -21,7 +21,12 @@ const hideToolsButton = el("hideTools");
 const readModeButton = el("readMode");
 const readExitButton = el("readExit");
 const tgNotifyButton = el("tgNotify");
-const newSessionButton = el("newSession");
+const menuButton = el("menuButton");
+const mainMenu = el("mainMenu");
+const menuNewSession = el("menuNewSession");
+const menuKanban = el("menuKanban");
+const kanbanMain = el("kanbanMain");
+const footer = document.querySelector("footer");
 const createOverlay = el("createOverlay");
 const createForm = el("createForm");
 const createName = el("createName");
@@ -111,7 +116,21 @@ const RU = {
   "stopped: {reason}": "остановлена: {reason}",
   "active": "активна",
   "Default": "По умолчанию",
-  "Copy": "Копировать"
+  "Copy": "Копировать",
+  "Menu": "Меню",
+  "Kanban": "Канбан",
+  "No boards": "Нет досок",
+  "Add task": "Добавить задачу",
+  "Card title": "Название карточки",
+  "Description": "Описание",
+  "Edit": "Изменить",
+  "Comments": "Комментарии",
+  "Add comment": "Добавить комментарий",
+  "Run in new session": "Выполнить в новой сессии",
+  "Column menu": "Меню колонки",
+  "Loop: while there are tasks": "Петля: пока есть задачи",
+  "Loop: exact count": "Петля: точное количество",
+  "Card not found": "Задача не найдена"
 };
 
 function t(key, vars) {
@@ -181,6 +200,13 @@ let loopInfo = null;
 let loopMax = 20;
 const loopEnabledBySession = new Map();
 let lastSessions = [];
+// Локальные вкладки канбана (не сессии): доски и карточки. Список — свой у страницы.
+let localTabs = [];
+let activeLocalTab = null;
+/** Состояние открытой канбан-вкладки: доска, режим редактирования, свернутые колонки. */
+let kanbanState = null;
+/** Петли включены настройкой ПК: приходит в kanban_boards/attached. */
+let kanbanLoopsEnabled = false;
 // Модели из последнего catalog-кадра: уровни thinking берутся от выбранной модели, а не из общего списка.
 let catalogModels = [];
 // Общий список уровней из кадра — относится к текущей модели живой сессии; подстраховка для кэша
@@ -301,10 +327,19 @@ function handleFrame(frame) {
     case "session_created": return onSessionCreated(frame);
     case "catalog": return onCatalog(frame);
     case "loop_state": return onLoopState(frame);
+    case "kanban_boards":
+    case "kanban_board": {
+      const pending = frame.id != null ? pendingRequests.get(frame.id) : null;
+      if (pending) {
+        pendingRequests.delete(frame.id);
+        pending(frame);
+      }
+      return;
+    }
   }
 }
 
-/** Табы всех remote-сессий: точка статуса + имя, клик — attach. */
+/** Табы: сначала remote-сессии, потом локальные вкладки канбана. Клик — активация, долгое нажатие — меню. */
 function renderTabs(sessions) {
   tabs.innerHTML = "";
   sessions.forEach((session) => {
@@ -318,22 +353,40 @@ function renderTabs(sessions) {
     label.className = "label";
     label.textContent = session.title;
     tab.append(status, label);
-    bindTabPress(tab, session.id);
+    bindTabPress(tab, () => {
+      if (attached && attached.id === session.id) return;
+      attach(session.id);
+    }, () => openTabMenu(session.id));
+    tabs.append(tab);
+  });
+  localTabs.forEach((local) => {
+    const tab = document.createElement("button");
+    tab.className = "tab local";
+    tab.dataset.id = local.id;
+    tab.title = local.kind === "board" ? local.title : `${local.title} · ${local.project}`;
+    const icon = document.createElement("span");
+    icon.className = "tab-icon";
+    icon.textContent = local.kind === "board" ? "▤" : "▦";
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = local.title;
+    tab.append(icon, label);
+    bindTabPress(tab, () => activateLocalTab(local.id), () => openLocalTabMenu(local));
     tabs.append(tab);
   });
   markActiveTab();
 }
 
 function markActiveTab() {
-  const id = attached ? attached.id : null;
+  const id = activeLocalTab !== null ? activeLocalTab : attached ? attached.id : null;
   [...tabs.children].forEach((tab) => tab.classList.toggle("active", tab.dataset.id === id));
 }
 
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_SLOP = 12;
 
-/** Клик по табу переключает сессию, долгое нажатие — меню «Переименовать» / «Закрыть». */
-function bindTabPress(tab, sessionId) {
+/** Клик по табу активирует его, долгое нажатие — меню. */
+function bindTabPress(tab, onActivate, onLongPress) {
   let timer = null;
   let startX = 0;
   let startY = 0;
@@ -351,7 +404,7 @@ function bindTabPress(tab, sessionId) {
     timer = setTimeout(() => {
       timer = null;
       held = true;
-      openTabMenu(sessionId);
+      onLongPress();
     }, LONG_PRESS_MS);
   });
   tab.addEventListener("pointermove", (event) => {
@@ -364,8 +417,7 @@ function bindTabPress(tab, sessionId) {
       held = false;
       return;
     }
-    if (attached && attached.id === sessionId) return;
-    attach(sessionId);
+    onActivate();
   });
   // На десктопе долгое нажатие = правая кнопка: своё меню важнее браузерного.
   tab.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -426,6 +478,151 @@ function confirmUnshare(session) {
   body.append(text, actionsRow(button(t("Cancel"), close, true), drop));
 }
 
+// ------------------------------------------------------------------- kanban tabs
+
+/** Меню локальной вкладки (доска/карточка): только «Закрыть» — вкладка существует только на телефоне. */
+function openLocalTabMenu(local) {
+  const { body, close } = openModal(local.title);
+  const closeTab = document.createElement("button");
+  closeTab.type = "button";
+  closeTab.className = "menu-item danger";
+  closeTab.textContent = t("Close");
+  closeTab.addEventListener("click", () => {
+    close();
+    closeLocalTab(local.id);
+  });
+  body.append(closeTab);
+}
+
+function closeLocalTab(id) {
+  const tab = localTabs.find((item) => item.id === id);
+  localTabs = localTabs.filter((item) => item.id !== id);
+  if (tab && tab.kind === "board") {
+    const prefix = "card:" + tab.project + "\u0000" + tab.boardId + "\u0000";
+    localTabs = localTabs.filter((item) => !item.id.startsWith(prefix));
+  }
+  if (activeLocalTab !== null && !localTabs.some((item) => item.id === activeLocalTab)) {
+    activeLocalTab = null;
+    kanbanState = null;
+    applyViewMode();
+  }
+  renderTabs(lastSessions);
+}
+
+function openBoardTab(project, boardId, name) {
+  const id = "board:" + project + "\u0000" + boardId;
+  let tab = localTabs.find((item) => item.id === id);
+  if (!tab) {
+    tab = { id, kind: "board", project, boardId, cardId: null, title: name };
+    localTabs.push(tab);
+    renderTabs(lastSessions);
+  }
+  activateLocalTab(id);
+}
+
+function openCardTab(project, boardId, card) {
+  const id = "card:" + project + "\u0000" + boardId + "\u0000" + card.id;
+  let tab = localTabs.find((item) => item.id === id);
+  if (!tab) {
+    tab = { id, kind: "card", project, boardId, cardId: card.id, title: card.title };
+    localTabs.push(tab);
+  }
+  tab.title = card.title;
+  renderTabs(lastSessions);
+  activateLocalTab(id);
+}
+
+function activateLocalTab(id) {
+  const tab = localTabs.find((item) => item.id === id);
+  if (!tab) return;
+  activeLocalTab = id;
+  kanbanState = {
+    kind: tab.kind,
+    project: tab.project,
+    boardId: tab.boardId,
+    cardId: tab.cardId,
+    board: null,
+    error: null,
+    collapsed: new Set(),
+    editing: null
+  };
+  applyViewMode();
+  renderKanbanView();
+  requestKanbanBoard();
+  markActiveTab();
+}
+
+/** Канбан-вкладка активна — лента/композер прячутся, вместо них дерево доски или карточка. */
+function applyViewMode() {
+  const local = activeLocalTab !== null;
+  kanbanMain.hidden = !local;
+  stream.hidden = local;
+  footer.hidden = local;
+  dialogs.hidden = local;
+  if (local && kanbanState) {
+    projectLabel.textContent = kanbanState.project;
+    modelLabel.textContent = "";
+    contextLabel.textContent = "";
+    contextLabel.dataset.window = "";
+  }
+}
+
+function requestKanbanBoard() {
+  if (!kanbanState) return;
+  request({ type: "kanban_board", project: kanbanState.project, boardId: kanbanState.boardId }, (frame) => {
+    if (!kanbanState) return;
+    if (frame.success && frame.board) {
+      kanbanState.error = null;
+      if (!kanbanState.board || frame.board.rev !== kanbanState.board.rev) {
+        kanbanState.board = frame.board;
+        syncLocalTabTitles();
+        renderKanbanView();
+      }
+    } else if (frame.error && !kanbanState.board) {
+      kanbanState.error = frame.error;
+      renderKanbanView();
+    }
+  });
+}
+
+/** Заголовки вкладок-карточек следят за переименованием карточки (агент может править доску). */
+function syncLocalTabTitles() {
+  if (!kanbanState || !kanbanState.board) return;
+  let changed = false;
+  localTabs.forEach((tab) => {
+    if (tab.kind !== "card" || tab.boardId !== kanbanState.boardId) return;
+    const card = kanbanState.board.cards.find((item) => item.id === tab.cardId);
+    if (card && card.title !== tab.title) {
+      tab.title = card.title;
+      changed = true;
+    }
+  });
+  if (changed) renderTabs(lastSessions);
+}
+
+/** Ответ мутации/опроса: обновлённая доска перерисовывает дерево или карточку. */
+function applyKanbanBoardResponse(frame) {
+  if (!kanbanState) return;
+  if (frame.success && frame.board) {
+    kanbanState.error = null;
+    kanbanState.board = frame.board;
+    syncLocalTabTitles();
+    renderKanbanView();
+  } else if (frame.error) {
+    kanbanState.error = frame.error;
+    renderKanbanView();
+  }
+}
+
+// Опрос доски раз в 3 с: агент пишет в файлы напрямую, пушей в remote-протоколе нет.
+setInterval(() => {
+  if (activeLocalTab === null || !kanbanState) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  // Пользователь печатает (комментарий/описание) — перерисовка отложится до следующего тика.
+  if (kanbanMain.contains(document.activeElement)) return;
+  requestKanbanBoard();
+}, 3000);
+
 /** Затемнённое окно поверх ленты: карточка с заголовком, телом и рядом кнопок. */
 function openModal(title) {
   const overlay = document.createElement("div");
@@ -473,7 +670,7 @@ function onSessions(sessions) {
     applyTgNotify();
   }
   const stillThere = sessions.some((session) => session.id === previous);
-  if (!stillThere || !attachedOnSocket) {
+  if ((!stillThere || !attachedOnSocket) && activeLocalTab === null) {
     attach(stillThere ? previous : sessions[0].id);
   }
 }
@@ -491,6 +688,12 @@ function onAttached(frame) {
   attachedOnSocket = true;
   attachPending = false;
   sendVisibility();
+  // Открытие сессии возвращает из канбан-вкладки в ленту.
+  if (activeLocalTab !== null) {
+    activeLocalTab = null;
+    kanbanState = null;
+    applyViewMode();
+  }
   setStreaming(false);
   assistantBlock = null;
   liveContentSeen = false;
@@ -511,6 +714,7 @@ function onAttached(frame) {
   tgEnabled = frame.telegram === true;
   applyTgNotify();
   loopsEnabled = frame.loops === true;
+  kanbanLoopsEnabled = loopsEnabled;
   loopEnabled = loopEnabledBySession.get(frame.id) === true;
   loopInfo = null;
   applyLoopUi();
@@ -1690,7 +1894,387 @@ createCancel.addEventListener("click", closeCreateDialog);
 createOverlay.addEventListener("click", (event) => {
   if (event.target === createOverlay) closeCreateDialog();
 });
-newSessionButton.addEventListener("click", openCreateDialog);
+
+// ------------------------------------------------------------------ kanban
+
+menuButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  mainMenu.hidden = !mainMenu.hidden;
+});
+document.addEventListener("click", (event) => {
+  if (mainMenu.hidden) return;
+  if (event.target === menuButton || mainMenu.contains(event.target)) return;
+  mainMenu.hidden = true;
+});
+menuNewSession.addEventListener("click", () => {
+  mainMenu.hidden = true;
+  openCreateDialog();
+});
+menuKanban.addEventListener("click", () => {
+  mainMenu.hidden = true;
+  openBoardsDialog();
+});
+
+/** Список досок всех открытых проектов; клик — вкладка с деревом доски. */
+function openBoardsDialog() {
+  const { body, close } = openModal(t("Kanban"));
+  const loading = document.createElement("div");
+  loading.className = "info";
+  loading.textContent = "…";
+  body.append(loading);
+  request({ type: "kanban_boards" }, (frame) => {
+    if (!document.body.contains(body)) return;
+    body.innerHTML = "";
+    kanbanLoopsEnabled = frame.loopsEnabled === true;
+    const boards = frame.boards || [];
+    if (!boards.length) {
+      const empty = document.createElement("div");
+      empty.className = "info";
+      empty.textContent = t("No boards");
+      body.append(empty);
+      return;
+    }
+    let lastProject = null;
+    boards.forEach((board) => {
+      if (board.project !== lastProject) {
+        lastProject = board.project;
+        const head = document.createElement("div");
+        head.className = "kb-project";
+        head.textContent = board.project;
+        body.append(head);
+      }
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "menu-item";
+      const count = document.createElement("span");
+      count.className = "kb-count";
+      count.textContent = String(board.cards);
+      row.append(count, document.createTextNode(board.name));
+      row.addEventListener("click", () => {
+        close();
+        openBoardTab(board.project, board.boardId, board.name);
+      });
+      body.append(row);
+    });
+  });
+}
+
+function renderKanbanView() {
+  if (!kanbanState) return;
+  kanbanMain.innerHTML = "";
+  if (!kanbanState.board) {
+    const line = document.createElement("div");
+    line.className = kanbanState.error ? "error" : "info";
+    line.textContent = kanbanState.error || "…";
+    kanbanMain.append(line);
+    return;
+  }
+  if (kanbanState.kind === "board") renderBoardTree();
+  else renderCardView();
+}
+
+/** Дерево доски как в боковой панели ПК: колонки-секции со сворачиванием, внутри — задачи. */
+function renderBoardTree() {
+  const board = kanbanState.board;
+  const head = document.createElement("div");
+  head.className = "kb-head";
+  const name = document.createElement("span");
+  name.className = "kb-board-name";
+  name.textContent = board.name;
+  const proj = document.createElement("span");
+  proj.className = "kb-board-project";
+  proj.textContent = kanbanState.project;
+  head.append(name, proj);
+  kanbanMain.append(head);
+  const columns = document.createElement("div");
+  columns.className = "kb-columns";
+  board.columns.forEach((column) => {
+    const cards = board.cards.filter((card) => card.columnId === column.id).sort((a, b) => a.order - b.order);
+    const collapsed = kanbanState.collapsed.has(column.id);
+    const col = document.createElement("div");
+    col.className = "kb-col";
+    const colHead = document.createElement("div");
+    colHead.className = "kb-col-head";
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "kb-caret";
+    caret.textContent = collapsed ? "▸" : "▾";
+    const toggle = () => {
+      if (collapsed) kanbanState.collapsed.delete(column.id);
+      else kanbanState.collapsed.add(column.id);
+      renderKanbanView();
+    };
+    caret.addEventListener("click", toggle);
+    const colName = document.createElement("button");
+    colName.type = "button";
+    colName.className = "kb-col-name";
+    colName.textContent = column.name;
+    colName.addEventListener("click", toggle);
+    const count = document.createElement("span");
+    count.className = "kb-count";
+    count.textContent = String(cards.length);
+    colHead.append(caret, colName, count);
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "kb-col-btn";
+    add.textContent = "+";
+    add.title = t("Add task");
+    add.addEventListener("click", () => openCreateCardDialog(column));
+    colHead.append(add);
+    if (kanbanLoopsEnabled) {
+      const menu = document.createElement("button");
+      menu.type = "button";
+      menu.className = "kb-col-btn";
+      menu.textContent = "⋯";
+      menu.title = t("Column menu");
+      menu.addEventListener("click", () => openColumnMenu(column, cards.length));
+      colHead.append(menu);
+    }
+    col.append(colHead);
+    if (!collapsed) {
+      cards.forEach((card) => {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "kb-card";
+        const title = document.createElement("span");
+        title.className = "kb-card-title";
+        title.textContent = card.title;
+        row.append(title);
+        const badges = [];
+        if (card.comments.length) badges.push("💬" + card.comments.length);
+        if (card.images.length) badges.push("🖼" + card.images.length);
+        if (badges.length) {
+          const badge = document.createElement("span");
+          badge.className = "kb-badges";
+          badge.textContent = badges.join(" ");
+          row.append(badge);
+        }
+        row.addEventListener("click", () => openCardTab(kanbanState.project, board.id, card));
+        col.append(row);
+      });
+    }
+    columns.append(col);
+  });
+  kanbanMain.append(columns);
+}
+
+/** Петли колонки (как на ПК): пока есть задачи / точное количество. */
+function openColumnMenu(column, count) {
+  const { body, close } = openModal(t("Column menu"));
+  const whileBtn = document.createElement("button");
+  whileBtn.type = "button";
+  whileBtn.className = "menu-item";
+  whileBtn.textContent = t("Loop: while there are tasks");
+  whileBtn.addEventListener("click", () => {
+    close();
+    send({ type: "kanban_loop", project: kanbanState.project, boardId: kanbanState.boardId, columnId: column.id, mode: "while" });
+  });
+  const countBtn = document.createElement("button");
+  countBtn.type = "button";
+  countBtn.className = "menu-item";
+  countBtn.textContent = `${t("Loop: exact count")} (${count})`;
+  countBtn.addEventListener("click", () => {
+    close();
+    send({ type: "kanban_loop", project: kanbanState.project, boardId: kanbanState.boardId, columnId: column.id, mode: "count" });
+  });
+  body.append(whileBtn, countBtn);
+}
+
+function openCreateCardDialog(column) {
+  const { body, close } = openModal(`${t("Add task")} — ${column.name}`);
+  const title = document.createElement("input");
+  title.type = "text";
+  title.maxLength = 300;
+  title.placeholder = t("Card title");
+  const desc = document.createElement("textarea");
+  desc.rows = 4;
+  desc.placeholder = t("Description");
+  const submit = () => {
+    const text = title.value.trim();
+    if (!text) return;
+    const frame = { type: "kanban_card_create", project: kanbanState.project, boardId: kanbanState.boardId, columnId: column.id, title: text };
+    if (desc.value.trim()) frame.description = desc.value.trim();
+    request(frame, applyKanbanBoardResponse);
+    close();
+  };
+  title.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submit();
+    }
+  });
+  body.append(title, desc, actionsRow(button(t("Cancel"), close, true), button(t("Create"), submit)));
+  title.focus();
+}
+
+/** Карточка как вкладка: селектор колонки, описание с правкой, комментарии, запуск в новой сессии. */
+function renderCardView() {
+  const board = kanbanState.board;
+  const card = board.cards.find((item) => item.id === kanbanState.cardId);
+  if (!card) {
+    const line = document.createElement("div");
+    line.className = "error";
+    line.textContent = t("Card not found");
+    kanbanMain.append(line);
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "kb-head";
+  const title = document.createElement("span");
+  title.className = "kb-card-big";
+  title.textContent = card.title;
+  head.append(title);
+  kanbanMain.append(head);
+
+  const colRow = document.createElement("div");
+  colRow.className = "kb-col-row";
+  const select = document.createElement("select");
+  select.className = "kb-col-select";
+  board.columns.forEach((column) => {
+    const opt = document.createElement("option");
+    opt.value = column.id;
+    opt.textContent = column.name;
+    select.append(opt);
+  });
+  select.value = card.columnId;
+  select.addEventListener("change", () => {
+    request(
+      { type: "kanban_card_move", project: kanbanState.project, boardId: board.id, cardId: card.id, columnId: select.value },
+      applyKanbanBoardResponse,
+    );
+  });
+  colRow.append(select);
+  const run = document.createElement("button");
+  run.type = "button";
+  run.className = "kb-run";
+  run.textContent = t("Run in new session");
+  run.addEventListener("click", () => {
+    send({ type: "kanban_run", project: kanbanState.project, boardId: board.id, cardId: card.id });
+  });
+  colRow.append(run);
+  kanbanMain.append(colRow);
+
+  if (kanbanState.editing) {
+    kanbanMain.append(renderCardEditor(card));
+  } else {
+    const desc = document.createElement("div");
+    desc.className = "kb-desc";
+    const descHead = document.createElement("div");
+    descHead.className = "kb-desc-head";
+    const label = document.createElement("span");
+    label.className = "kb-label";
+    label.textContent = t("Description");
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "kb-col-btn";
+    edit.textContent = "✎ " + t("Edit");
+    edit.addEventListener("click", () => {
+      kanbanState.editing = { title: card.title, description: card.description };
+      renderKanbanView();
+    });
+    descHead.append(label, edit);
+    desc.append(descHead);
+    if (card.description) {
+      const text = document.createElement("div");
+      text.className = "kb-desc-text";
+      text.innerHTML = markdown(card.description);
+      desc.append(text);
+    }
+    kanbanMain.append(desc);
+  }
+
+  const comments = document.createElement("div");
+  comments.className = "kb-comments";
+  const commentsLabel = document.createElement("div");
+  commentsLabel.className = "kb-label";
+  commentsLabel.textContent = t("Comments");
+  comments.append(commentsLabel);
+  card.comments.forEach((comment) => {
+    const item = document.createElement("div");
+    item.className = "kb-comment";
+    const meta = document.createElement("div");
+    meta.className = "kb-comment-meta";
+    meta.textContent = `${comment.author === "agent" ? "🤖" : "👤"} ${shortTime(comment.at)}`;
+    const text = document.createElement("div");
+    text.className = "kb-comment-text";
+    text.innerHTML = markdown(comment.text);
+    item.append(meta, text);
+    comments.append(item);
+  });
+  const addBox = document.createElement("div");
+  addBox.className = "kb-add-comment";
+  const area = document.createElement("textarea");
+  area.rows = 2;
+  area.placeholder = t("Add comment");
+  const add = document.createElement("button");
+  add.textContent = t("Send");
+  add.addEventListener("click", () => {
+    const text = area.value.trim();
+    if (!text) return;
+    request(
+      { type: "kanban_card_comment", project: kanbanState.project, boardId: board.id, cardId: card.id, text },
+      (frame) => {
+        area.value = "";
+        applyKanbanBoardResponse(frame);
+      },
+    );
+  });
+  addBox.append(area, add);
+  comments.append(addBox);
+  kanbanMain.append(comments);
+}
+
+function renderCardEditor(card) {
+  const wrap = document.createElement("div");
+  wrap.className = "kb-desc kb-edit";
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.maxLength = 300;
+  titleInput.value = kanbanState.editing.title;
+  titleInput.placeholder = t("Card title");
+  const area = document.createElement("textarea");
+  area.rows = 6;
+  area.value = kanbanState.editing.description;
+  area.placeholder = t("Description");
+  titleInput.addEventListener("input", () => {
+    kanbanState.editing.title = titleInput.value;
+  });
+  area.addEventListener("input", () => {
+    kanbanState.editing.description = area.value;
+  });
+  const save = () => {
+    const titleText = kanbanState.editing.title.trim();
+    if (!titleText) return;
+    const frame = {
+      type: "kanban_card_update",
+      project: kanbanState.project,
+      boardId: kanbanState.boardId,
+      cardId: card.id,
+      title: titleText,
+      description: kanbanState.editing.description,
+    };
+    kanbanState.editing = null;
+    request(frame, applyKanbanBoardResponse);
+  };
+  wrap.append(
+    titleInput,
+    area,
+    actionsRow(
+      button(t("Cancel"), () => {
+        kanbanState.editing = null;
+        renderKanbanView();
+      }, true),
+      button(t("Save"), save),
+    ),
+  );
+  return wrap;
+}
+
+function shortTime(at) {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 // ------------------------------------------------------------------ markdown
 

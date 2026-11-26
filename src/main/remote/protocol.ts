@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { LoopInfo } from '../../shared/agent-events'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { PiModelInfo } from '../../shared/protocol-types'
+import type { KanbanBoard } from '../../shared/kanban'
 import { PLAN_WIDGET_KEY, TODO_WIDGET_KEY, parseTodoLines } from '../../shared/todo'
 import type { TodoItem } from '../../shared/todo'
 import type { RemoteNotifyKind } from '../notifications/telegram'
@@ -278,4 +279,49 @@ export function todosFrame(items: TodoItem[]): PiJsonObject {
 
 export function newRemoteSessionId(): string {
   return randomUUID()
+}
+
+// ------------------------------------------------------------------- kanban
+
+/** Доска в списке канбана: проект виден телефону, id нужен для открытия. */
+export interface RemoteKanbanBoardRef {
+  project: string
+  boardId: string
+  name: string
+  columns: number
+  cards: number
+}
+
+export function kanbanBoardsFrame(boards: RemoteKanbanBoardRef[], loopsEnabled: boolean, requestId: string | null): PiJsonObject {
+  const frame: PiJsonObject = {
+    type: 'kanban_boards',
+    success: true,
+    loopsEnabled,
+    boards: boards.map((b) => ({
+      project: b.project,
+      boardId: b.boardId,
+      name: b.name,
+      columns: b.columns,
+      cards: b.cards
+    }))
+  }
+  if (requestId !== null) frame['id'] = requestId
+  return frame
+}
+
+/** Полная доска (колонки + карточки с комментариями); error — текст неудачи. */
+export function kanbanBoardFrame(board: KanbanBoard | null, requestId: string | null, error: string | null = null): PiJsonObject {
+  const frame: PiJsonObject = { type: 'kanban_board', success: board !== null }
+  if (board !== null) frame['board'] = board as unknown as PiJsonObject
+  if (error !== null) frame['error'] = error
+  if (requestId !== null) frame['id'] = requestId
+  return frame
+}
+
+/** Режим петли колонки: 'while' — пока есть задачи, 'count' — по числу задач. */
+export type RemoteLoopMode = 'while' | 'count'
+
+export function normalizeLoopMode(value: unknown): RemoteLoopMode | null {
+  if (value === 'while' || value === 'count') return value
+  return null
 }
