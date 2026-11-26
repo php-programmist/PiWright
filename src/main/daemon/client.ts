@@ -5,7 +5,6 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { connect, type Socket } from 'node:net'
 import { join } from 'node:path'
-import type { BackendMode } from '../../shared/ipc-contracts'
 import type { PiSpawnSpec } from '../pi/backends/types'
 import { NdjsonAccumulator } from '../pi/ndjson'
 import {
@@ -15,6 +14,7 @@ import {
   type DaemonClientMessage,
   type DaemonResponse,
   type DaemonPush,
+  type DaemonSessionInfo,
   type DaemonWelcome
 } from './protocol'
 import { readDaemonToken } from './token'
@@ -179,8 +179,9 @@ export class DaemonClient implements DaemonChildTransport {
     })
   }
 
-  /** Живые ли дети у демона (для панели «N в фоне» и восстановления). */
-  async list(): Promise<{ sessionKey: string; sessionFile: string | null; mode: BackendMode; clients: number }[]> {
+  /** Живые ли дети у демона (для панели «N в фоне» и восстановления). Поля попапа
+   *  (projectDir/title/streaming) старый демон может не прислать — потребитель защищается. */
+  async list(): Promise<DaemonSessionInfo[]> {
     await this.ensureConnected()
     const id = String(this.nextId++)
     const response = await this.request({ type: 'list', id }, this.helloTimeoutMs)
@@ -188,7 +189,7 @@ export class DaemonClient implements DaemonChildTransport {
     const sessions = response.data['sessions']
     if (!Array.isArray(sessions)) throw new Error('malformed list response from daemon')
     return sessions.filter(
-      (s): s is { sessionKey: string; sessionFile: string | null; mode: BackendMode; clients: number } =>
+      (s): s is DaemonSessionInfo =>
         s !== null && typeof s === 'object' && typeof (s as Record<string, unknown>)['sessionKey'] === 'string'
     )
   }

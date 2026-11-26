@@ -291,12 +291,23 @@ app.whenReady().then(async () => {
   // Не в register.ts: нужны skew-состояние и mainWindow этого модуля.
   ipcMain.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
     const client = getDaemonClient()
-    if (client === null || !client.connectedNow) return { alive: false, background: 0, skew: daemonSkew }
+    if (client === null || !client.connectedNow) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     try {
       const sessions = await client.list()
-      return { alive: true, background: sessions.filter((s) => s.clients === 0).length, skew: daemonSkew }
+      // Старый демон новые поля не присылает — защищаемся (пустой проект/без имени/не стримит).
+      const background = sessions
+        .filter((s) => s.clients === 0)
+        .map((s) => ({
+          sessionKey: s.sessionKey,
+          sessionFile: s.sessionFile,
+          mode: s.mode,
+          projectDir: typeof s.projectDir === 'string' ? s.projectDir : '',
+          title: typeof s.title === 'string' ? s.title : null,
+          streaming: s.streaming === true
+        }))
+      return { alive: true, background: background.length, skew: daemonSkew, sessions: background }
     } catch {
-      return { alive: false, background: 0, skew: daemonSkew }
+      return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     }
   })
   ipcMain.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {

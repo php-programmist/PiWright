@@ -284,7 +284,9 @@ describe('daemon protocol', () => {
 
     client.send({ type: 'list', id: 'r2' })
     const before = await client.next()
-    expect((before.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile: null, mode: 'native', clients: 1 }])
+    expect((before.data as Record<string, unknown>)['sessions']).toEqual([
+      { sessionKey: key, sessionFile: null, mode: 'native', clients: 1, projectDir: 'C:\\proj', title: null, streaming: false }
+    ])
 
     const sessionFile = 'C:\\proj\\.pi\\new.json'
     client.send({ type: 'rekey', id: 'r3', sessionKey: key, sessionFile })
@@ -293,7 +295,9 @@ describe('daemon protocol', () => {
 
     client.send({ type: 'list', id: 'r4' })
     const after = await client.next()
-    expect((after.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile, mode: 'native', clients: 1 }])
+    expect((after.data as Record<string, unknown>)['sessions']).toEqual([
+      { sessionKey: key, sessionFile, mode: 'native', clients: 1, projectDir: 'C:\\proj', title: null, streaming: false }
+    ])
 
     client.send({ type: 'spawn', id: 'r5', spec: SPEC, sessionFile })
     const attach = await client.next()
@@ -344,7 +348,11 @@ describe('daemon protocol', () => {
     const key = (spawn.data as Record<string, unknown>)['sessionKey'] as string
     client.send({ type: 'list', id: 'r2' })
     const list = await client.next()
-    expect(list.data).toEqual({ sessions: [{ sessionKey: key, sessionFile: 'C:\\proj\\.pi\\s.json', mode: 'native', clients: 1 }] })
+    expect(list.data).toEqual({
+      sessions: [
+        { sessionKey: key, sessionFile: 'C:\\proj\\.pi\\s.json', mode: 'native', clients: 1, projectDir: 'C:\\proj', title: null, streaming: false }
+      ]
+    })
     children[0].closeWith(0)
     await client.next()
     client.send({ type: 'list', id: 'r3' })
@@ -718,7 +726,9 @@ describe('daemon background notifications', () => {
     client.send({ type: 'list', id: 'l1' })
     const response = await client.next()
     const sessions = (response.data as Record<string, unknown>)['sessions'] as Record<string, unknown>[]
-    expect(sessions).toEqual([{ sessionKey, sessionFile: SESSION_FILE, mode: 'native', clients: 1 }])
+    expect(sessions).toEqual([
+      { sessionKey, sessionFile: SESSION_FILE, mode: 'native', clients: 1, projectDir: 'C:\\proj', title: null, streaming: false }
+    ])
   })
 
   it('hello telegramToken reaches the telegram request URL', async () => {

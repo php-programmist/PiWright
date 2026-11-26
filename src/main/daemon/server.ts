@@ -252,7 +252,15 @@ export class DaemonServer {
   private sessionInfos(): DaemonSessionInfo[] {
     return [...this.children.values()]
       .filter((record) => !record.exited)
-      .map((record) => ({ sessionKey: record.key, sessionFile: record.sessionFile, mode: record.mode, clients: record.clients.size }))
+      .map((record) => ({
+        sessionKey: record.key,
+        sessionFile: record.sessionFile,
+        mode: record.mode,
+        clients: record.clients.size,
+        projectDir: record.projectDir,
+        title: record.title,
+        streaming: record.streaming
+      }))
   }
 
   private async onRequest(conn: ConnState, message: DaemonClientMessage): Promise<void> {

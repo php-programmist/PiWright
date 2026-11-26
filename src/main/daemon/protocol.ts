@@ -22,6 +22,12 @@ export interface DaemonSessionInfo {
   mode: BackendMode
   /** Сколько клиентов приаттачено: 0 — сессия фоновая (уведомления и grace-kill демона). */
   clients: number
+  /** Каталог проекта (cwd спавна) — для попапа фоновых сессий в панели. */
+  projectDir: string
+  /** Имя сессии из session_info_changed; null — ещё не задано. */
+  title: string | null
+  /** Идёт ход агента (индикатор в попапе). */
+  streaming: boolean
 }
 
 export interface DaemonHello {

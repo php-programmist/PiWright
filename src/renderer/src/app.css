@@ -1023,14 +1023,119 @@ body {
   align-items: center;
   gap: 2px;
   min-width: 0;
+  position: relative;
 }
 
 .daemon-bg-count {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.daemon-bg-count:hover {
+  color: var(--text);
+}
+
+/* Поповер списка фоновых сессий: вверх от футера (как .hint-popover.above) */
+.daemon-bg-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 280px;
+  max-width: calc(100vw - 16px);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.daemon-bg-head {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 2px 6px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.daemon-bg-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 6px 6px;
+}
+
+.daemon-bg-row {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 6px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  width: 100%;
+}
+
+.daemon-bg-row:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.daemon-bg-row:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+
+.daemon-bg-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: daemon-bg-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes daemon-bg-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.daemon-bg-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daemon-bg-row-project {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 .daemon-bg .daemon-bg-stop {
@@ -1041,7 +1146,6 @@ body {
 .daemon-bg .daemon-bg-stop:hover {
   color: var(--red);
 }
-
 .settings-modal-overlay {
   position: fixed;
   inset: 0;

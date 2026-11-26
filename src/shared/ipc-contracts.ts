@@ -746,6 +746,19 @@ export interface DaemonSkewInfo {
   daemonAppVersion: string
 }
 
+/** Одна фоновая сессия демона (строка попапа счётчика «N в фоне»). */
+export interface DaemonBgSession {
+  sessionKey: string
+  sessionFile: string | null
+  mode: BackendMode
+  /** Каталог проекта (cwd спавна). */
+  projectDir: string
+  /** Имя сессии; null — не задано (показываем имя файла сессии). */
+  title: string | null
+  /** Идёт ход агента. */
+  streaming: boolean
+}
+
 /** Состояние демона фоновых сессий (индикатор в футере панели проектов). */
 export interface DaemonStatus {
   /** Живой канал к демону (подключён прямо сейчас). */
@@ -754,6 +767,8 @@ export interface DaemonStatus {
   background: number
   /** Нерешённое расхождение версии протокола. */
   skew: DaemonSkewInfo | null
+  /** Список фоновых сессий (для попапа по клику на счётчик). */
+  sessions: DaemonBgSession[]
 }
 
 /** Результат «Остановить фоновые сессии». */
