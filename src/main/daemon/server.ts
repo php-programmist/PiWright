@@ -331,7 +331,7 @@ export class DaemonServer {
       if (existing !== undefined && !existing.exited) {
         existing.clients.add(conn.id)
         this.cancelGrace(existing)
-        this.respond(conn, id, { sessionKey: existing.key, attached: true })
+        this.respond(conn, id, { sessionKey: existing.key, attached: true, streaming: existing.streaming })
         return
       }
       const pending = this.pendingSpawns.get(sessionFile)
@@ -340,7 +340,7 @@ export class DaemonServer {
           const record = await pending
           record.clients.add(conn.id)
           this.cancelGrace(record)
-          this.respond(conn, id, { sessionKey: record.key, attached: true })
+          this.respond(conn, id, { sessionKey: record.key, attached: true, streaming: record.streaming })
         } catch (err) {
           this.respondError(conn, id, err instanceof Error ? err.message : String(err))
         }

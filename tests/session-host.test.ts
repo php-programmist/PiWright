@@ -212,7 +212,32 @@ describe('SessionHost', () => {
     host.dispose()
   })
 
-  it('resume from history keeps the persisted session name, not the first prompt', async () => {
+  it('attach mid-turn: resume starts in streaming state until the turn settles', async () => {
+  const child = new ScriptedChild((type) => {
+    if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')
+    if (type === 'get_messages') return { messages: [] }
+    if (type === 'get_available_models') return { models: [] }
+    if (type === 'get_commands') return { commands: [] }
+    if (type === 'get_session_stats') return { tokens: { input: 100, output: 20, cacheRead: 900, cacheWrite: 30 } }
+    if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+    return null
+  })
+  ;(child as unknown as { attachedStreaming: boolean }).attachedStreaming = true
+  currentChild = child
+  const { host, statuses } = makeHost([child], SETTINGS, { sessionFile: 'C:\\proj\\.pi\\sessions\\a.jsonl' })
+  await host.ensureStarted()
+  expect(statuses[statuses.length - 1].state).toBe('streaming')
+  expect(host.inFlight).toBe(true)
+
+  child.emitData('{"type":"agent_settled","aborted":false}\n')
+  await vi.waitFor(() => {
+    expect(statuses[statuses.length - 1].state).toBe('ready')
+  })
+  expect(host.inFlight).toBe(false)
+  host.dispose()
+})
+
+it('resume from history keeps the persisted session name, not the first prompt', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return { ...handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl'), sessionName: 'Agent-given name' }
       if (type === 'get_available_models') return { models: [] }

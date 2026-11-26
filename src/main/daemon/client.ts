@@ -136,7 +136,7 @@ export class DaemonClient implements DaemonChildTransport {
     if (typeof sessionKey !== 'string' || sessionKey.length === 0) {
       throw new Error('malformed spawn response from daemon')
     }
-    const child = new DaemonChildProcess(sessionKey, this)
+    const child = new DaemonChildProcess(sessionKey, this, response.data['streaming'] === true)
     this.registerAdapter(sessionKey, child)
     return { child, sessionKey, attached: response.data['attached'] === true }
   }

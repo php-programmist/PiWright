@@ -161,7 +161,7 @@ export class PiHost {
     const host = this.hosts.get(hostId)
     if (host === undefined) return null
     let detached = false
-    if (opts?.keepAlive === true && host.streaming) {
+    if (opts?.keepAlive === true && host.inFlight) {
       const sessionKey = host.detach()
       if (sessionKey !== null) {
         this.detachedTabs.set(sessionKey, hostId)
@@ -192,7 +192,7 @@ export class PiHost {
    *  откроются снова: живые аттачатся, остановленные — респавн с --session. */
   quiesceForQuit(): void {
     for (const host of this.hosts.values()) {
-      if (host.streaming && host.detach() !== null) continue
+      if (host.inFlight && host.detach() !== null) continue
       host.dispose()
     }
     this.hosts.clear()

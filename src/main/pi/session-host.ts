@@ -253,6 +253,12 @@ export class SessionHost {
     return this.lastState === 'streaming'
   }
 
+  /** Ход в полёте: стриминг или отложенный turn_end (субагенты) — процесс демона стоит держать
+   *  при закрытии вкладки/приложения, даже если статус уже не «streaming». */
+  get inFlight(): boolean {
+    return this.lastState === 'streaming' || this.lastState === 'waiting'
+  }
+
   /** Файл сессии текущей ветки — для форка в новую сессию (PiHost.createFork). */
   get sessionFilePath(): string | null {
     return this.sessionFile
@@ -466,7 +472,10 @@ export class SessionHost {
         }
       }
       await this.syncPromptSlot(conn)
-      this.status('ready')
+      // Аттач к ребёнку демона посреди хода: ход продолжается — статус streaming (turnEndHandled
+      // гасит гонку «ход кончился во время хендшейка/реплея» — тогда останется ready).
+      if (resume && conn.attachedStreaming && !this.turnEndHandled) this.status('streaming')
+      else if (this.lastState === 'starting') this.status('ready')
     } catch (err) {
       conn.close()
       throw err instanceof Error ? err : new Error(String(err))

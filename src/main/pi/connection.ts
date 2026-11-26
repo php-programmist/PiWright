@@ -56,6 +56,12 @@ export class PiConnection {
     return typeof child?.sessionKey === 'string' && child.sessionKey.length > 0 ? child.sessionKey : null
   }
 
+  /** Ребёнок демона уже в ходе (аттач к работающей сессии); false — локальный спавн/новый ребёнок. */
+  get attachedStreaming(): boolean {
+    const child = this.child as { attachedStreaming?: boolean } | null
+    return child?.attachedStreaming === true
+  }
+
   /** Спавнит процесс и начинает непрерывное чтение stdout. */
   async start(req: PiSpawnRequest): Promise<void> {
     if (this.child !== null) throw new Error('PiConnection is already started')

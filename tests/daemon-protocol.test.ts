@@ -244,13 +244,33 @@ describe('daemon protocol', () => {
 
     client.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile })
     const second = await client.next()
-    expect(second).toMatchObject({ type: 'response', id: 'r2', ok: true, data: { attached: true } })
+    expect(second).toMatchObject({ type: 'response', id: 'r2', ok: true, data: { attached: true, streaming: false } })
     expect((second.data as Record<string, unknown>)['sessionKey']).toBe(key1)
     expect(spawnCalls).toHaveLength(1)
 
     children[0].emitData('line\n')
     const push = await client.next()
     expect(push).toEqual({ type: 'stdout', sessionKey: key1, line: 'line' })
+  })
+
+  it('reports streaming:true when attaching to a child mid-turn', async () => {
+    startServer()
+    await server.start()
+    const client = new TestClient()
+    await client.connect(channel, readDaemonToken(userDataDir) ?? '')
+    const sessionFile = 'C:\\proj\\.pi\\s.json'
+    client.send({ type: 'spawn', id: 'r1', spec: SPEC, sessionFile })
+    const first = await client.next()
+    const key1 = (first.data as Record<string, unknown>)['sessionKey'] as string
+
+    children[0].emitData(`${JSON.stringify({ type: 'agent_start' })}\n`)
+    const push = await client.next()
+    expect(push).toEqual({ type: 'stdout', sessionKey: key1, line: '{"type":"agent_start"}' })
+
+    client.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile })
+    const second = await client.next()
+    expect(second).toMatchObject({ type: 'response', id: 'r2', ok: true, data: { attached: true, streaming: true } })
+    expect((second.data as Record<string, unknown>)['sessionKey']).toBe(key1)
   })
 
   it('rekeys a child spawned without a session file and attaches by the new file', async () => {

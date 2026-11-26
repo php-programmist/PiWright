@@ -14,7 +14,9 @@ export class DaemonChildProcess extends EventEmitter implements PiChildProcess {
 
   constructor(
     readonly sessionKey: string,
-    private readonly transport: DaemonChildTransport
+    private readonly transport: DaemonChildTransport,
+    /** Ребёнок уже в ходе (аттач к работающей сессии) — SessionHost выставит статус streaming. */
+    readonly attachedStreaming = false
   ) {
     super()
     this.stdin = new Writable({
