@@ -11,9 +11,12 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - run: node scripts/release-notes.cjs release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
 
   build:
     needs: create-release

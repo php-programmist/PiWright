@@ -8,6 +8,7 @@
  *  а реальные пакеты тянут бинарник Electron. Публикация: npm publish dist-server (CI release.yml). */
 const fs = require('node:fs')
 const path = require('node:path')
+const { releaseNotes } = require('./release-notes.cjs')
 
 const root = path.join(__dirname, '..')
 const outDir = path.join(root, 'dist-server')
@@ -26,7 +27,17 @@ for (const dir of ['headless', 'chunks', 'daemon', 'renderer']) {
   fs.cpSync(path.join(root, 'out', dir), path.join(outDir, 'out', dir), { recursive: true })
 }
 fs.cpSync(path.join(root, 'server', 'bin'), path.join(outDir, 'bin'), { recursive: true })
-fs.copyFileSync(path.join(root, 'server', 'README.md'), path.join(outDir, 'README.md'))
+// npm-страница рендерит только README — секция изменений текущей версии вшивается перед License.
+const readme = fs.readFileSync(path.join(root, 'server', 'README.md'), 'utf8')
+const licenseMarker = '\n## License\n'
+if (!readme.includes(licenseMarker)) throw new Error('server/README.md has no License section')
+const notes = releaseNotes(root)
+// Секция несёт свой заголовок «## vX.Y.Z (дата)» — для README он дубль под «Changes in», стрипаем первую строку.
+const notesBody = notes.slice(notes.indexOf('\n') + 1).trim()
+fs.writeFileSync(
+  path.join(outDir, 'README.md'),
+  readme.replace(licenseMarker, `\n## Changes in ${JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version}\n\n${notesBody}\n\n## License\n`)
+)
 
 const STUB_VERSION = '0.0.0-stub'
 for (const name of ['electron', 'electron-updater']) {

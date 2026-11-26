@@ -18,6 +18,7 @@ dist-server/
 logs/
 *.log
 npm-debug.log*
+release-notes.md
 
 # IDE
 .idea/
