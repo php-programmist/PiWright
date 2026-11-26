@@ -434,6 +434,8 @@ const RU: Record<string, string> = {
   'saved — leave empty to keep': 'сохранён — оставьте пустым, чтобы не менять',
   'Test connection': 'Проверить соединение',
   'Add project from SSH server': 'Добавить проект с SSH-сервера',
+  'Choose project folder': 'Выбор папки проекта',
+  'Absolute path': 'Абсолютный путь',
   'No SSH servers configured — add one in Settings → SSH': 'SSH-серверы не настроены — добавьте в Настройки → SSH',
   'Server': 'Сервер',
   'Launch': 'Запуск',

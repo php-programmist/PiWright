@@ -4,11 +4,13 @@ import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/s
 import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 import { isWindows } from '../lib/platform'
+import { canReveal, isWeb } from '../api/web'
 import { closeSessionAndSweepWorktree, stopSession } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
 import { ChangelogModal } from './ChangelogModal'
 import { SshProjectDialog } from './SshProjectDialog'
+import { LocalDirDialog } from './LocalDirDialog'
 import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
 import type { BackendMode, DaemonBgSession, DaemonStatus, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
@@ -36,8 +38,14 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
   const settings = useSessionsStore((s) => s.settings)
   const [busy, setBusy] = useState(false)
   const [sshOpen, setSshOpen] = useState(false)
+  const [localOpen, setLocalOpen] = useState(false)
 
   const pick = async (kind: BackendMode): Promise<void> => {
+    // Веб-режим: нативного диалога нет — папка на сервере выбирается обзором по RPC.
+    if (isWeb) {
+      setLocalOpen(true)
+      return
+    }
     setBusy(true)
     const result = await window.piwright.chooseProjectDir(kind)
     setBusy(false)
@@ -50,7 +58,7 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
   return (
     <span className="add-project">
       <button disabled={busy} onClick={() => void pick('native')}>{isWindows ? 'Win' : 'Local'}</button>
-      {isWindows && <button disabled={busy} onClick={() => void pick('wsl')}>WSL</button>}
+      {isWindows && !isWeb && <button disabled={busy} onClick={() => void pick('wsl')}>WSL</button>}
       <button disabled={busy} onClick={() => setSshOpen(true)}>SSH</button>
       <button className="cancel" onClick={onDone}>×</button>
       {sshOpen && (
@@ -60,6 +68,7 @@ function AddProjectControl({ onDone }: { onDone: () => void }): React.JSX.Elemen
           onClose={() => setSshOpen(false)}
         />
       )}
+      {localOpen && <LocalDirDialog kind="native" onDone={onDone} onClose={() => setLocalOpen(false)} />}
     </span>
   )
 }
@@ -390,6 +399,7 @@ function ProjectRow({
                 </svg>
                 {t('Rename')}
               </button>
+              {canReveal && (
               <button
                 className="project-menu-item"
                 onClick={() => {
@@ -407,6 +417,7 @@ function ProjectRow({
                 </svg>
                 {t('Show in folder')}
               </button>
+              )}
               <div className="project-menu-sep" />
               <button
                 className="project-menu-item danger"

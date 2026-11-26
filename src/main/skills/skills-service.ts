@@ -5,7 +5,6 @@
 import { promises as fs } from 'node:fs'
 import { join, posix } from 'node:path'
 import { homedir } from 'node:os'
-import { shell } from 'electron'
 import type { McpOpResult, ProjectEntry, Settings, SkillEntry } from '../../shared/ipc-contracts'
 import { stripWslUncPrefix } from '../pi/backends/shell'
 import { resolveWslHome } from '../pi/backends/wsl'
@@ -192,7 +191,7 @@ export async function toggleSkill(project: ProjectEntry, settings: Settings, ski
   return toggleSkillIn(paths.settingsFile, key, enabled, paths.pfs)
 }
 
-export async function revealSkillsFolder(project: ProjectEntry, settings: Settings, source: 'user' | 'project'): Promise<McpOpResult> {
+export async function revealSkillsFolder(project: ProjectEntry, settings: Settings, source: 'user' | 'project', openPath: (path: string) => Promise<string>): Promise<McpOpResult> {
   if (project.kind === 'ssh') return { ok: false, error: 'Cannot open a remote folder in the explorer' }
   const paths = await agentPathsOf(project, settings)
   if (paths === null) return { ok: false, error: 'Cannot resolve agent directory' }
@@ -202,6 +201,6 @@ export async function revealSkillsFolder(project: ProjectEntry, settings: Settin
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
-  const error = await shell.openPath(dir)
+  const error = await openPath(dir)
   return error.length > 0 ? { ok: false, error } : { ok: true, error: null }
 }

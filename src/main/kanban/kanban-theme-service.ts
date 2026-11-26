@@ -4,7 +4,7 @@
 import { dialog } from 'electron'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname } from 'node:path'
-import type { KanbanThemeExportResult, KanbanThemeImportResult, KanbanThemeListResult } from '../../shared/ipc-contracts'
+import type { KanbanThemeExportDataResult, KanbanThemeExportResult, KanbanThemeImportResult, KanbanThemeListResult } from '../../shared/ipc-contracts'
 import { findKanbanTheme, isBuiltinKanbanThemeId, parseKanbanThemeDoc, serializeKanbanThemeDoc } from '../../shared/kanban-theme'
 import type { KanbanTheme } from '../../shared/kanban-theme'
 
@@ -80,7 +80,18 @@ export class KanbanThemeService {
     const source = result.filePaths[0]
     try {
       if (statSync(source).size > MAX_THEME_FILE_BYTES) return { ...failed, error: 'Theme file is too large' }
-      const raw: unknown = JSON.parse(readFileSync(source, 'utf8'))
+      return this.importFromJson(readFileSync(source, 'utf8'))
+    } catch (err) {
+      return { ...failed, error: errorText(err) }
+    }
+  }
+
+  /** Импорт из строки (веб-режим: файл выбран в браузере, содержимое пришло по RPC). */
+  importFromJson(json: string): KanbanThemeImportResult {
+    const failed: KanbanThemeImportResult = { ok: false, error: null, themes: [], imported: 0, skipped: 0 }
+    if (json.length > MAX_THEME_FILE_BYTES) return { ...failed, error: 'Theme file is too large' }
+    try {
+      const raw: unknown = JSON.parse(json)
       const incoming = parseKanbanThemeDoc(raw)
       if (incoming.length === 0) return { ...failed, error: 'No valid themes in file' }
       const current = readKanbanThemes(this.filePath)
@@ -102,13 +113,8 @@ export class KanbanThemeService {
   /** Диалог «Сохранить» → экспорт одной темы (`*` — все пользовательские). Дефолтные темы берутся из кода. */
   async exportWithDialog(id: string): Promise<KanbanThemeExportResult> {
     const failed: KanbanThemeExportResult = { ok: false, error: null, path: '' }
-    const themes = readKanbanThemes(this.filePath)
-    const payload = id === '*' ? themes : themes.filter((theme) => theme.id === id)
-    if (payload.length === 0) {
-      const builtin = findKanbanTheme(id)
-      if (builtin !== undefined) payload.push(builtin)
-    }
-    if (payload.length === 0) return { ...failed, error: 'Theme not found' }
+    const payload = this.exportPayload(id)
+    if (payload === null) return { ...failed, error: 'Theme not found' }
     const suggested = id === '*' ? 'kanban-themes.json' : `${id}.json`
     const result = await dialog.showSaveDialog({
       defaultPath: suggested,
@@ -118,10 +124,38 @@ export class KanbanThemeService {
     const target = extname(result.filePath).length === 0 ? `${result.filePath}.json` : result.filePath
     try {
       mkdirSync(dirname(target), { recursive: true })
-      writeFileSync(target, `${JSON.stringify(serializeKanbanThemeDoc(payload), null, 2)}\n`, 'utf8')
+      writeFileSync(target, this.serializeExport(payload), 'utf8')
       return { ok: true, error: null, path: target }
     } catch (err) {
       return { ...failed, error: errorText(err) }
     }
+  }
+
+  /** Экспорт строкой (веб-режим): браузер скачивает файл сам. */
+  exportToJson(id: string): KanbanThemeExportDataResult {
+    const failed: KanbanThemeExportDataResult = { ok: false, error: null, name: '', json: '' }
+    const payload = this.exportPayload(id)
+    if (payload === null) return { ...failed, error: 'Theme not found' }
+    return {
+      ok: true,
+      error: null,
+      name: id === '*' ? 'kanban-themes.json' : `${id}.json`,
+      json: this.serializeExport(payload)
+    }
+  }
+
+  /** Темы для экспорта: свои по id, `*` — все пользовательские; дефолтная — из кода. */
+  private exportPayload(id: string): KanbanTheme[] | null {
+    const themes = readKanbanThemes(this.filePath)
+    const payload = id === '*' ? themes : themes.filter((theme) => theme.id === id)
+    if (payload.length === 0) {
+      const builtin = findKanbanTheme(id)
+      if (builtin !== undefined) payload.push(builtin)
+    }
+    return payload.length === 0 ? null : payload
+  }
+
+  private serializeExport(payload: readonly KanbanTheme[]): string {
+    return `${JSON.stringify(serializeKanbanThemeDoc(payload), null, 2)}\n`
   }
 }

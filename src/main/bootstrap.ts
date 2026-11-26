@@ -34,7 +34,7 @@ import { ScheduleService } from './schedule/schedule-service'
 import { TokenStatsService } from './stats/stats-service'
 import { SettingsService } from './settings/settings'
 import { TelegramTokenStore } from './notifications/token-store'
-import { createSecretCodec } from './secrets/secret-codec'
+import { createSecretCodec, type SecretCodec } from './secrets/secret-codec'
 import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
@@ -48,6 +48,8 @@ export interface AppHost {
   updateInfo: UpdateInfo
   /** dialog/shell-возможности (см. IpcHost). */
   ipc: IpcHost
+  /** Кодек секретов; по умолчанию — safeStorage-кодек (Electron). Headless передаёт файловый (AES-256-GCM). */
+  secretCodec?: SecretCodec
   /** Хост — чистый node (headless): демон форкается напрямую без ELECTRON_RUN_AS_NODE. */
   nodeHost?: boolean
   /** Дополнительная реакция на сохранение настроек (Electron — перестроение меню). */
@@ -78,7 +80,7 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
   const router = new RpcRouter()
   const events = new EventBroadcaster()
   const settings = new SettingsService(join(host.userDataPath, 'settings.json'))
-  const secretCodec = createSecretCodec()
+  const secretCodec = host.secretCodec ?? createSecretCodec()
   initSshService(
     host.userDataPath,
     (value) => secretCodec.encrypt(value),

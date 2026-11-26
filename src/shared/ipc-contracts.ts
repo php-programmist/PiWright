@@ -614,6 +614,22 @@ export interface KanbanThemeExportResult extends GitOpResult {
   path: string
 }
 
+/** Экспорт темы в веб-режим: json — содержимое файла, name — имя для скачивания. */
+export interface KanbanThemeExportDataResult extends GitOpResult {
+  name: string
+  json: string
+}
+
+/** Обзор папок на машине сервера (веб-режим, выбор проекта без нативного диалога). */
+export interface FsListDirResult {
+  ok: boolean
+  error: string | null
+  path: string
+  /** Родительский каталог или null (корень диска / «/"). */
+  parent: string | null
+  dirs: string[]
+}
+
 /** Файл из набора открытых изменился на диске (chokidar в main). */
 export interface FileChangedMessage {
   project: ProjectEntry
@@ -1107,11 +1123,19 @@ export interface PiWrightApi {
   kanbanThemeImport(): Promise<KanbanThemeImportResult>
   /** Диалог «Сохранить» → экспорт темы; id `*` — все пользовательские темы. */
   kanbanThemeExport(id: string): Promise<KanbanThemeExportResult>
+  /** Веб-режим: импорт JSON-тем из строки (содержимое файла, выбранного в браузере). */
+  kanbanThemeImportData(json: string): Promise<KanbanThemeImportResult>
+  /** Веб-режим: экспорт темы строкой (браузер скачивает файл сам). */
+  kanbanThemeExportData(id: string): Promise<KanbanThemeExportDataResult>
   kanbanThemeDelete(id: string): Promise<KanbanThemeListResult>
   /** Диалог выбора файла → копия в `.pi/attachments/`. */
   chooseAttachment(project: ProjectEntry): Promise<AttachmentResult>
   soundsRead(path: string): Promise<SoundReadResult>
   soundsChoose(): Promise<{ ok: boolean; error: string | null; path: string }>
+  /** Веб-режим: загрузка звукового файла из браузера → копия в userData/sounds. */
+  soundsUpload(name: string, base64: string): Promise<{ ok: boolean; error: string | null; path: string }>
+  /** Веб-режим: обзор папок машины сервера (выбор проекта без нативного диалога). */
+  fsListDir(path: string): Promise<FsListDirResult>
   setTelegramToken(token: string): Promise<{ ok: boolean; error: string | null }>
   telegramTokenStatus(): Promise<{ configured: boolean }>
   telegramTest(chatId: string, token: string): Promise<{ error: string | null }>
@@ -1280,9 +1304,13 @@ export const KANBAN_ATTACHMENT_GET_CHANNEL = 'kanban:attachment-get'
 export const KANBAN_THEME_LIST_CHANNEL = 'kanban:theme-list'
 export const KANBAN_THEME_IMPORT_CHANNEL = 'kanban:theme-import'
 export const KANBAN_THEME_EXPORT_CHANNEL = 'kanban:theme-export'
+export const KANBAN_THEME_IMPORT_DATA_CHANNEL = 'kanban:theme-import-data'
+export const KANBAN_THEME_EXPORT_DATA_CHANNEL = 'kanban:theme-export-data'
 export const KANBAN_THEME_DELETE_CHANNEL = 'kanban:theme-delete'
 export const SOUNDS_READ_CHANNEL = 'sounds:read'
 export const SOUNDS_CHOOSE_CHANNEL = 'sounds:choose'
+export const SOUNDS_UPLOAD_CHANNEL = 'sounds:upload'
+export const FS_LIST_DIR_CHANNEL = 'fs:list-dir'
 export const TELEGRAM_SET_TOKEN_CHANNEL = 'telegram:set-token'
 export const TELEGRAM_TOKEN_STATUS_CHANNEL = 'telegram:token-status'
 export const TELEGRAM_TEST_CHANNEL = 'telegram:test'

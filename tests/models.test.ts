@@ -161,7 +161,7 @@ describe('models service (native, tmp home)', () => {
 
   it('reveal creates a default file and reports the path', async () => {
     const home = await fs.mkdtemp(join(tmpdir(), 'piwright-models-'))
-    const res = await revealModelsFile('native', DEFAULT_SETTINGS, home)
+    const res = await revealModelsFile('native', DEFAULT_SETTINGS, async () => '', home)
     expect(res.ok).toBe(true)
     const raw = JSON.parse(await fs.readFile(join(home, '.pi', 'agent', 'models.json'), 'utf8')) as unknown
     expect(raw).toEqual({ providers: {} })

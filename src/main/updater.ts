@@ -11,6 +11,10 @@ import type { UpdateStatus } from '../shared/ipc-contracts'
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
+/** В headless-хосте (чистый node) import из 'electron' даёт undefined — апдейтер недоступен.
+ *  Веб-режим обновляется перезапуском сервера; проверка версий — changelog-канал (fetch API). */
+const electronApp = app as typeof app | undefined
+
 let status: UpdateStatus = { availableVersion: null, phase: 'idle' }
 let notify: ((status: UpdateStatus) => void) | null = null
 
@@ -35,7 +39,7 @@ export function startAutoUpdater(
   onStatus: (status: UpdateStatus) => void
 ): void {
   notify = onStatus
-  if (!app.isPackaged) return
+  if (electronApp === undefined || !electronApp.isPackaged) return
   const url = getUpdateUrl().trim() || DEFAULT_SETTINGS.updateUrl
   if (url.length === 0) return
   try {
@@ -67,7 +71,7 @@ export function getUpdateStatus(): UpdateStatus {
 
 /** Кнопка «Скачать и установить»: загрузка вручную, после — quitAndInstall. */
 export function downloadUpdate(): UpdateStatus {
-  if (!app.isPackaged || status.availableVersion === null || status.phase !== 'idle') return status
+  if (electronApp === undefined || !electronApp.isPackaged || status.availableVersion === null || status.phase !== 'idle') return status
   setStatus({ ...status, phase: 'downloading' })
   void autoUpdater.downloadUpdate().catch(() => {})
   return status
@@ -84,7 +88,7 @@ export function dismissUpdate(settings: SettingsService): UpdateStatus {
 
 /** Только dev (smoke): эмуляция найденного обновления тем же путём, что реальное событие. */
 export function emitDevUpdate(version: string | null, settings: SettingsService): UpdateStatus {
-  if (app.isPackaged) return status
+  if (electronApp === undefined || electronApp.isPackaged) return status
   if (version === null) setStatus({ availableVersion: null, phase: 'idle' })
   else handleAvailable(version, settings)
   return status

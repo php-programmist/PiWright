@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { ProjectTab } from '../../stores/tabs'
 import { useT } from '../../lib/i18n'
+import { canReveal } from '../../api/web'
 import type { SkillEntry } from '../../../../shared/ipc-contracts'
 
 export function SkillsView({ tab, onClose }: { tab: ProjectTab; onClose: () => void }): React.JSX.Element {
@@ -62,12 +63,16 @@ export function SkillsView({ tab, onClose }: { tab: ProjectTab; onClose: () => v
       <header className="center-head">
         <h2>{t('Skills')}</h2>
         <span className="spacer" />
-        <button className="ghost" onClick={() => void window.piwright.skillsReveal(project, 'user')}>
-          {t('Open user folder')}
-        </button>
-        <button className="ghost" onClick={() => void window.piwright.skillsReveal(project, 'project')}>
-          {t('Open project folder')}
-        </button>
+        {canReveal && (
+          <button className="ghost" onClick={() => void window.piwright.skillsReveal(project, 'user')}>
+            {t('Open user folder')}
+          </button>
+        )}
+        {canReveal && (
+          <button className="ghost" onClick={() => void window.piwright.skillsReveal(project, 'project')}>
+            {t('Open project folder')}
+          </button>
+        )}
         <button className="icon" title={t('Back to chat')} onClick={onClose}>×</button>
       </header>
       <div className="panel-hint">

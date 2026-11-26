@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { posix } from 'node:path'
 import { homedir } from 'node:os'
-import { shell } from 'electron'
+
 import type { BackendMode, ModelsListResult, ModelsOpResult, Settings } from '../../shared/ipc-contracts'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 import { getSshService } from '../ssh/ssh-service'
@@ -92,7 +92,7 @@ export async function saveModelsIn(target: ModelsTarget, doc: unknown): Promise<
   }
 }
 
-export async function revealModelsFile(backend: BackendMode, settings: Settings, homeDir: string = homedir(), serverId?: string): Promise<ModelsOpResult> {
+export async function revealModelsFile(backend: BackendMode, settings: Settings, openPath: (path: string) => Promise<string>, homeDir: string = homedir(), serverId?: string): Promise<ModelsOpResult> {
   if (backend === 'ssh') return { ok: false, error: 'Cannot open a remote file in the editor' }
   const target = await modelsTarget(backend, settings, homeDir, serverId)
   if (target === null) return { ok: false, error: 'Cannot resolve models.json path' }
@@ -107,6 +107,6 @@ export async function revealModelsFile(backend: BackendMode, settings: Settings,
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
-  const error = await shell.openPath(file)
+  const error = await openPath(file)
   return error.length > 0 ? { ok: false, error } : { ok: true, error: null }
 }

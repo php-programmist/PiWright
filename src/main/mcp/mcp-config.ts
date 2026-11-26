@@ -4,7 +4,6 @@
 import { promises as fs } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 import { homedir } from 'node:os'
-import { shell } from 'electron'
 import type { McpListResult, McpOpResult, McpProbeResult, McpScope, McpServerEntry, ProjectEntry, Settings } from '../../shared/ipc-contracts'
 import { resolveWslHome } from '../pi/backends/wsl'
 import { getProjectFs, resolveBackendHome, hostProjectFs, type ProjectFs } from '../fs/project-fs'
@@ -112,7 +111,7 @@ export async function saveMcpServers(
   }
 }
 
-export async function revealMcpFile(project: ProjectEntry, scope: McpScope, settings: Settings): Promise<McpOpResult> {
+export async function revealMcpFile(project: ProjectEntry, scope: McpScope, settings: Settings, openPath: (path: string) => Promise<string>): Promise<McpOpResult> {
   if (project.kind === 'ssh') return { ok: false, error: 'Cannot open a remote file in the editor' }
   const target = await mcpFileTarget(project, scope, settings)
   if (target === null) return { ok: false, error: 'Cannot resolve mcp.json path' }
@@ -127,7 +126,7 @@ export async function revealMcpFile(project: ProjectEntry, scope: McpScope, sett
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   }
-  const error = await shell.openPath(file)
+  const error = await openPath(file)
   return error.length > 0 ? { ok: false, error } : { ok: true, error: null }
 }
 

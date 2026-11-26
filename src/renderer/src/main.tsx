@@ -5,7 +5,6 @@ import cssWorker from 'monaco-editor/language/css/css.worker?worker'
 import htmlWorker from 'monaco-editor/language/html/html.worker?worker'
 import jsonWorker from 'monaco-editor/language/json/json.worker?worker'
 import tsWorker from 'monaco-editor/language/typescript/ts.worker?worker'
-import { App } from './App'
 import { ensurePiWrightApi } from './api/ensure-piwright'
 import './app.css'
 
@@ -33,9 +32,12 @@ import './app.css'
 
 const container = document.getElementById('root')
 if (container === null) throw new Error('Missing #root element')
-// Выбор транспорта до монтирования: preload (Electron) или WS `/rpc` (веб-режим).
+// Выбор транспорта до монтирования: preload (Electron) или WS `/rpc` (веб-режим). App —
+// динамическим импортом: модули рендерера (lib/platform.ts) читают window.piwright на eval,
+// в веб-режиме он появляется только после рукопожатия WS.
 void ensurePiWrightApi().then(
-  () => {
+  async () => {
+    const { App } = await import('./App')
     createRoot(container).render(<App />)
   },
   (err: unknown) => {

@@ -7,19 +7,21 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createAppContext } from '../bootstrap'
 import type { IpcHost } from '../ipc/register'
+import { openHostPath, revealHostItem } from '../files/host-open'
+import { createFileSecretCodec } from '../secrets/file-codec'
 import { RemoteWebServer, type RemoteWebServerListener } from '../remote/server'
 import { parseArgs, readAppVersion } from './paths'
 
-/** Заглушки dialog/shell до браузерных замен (задача 3/4): канал отвечает внятной ошибкой. */
-function unavailable(what: string): never {
-  throw new Error(`${what} is not available in web mode yet`)
-}
-
+/** Нативный выбор каталога в браузере недоступен — веб-режим выбирает папку обзором по RPC
+ *  (fs:list-dir). Канал остаётся для десктопа; здесь — внятный отказ. */
 const ipcHost: IpcHost = {
   appVersion: '0.0.0',
   userDataPath: '', // заполняется в main()
-  showItemInFolder: () => unavailable('Reveal in folder'),
-  openExternal: () => unavailable('Open external'),
+  showItemInFolder: (path) => revealHostItem(path),
+  openExternal: async (url) => {
+    await openHostPath(url)
+  },
+  openPath: (path) => openHostPath(path),
   chooseDirectory: async () => ({ canceled: true, paths: [] })
 }
 
@@ -39,6 +41,8 @@ async function main(): Promise<void> {
     appVersion: readAppVersion(__dirname),
     updateInfo: { updatedFrom: null },
     ipc: ipcHost,
+    // Секреты (ssh-пароли, telegram-токен) — AES-256-GCM файловым кодеком: safeStorage в node нет.
+    secretCodec: createFileSecretCodec(join(args.userData, 'secrets.key')),
     // Демон — обычный fork без ELECTRON_RUN_AS_NODE (хост и так чистый node).
     nodeHost: true
   })

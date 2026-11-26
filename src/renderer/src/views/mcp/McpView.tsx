@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { ProjectTab } from '../../stores/tabs'
 import { useT } from '../../lib/i18n'
+import { canReveal } from '../../api/web'
 import type { McpScope, McpServerEntry } from '../../../../shared/ipc-contracts'
 
 type Exposure = 'codemode' | 'deferred' | 'direct' | 'hidden'
@@ -266,9 +267,11 @@ export function McpView({ tab, onClose }: { tab: ProjectTab; onClose: () => void
       <header className="center-head">
         <h2>{t('MCP servers')}</h2>
         <span className="spacer" />
-        <button className="ghost" onClick={() => void window.piwright.mcpReveal(project, scope)}>
-          {t('Open file')}
-        </button>
+        {canReveal && (
+          <button className="ghost" onClick={() => void window.piwright.mcpReveal(project, scope)}>
+            {t('Open file')}
+          </button>
+        )}
         <button className="ghost" onClick={() => setImportOpen((v) => !v)}>
           {t('Import JSON')}
         </button>

@@ -2,13 +2,14 @@
  *  проекты, сессии (список/история/новая/открыть/закрыть/переименовать), prompt/abort/модель/thinking,
  *  диалоги расширений. */
 import { homedir } from 'node:os'
-import { win32 } from 'node:path'
+import { win32, join } from 'node:path'
 import type { RpcRouter } from './router'
 import {
   ATTACHMENTS_CHOOSE_CHANNEL,
   ATTACHMENTS_PUT_CHANNEL,
   FILES_LIST_CHANNEL,
- FILES_SEARCH_CHANNEL,
+  FILES_SEARCH_CHANNEL,
+  FS_LIST_DIR_CHANNEL,
   FILES_READ_CHANNEL,
   FILES_READ_IMAGE_CHANNEL,
   FILES_RENAME_CHANNEL,
@@ -71,7 +72,9 @@ import {
   KANBAN_ATTACHMENT_GET_CHANNEL,
   KANBAN_THEME_DELETE_CHANNEL,
   KANBAN_THEME_EXPORT_CHANNEL,
+  KANBAN_THEME_EXPORT_DATA_CHANNEL,
   KANBAN_THEME_IMPORT_CHANNEL,
+  KANBAN_THEME_IMPORT_DATA_CHANNEL,
   KANBAN_THEME_LIST_CHANNEL,
   KANBAN_WORKFLOW_SET_CHANNEL,
   MCP_LIST_CHANNEL,
@@ -141,6 +144,7 @@ import {
   SKILLS_TOGGLE_CHANNEL,
   SOUNDS_CHOOSE_CHANNEL,
   SOUNDS_READ_CHANNEL,
+  SOUNDS_UPLOAD_CHANNEL,
   TELEGRAM_SET_TOKEN_CHANNEL,
   TELEGRAM_TEST_CHANNEL,
   TELEGRAM_TOKEN_STATUS_CHANNEL,
@@ -160,6 +164,7 @@ import { getUpdateStatus, downloadUpdate, dismissUpdate, emitDevUpdate } from '.
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import { resolveWithinRootHost } from '../files/file-service'
+import { listHostDir, hostBrowseRoot } from '../files/host-dirs'
 import type { KanbanService } from '../kanban/kanban-service'
 import type { KanbanThemeService } from '../kanban/kanban-theme-service'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
@@ -179,7 +184,7 @@ import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { getSshService } from '../ssh/ssh-service'
 import { SshProjectFs } from '../fs/project-fs'
 import type { SshSecretInput, SshSecretStatus, SshServerEntry, SshListDirResult, SshOpResult, SshTestResult } from '../../shared/ipc-contracts'
-import { chooseSoundFile, readSoundFile } from '../sounds/sounds'
+import { chooseSoundFile, readSoundFile, saveSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
 import type { TelegramTokenStore } from '../notifications/token-store'
 import type { RemoteBridge } from '../remote/bridge'
@@ -325,12 +330,14 @@ export interface NotificationServices {
 }
 
 /** Хостовые возможности вне роутера: в Electron — app/dialog/shell, в headless (веб-режим)
- *  — заглушки с внятной ошибкой (браузерные замены — задача 3/4). */
+ *  — платформенные spawn-аналоги (host-open.ts). */
 export interface IpcHost {
   appVersion: string
   userDataPath: string
   showItemInFolder(path: string): void
   openExternal(url: string): Promise<void>
+  /** Открыть путь штатным приложением ОС; '' — успех, иначе текст ошибки (как shell.openPath). */
+  openPath(path: string): Promise<string>
   /** Нативный выбор каталога; canceled — юзер отказался или возможность недоступна. */
   chooseDirectory(defaultPath?: string): Promise<{ canceled: boolean; paths: string[] }>
 }
@@ -1348,9 +1355,21 @@ export function registerIpc(
 
   router.handle(KANBAN_THEME_IMPORT_CHANNEL, async () => kanbanThemes.importWithDialog())
 
+  router.handle(KANBAN_THEME_IMPORT_DATA_CHANNEL, (json: unknown) => {
+    if (typeof json !== 'string' || json.trim().length === 0) {
+      return { ok: false, error: 'Invalid request', themes: [], imported: 0, skipped: 0 }
+    }
+    return kanbanThemes.importFromJson(json)
+  })
+
   router.handle(KANBAN_THEME_EXPORT_CHANNEL, async (id: unknown) => {
     if (typeof id !== 'string' || id.trim().length === 0) return { ok: false, error: 'Invalid request', path: '' }
     return kanbanThemes.exportWithDialog(id.trim())
+  })
+
+  router.handle(KANBAN_THEME_EXPORT_DATA_CHANNEL, (id: unknown) => {
+    if (typeof id !== 'string' || id.trim().length === 0) return { ok: false, error: 'Invalid request', name: '', json: '' }
+    return kanbanThemes.exportToJson(id.trim())
   })
 
   router.handle(KANBAN_THEME_DELETE_CHANNEL, (id: unknown) => {
@@ -1365,6 +1384,16 @@ export function registerIpc(
   })
 
   router.handle(SOUNDS_CHOOSE_CHANNEL, () => chooseSoundFile())
+
+  router.handle(SOUNDS_UPLOAD_CHANNEL, (name: unknown, base64: unknown) => {
+    if (typeof name !== 'string' || typeof base64 !== 'string') return { ok: false, error: 'Invalid request', path: '' }
+    return saveSoundFile(name, base64, join(ipc.userDataPath, 'sounds'))
+  })
+
+  router.handle(FS_LIST_DIR_CHANNEL, (path: unknown) => {
+    if (typeof path !== 'string' || path.trim().length === 0) return listHostDir(hostBrowseRoot())
+    return listHostDir(path)
+  })
 
   router.handle(TELEGRAM_SET_TOKEN_CHANNEL, (token: unknown) => {
     if (typeof token !== 'string') return { ok: false, error: 'Invalid token' }
@@ -1431,7 +1460,7 @@ export function registerIpc(
 
   router.handle(MODELS_REVEAL_CHANNEL, async (backend: unknown, serverId: unknown) => {
     if (backend !== 'native' && backend !== 'wsl' && backend !== 'ssh') return { ok: false, error: 'Invalid request' }
-    return revealModelsFile(backend, settings.get(), undefined, typeof serverId === 'string' ? serverId : undefined)
+    return revealModelsFile(backend, settings.get(), (path) => ipc.openPath(path), undefined, typeof serverId === 'string' ? serverId : undefined)
   })
 
   router.handle(MODELS_REFRESH_CHANNEL, () => piHost.refreshCatalogs())
@@ -1459,7 +1488,7 @@ export function registerIpc(
 
   router.handle(MCP_REVEAL_CHANNEL, async (project: unknown, scope: unknown) => {
     if (!isProjectEntry(project) || (scope !== 'user' && scope !== 'project')) return { ok: false, error: 'Invalid request' }
-    return revealMcpFile(project, scope, settings.get())
+    return revealMcpFile(project, scope, settings.get(), (path) => ipc.openPath(path))
   })
 
   router.handle(SKILLS_LIST_CHANNEL, async (project: unknown) => {
@@ -1476,7 +1505,7 @@ export function registerIpc(
 
   router.handle(SKILLS_REVEAL_CHANNEL, async (project: unknown, source: unknown) => {
     if (!isProjectEntry(project) || (source !== 'user' && source !== 'project')) return { ok: false, error: 'Invalid request' }
-    return revealSkillsFolder(project, settings.get(), source)
+    return revealSkillsFolder(project, settings.get(), source, (path) => ipc.openPath(path))
   })
 
   router.handle(TERM_PROFILES_CHANNEL, async (project: unknown) => {

@@ -5,6 +5,7 @@ import { cloneModel, cloneProvider, parseModelsDoc, serializeModelsDoc } from '.
 import type { ModelEdit, ParsedModelsDoc, ProviderEdit } from '../../../../shared/models-doc'
 import { useT } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
+import { canReveal } from '../../api/web'
 import { useSessionsStore } from '../../stores/sessions'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import type { BackendMode } from '../../../../shared/ipc-contracts'
@@ -572,7 +573,7 @@ export function ModelsTab(): React.JSX.Element {
         <button className="ghost" onClick={openJsonEditor}>
           {t('Edit JSON')}
         </button>
-        {backend !== 'ssh' && (
+        {backend !== 'ssh' && canReveal && (
           <button className="ghost" onClick={() => void reveal()}>
             {t('Open models.json in editor')}
           </button>

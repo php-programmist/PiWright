@@ -141,6 +141,7 @@ app.whenReady().then(async () => {
         shell.showItemInFolder(path)
       },
       openExternal: (url) => shell.openExternal(url),
+      openPath: (path) => shell.openPath(path),
       chooseDirectory: async (defaultPath) => {
         const result = await dialog.showOpenDialog({
           properties: ['openDirectory', 'createDirectory'],

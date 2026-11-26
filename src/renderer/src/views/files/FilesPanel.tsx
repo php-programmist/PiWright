@@ -9,6 +9,7 @@ import { persistPanel } from '../../stores/panels-prefs'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { useT } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
+import { canReveal } from '../../api/web'
 import { injectIntoPrompt } from '../../lib/prompt-inject'
 import { fileStatusClass } from '../../lib/git-file-class'
 import type { GitStatus, ProjectEntry } from '../../../../shared/ipc-contracts'
@@ -276,7 +277,7 @@ export function FilesPanel(): React.JSX.Element {
               {t('Copy relative path')}
             </button>
           )}
-          {menu.kind !== 'root' && project.kind !== 'ssh' && (
+          {menu.kind !== 'root' && project.kind !== 'ssh' && canReveal && (
             <button
               className="project-menu-item"
               onClick={() => {

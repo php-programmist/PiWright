@@ -6,6 +6,7 @@ import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
 import { previewSound } from '../../lib/sounds'
 import { isWindows } from '../../lib/platform'
+import { canReveal } from '../../api/web'
 import type { TFunc } from '../../lib/i18n'
 import type { NotificationSounds, Settings, Theme, UiLanguage } from '../../../../shared/ipc-contracts'
 
@@ -92,9 +93,11 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
         <span>{t('Settings')}</span>
         {saved && <span className="saved">{t('saved')}</span>}
         <span className="spacer" />
-        <button className="ghost" onClick={() => void window.piwright.revealSettings()}>
-          {t('Open configuration file')}
-        </button>
+        {canReveal && (
+          <button className="ghost" onClick={() => void window.piwright.revealSettings()}>
+            {t('Open configuration file')}
+          </button>
+        )}
         <button className="settings-close" title={t('Close settings')} onClick={onClose}>×</button>
       </header>
       <div className="settings-body">
