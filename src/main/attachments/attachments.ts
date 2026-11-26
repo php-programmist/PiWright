@@ -115,7 +115,7 @@ export async function readAttachmentImages(project: ProjectEntry, settings: Sett
   const blocks: PiJsonObject[] = []
   const pfs = getProjectFs(project, settings)
   for (const name of names) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name)) continue
+    if (!/^[\p{L}\p{N}._-]+$/u.test(name)) continue
     const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : ''
     const mimeType = imageMimeTypeForExtension(ext)
     if (mimeType === null) continue

@@ -78,7 +78,7 @@ function requireCardId(id: string): string | null {
 const ATTACHMENT_NAME_MAX = 80
 
 function sanitizeAttachmentFileName(path: string): string {
-  const base = basename(path).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, ATTACHMENT_NAME_MAX)
+  const base = basename(path).replace(/[^\p{L}\p{N}._-]/gu, '_').slice(0, ATTACHMENT_NAME_MAX)
   return base.length > 0 ? base : 'image.bin'
 }
 

@@ -34,6 +34,17 @@ describe('shared attachments helpers', () => {
     expect(attachmentRef(projectDir, 'a.png')).toBe('@.pi/attachments/a.png')
   })
 
+  it('cyrillic names are preserved', () => {
+    expect(sanitizeAttachmentName('Расписания занятий.jpg')).toBe('Расписания_занятий.jpg')
+    expect(sanitizeAttachmentName('Расписания занятий.jpg')).not.toContain('_'.repeat(3))
+    expect(attachmentRef(projectDir, 'Расписания_занятий.jpg')).toBe('@.pi/attachments/Расписания_занятий.jpg')
+    expect(splitAttachmentRefs('смотри @.pi/attachments/Расписания_занятий.jpg тут')).toEqual([
+      { kind: 'text', text: 'смотри ' },
+      { kind: 'ref', ref: '@.pi/attachments/Расписания_занятий.jpg', name: 'Расписания_занятий.jpg' },
+      { kind: 'text', text: ' тут' }
+    ])
+  })
+
   it('ref from a worktree session points to the repo root', () => {
     const wtDir = join(projectDir, '.pi', 'worktrees', 'demo')
     expect(attachmentRef(wtDir, 'a.png')).toBe('@../../.pi/attachments/a.png')

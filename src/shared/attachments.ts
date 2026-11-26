@@ -26,9 +26,10 @@ export function isImageFilePath(path: string): boolean {
   return path.includes('.') && imageMimeTypeForExtension(ext) !== null
 }
 
-/** Имя файла внутри `.pi/attachments/`: плоское, без разделителей пути. */
+/** Имя файла внутри `.pi/attachments/`: плоское, без разделителей пути; буквы/цифры Unicode
+ *  (кириллица и т.п.) сохраняются, прочие символы — в `_`. */
 export function sanitizeAttachmentName(name: string): string {
-  const cleaned = name.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_').slice(0, 100)
+  const cleaned = name.replace(/[^\p{L}\p{N}._-]/gu, '_').replace(/^\.+/, '_').slice(0, 100)
   return cleaned.length > 0 ? cleaned : 'attachment'
 }
 
@@ -41,7 +42,7 @@ export function attachmentRef(projectDir: string, name: string): string {
 
 export type AttachmentSegment = { kind: 'text'; text: string } | { kind: 'ref'; ref: string; name: string }
 
-const ATTACHMENT_REF_RE = /@((?:\.\.\/)*\.pi\/attachments\/)([A-Za-z0-9._-]+)/g
+const ATTACHMENT_REF_RE = /@((?:\.\.\/)*\.pi\/attachments\/)([\p{L}\p{N}._-]+)/gu
 
 /** Текст промпта → сегменты «текст / ref вложения» для рендера превью в чате. */
 export function splitAttachmentRefs(text: string): AttachmentSegment[] {
