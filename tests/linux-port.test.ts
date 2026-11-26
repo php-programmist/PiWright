@@ -147,4 +147,10 @@ describe('default sounds', () => {
       expect(bundledSoundsDir(undefined)).toContain('build')
     })
   })
+
+  it('dev electron resourcesPath (node_modules) falls back to build/sounds', () => {
+    withPlatform('linux', () => {
+      expect(bundledSoundsDir('/repo/node_modules/electron/dist/resources')).toContain('build')
+    })
+  })
 })

@@ -17,9 +17,11 @@ const BUNDLED_FILES: Record<DefaultSoundName, string> = {
   error: 'notify-error.wav'
 }
 
-/** Каталог своих wav: packaged — resources/sounds; dev/тесты — build/sounds от корня проекта. */
+/** Каталог своих wav: packaged — resources/sounds (в dev resourcesPath указывает в
+ *  node_modules/electron/dist — файлов там нет, берём build/sounds от корня проекта). */
 export function bundledSoundsDir(resourcesPath?: string): string {
-  if (resourcesPath !== undefined && resourcesPath.length > 0) return posix.join(resourcesPath, 'sounds')
+  const res = resourcesPath ?? (process as { resourcesPath?: string }).resourcesPath
+  if (res !== undefined && res.length > 0 && !res.includes('node_modules')) return posix.join(res, 'sounds')
   return posix.join(process.cwd().replaceAll('\\', '/'), 'build', 'sounds')
 }
 
