@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loopsEnabled: false,
   loopCloseSession: false,
   kanbanEnabled: false,
+  backgroundSessions: false,
   kanbanTheme: KANBAN_DEFAULT_THEME_ID,
   language: 'en',
   panels: {},

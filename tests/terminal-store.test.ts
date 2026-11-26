@@ -23,6 +23,7 @@ const baseSettings: Settings = {
   loopsEnabled: false,
   loopCloseSession: false,
   kanbanEnabled: false,
+  backgroundSessions: false,
   kanbanTheme: 'slate',
   language: 'en',
   panels: {},

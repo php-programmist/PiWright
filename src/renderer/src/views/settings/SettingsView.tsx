@@ -282,6 +282,40 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
               </label>
             </section>
           )}
+          {tab === 'advanced' && (
+            <section className="settings-section">
+              <h3>{t('Background sessions')}</h3>
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={draft.backgroundSessions}
+                  onChange={(e) => update({ backgroundSessions: e.target.checked })}
+                />
+                {t('Run sessions in the background daemon')}
+                <Hint text={t(BACKGROUND_SESSIONS_EXPLANATION)} />
+              </label>
+              {draft.backgroundSessions && (
+                <label>
+                  {t('Grace before stopping a background session, min')}
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={draft.notifications.backgroundGraceMinutes}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (Number.isFinite(n)) update({ notifications: { ...draft.notifications, backgroundGraceMinutes: Math.min(1440, Math.max(0, Math.round(n))) } })
+                    }}
+                  />
+                </label>
+              )}
+              {draft.backgroundSessions && (
+                <p className="settings-hint">
+                  {t('After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.')}
+                </p>
+              )}
+            </section>
+          )}
         </div>
       </div>
     </>
@@ -293,6 +327,9 @@ const LOOPS_EXPLANATION =
 
 const KANBAN_EXPLANATION =
   'The extension adds kanban board tools to the agent: pick up a task, create and move cards, leave a comment with links to the session and commits. Boards are stored in .pi/kanban at the root of the main repository (worktree sessions see a single board) and are committed together with the code; attachments go to .pi/kanban/attachments (not committed to git).'
+
+const BACKGROUND_SESSIONS_EXPLANATION =
+  'Sessions run in a separate background daemon: they keep working after the app is closed and survive its restart, and the “Stop session” buttons become available. When off, sessions live in the app process (as in 0.5.0) and stop together with it, and the stop buttons are hidden. New sessions pick up the toggle immediately; a restart is recommended after switching.'
 
 /** Иконка «?» с тултипом: поповер позиционируется fixed, чтобы не обрезался скроллом модалки настроек. */
 function Hint({ text }: { text: string }): React.JSX.Element {
@@ -618,25 +655,6 @@ function NotificationsTab({
             </span>
           )}
         </div>
-      </section>
-      <section className="settings-section">
-        <h3>{t('Background sessions')}</h3>
-        <label>
-          {t('Grace before stopping a background session, min')}
-          <input
-            type="number"
-            min={0}
-            max={1440}
-            value={draft.notifications.backgroundGraceMinutes}
-            onChange={(e) => {
-              const n = Number(e.target.value)
-              if (Number.isFinite(n)) update({ notifications: { ...draft.notifications, backgroundGraceMinutes: Math.min(1440, Math.max(0, Math.round(n))) } })
-            }}
-          />
-        </label>
-        <p className="settings-hint">
-          {t('After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.')}
-        </p>
       </section>
     </>
   )

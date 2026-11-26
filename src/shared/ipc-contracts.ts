@@ -68,6 +68,8 @@ export interface Settings {
   loopCloseSession: boolean
   /** Канбан-доски проекта: бандл-расширение resources/kanban (туы агента) + UI-панель. */
   kanbanEnabled: boolean
+  /** Фоновые сессии: демон-хост (сессии переживают закрытие приложения) + кнопки остановки в UI. */
+  backgroundSessions: boolean
   /** Id темы оформления досок (дефолт 'slate'); id пользовательской темы — из kanban-themes.json. */
   kanbanTheme: string
   /** Язык интерфейса (дефолт English). */

@@ -408,6 +408,9 @@ export function registerIpc(
       if (typeof raw['kanbanEnabled'] === 'boolean') {
         safe.kanbanEnabled = raw['kanbanEnabled']
       }
+      if (typeof raw['backgroundSessions'] === 'boolean') {
+        safe.backgroundSessions = raw['backgroundSessions']
+      }
       if (typeof raw['kanbanTheme'] === 'string' && raw['kanbanTheme'].trim().length > 0) {
         safe.kanbanTheme = raw['kanbanTheme'].trim().slice(0, 32)
       }

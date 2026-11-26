@@ -284,6 +284,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
   const placement = useSessionsStore((s) => s.settings?.selectorPlacement ?? 'top')
   const sendOnEnter = useSessionsStore((s) => s.settings?.sendOnEnter ?? true)
   const loopsEnabled = useSessionsStore((s) => s.settings?.loopsEnabled ?? false)
+  const backgroundSessions = useSessionsStore((s) => s.settings?.backgroundSessions ?? false)
   const t = useT()
   const status = chat?.status ?? null
   const entries = useMemo(() => chat?.entries ?? [], [chat])
@@ -975,7 +976,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
             </svg>
           </button>
         )}
-        {activeHostId !== null && (
+        {activeHostId !== null && backgroundSessions && (
           <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(activeHostId)}>
             <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />

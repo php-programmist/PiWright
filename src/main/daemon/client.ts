@@ -58,6 +58,9 @@ export interface DaemonClientOptions {
   getTelegramToken?: () => string | null
   /** Расхождение protoVersion (демон от старой версии пережил обновление) — диалог в renderer. */
   onVersionSkew?: (info: DaemonSkewInfo) => void
+  /** Живой предикат настройки «Фоновые сессии»: false — подключение/спавн в демона запрещены
+   * (DaemonUnavailableError → локальный фолбэк спавнера), демон не запускается. */
+  isEnabled?: () => boolean
 }
 
 /** Расхождение версии протокола: демон от старой версии пережил обновление. */
@@ -276,6 +279,9 @@ export class DaemonClient implements DaemonChildTransport {
   }
 
   private ensureConnected(): Promise<void> {
+    if (this.options.isEnabled !== undefined && !this.options.isEnabled()) {
+      return Promise.reject(new DaemonUnavailableError('disabled in settings'))
+    }
     if (this.disabled) return Promise.reject(new DaemonUnavailableError('protocol version mismatch earlier'))
     if (this.connected && this.socket !== null && !this.socket.destroyed) return Promise.resolve()
     if (this.connecting !== null) return this.connecting

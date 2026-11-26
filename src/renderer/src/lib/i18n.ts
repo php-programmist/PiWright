@@ -319,6 +319,11 @@ const RU: Record<string, string> = {
   'When enabled, the parent session tab closes as soon as the loop opens its next iteration':
     'Родительская вкладка сессии закрывается сразу после того, как петля откроет следующую итерацию',
 
+  // Настройки — Расширенные возможности — Фоновые сессии
+  'Run sessions in the background daemon': 'Запускать сессии в фоновом демоне',
+  'Sessions run in a separate background daemon: they keep working after the app is closed and survive its restart, and the “Stop session” buttons become available. When off, sessions live in the app process (as in 0.5.0) and stop together with it, and the stop buttons are hidden. New sessions pick up the toggle immediately; a restart is recommended after switching.':
+    'Сессии запускаются в отдельном фоновом демоне: они продолжают работать после закрытия приложения и переживают его перезапуск, появляются кнопки остановки сессий. Когда выключено, сессии живут в процессе приложения (как в релизе 0.5.0) и останавливаются вместе с ним, а кнопки остановки скрыты. Новые сессии подхватывают переключение сразу; после смены настройки рекомендуется перезапустить приложение.',
+
   // Настройки — Расширенные возможности — Канбан
   'Kanban': 'Канбан',
   'New board': 'Новая доска',

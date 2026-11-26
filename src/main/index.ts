@@ -189,6 +189,8 @@ app.whenReady().then(async () => {
     userDataDir: app.getPath('userData'),
     appVersion: app.getVersion(),
     getTelegramToken: () => tokenStore.read(),
+    // Настройка «Фоновые сессии» выключена — демон не подключается/не запускается, спавны локальные.
+    isEnabled: () => settings.get().backgroundSessions,
     onVersionSkew: (info) => {
       daemonSkew = info
       mainWindow?.webContents.send(DAEMON_SKEW_CHANNEL, info)
@@ -290,6 +292,8 @@ app.whenReady().then(async () => {
   // Каналы демона: статус (индикатор «N в фоне»), остановка фоновых, решение version-skew.
   // Не в register.ts: нужны skew-состояние и mainWindow этого модуля.
   ipcMain.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
+    // Настройка «Фоновые сессии» выключена — индикатор фона скрыт, даже если старый демон ещё жив.
+    if (!settings.get().backgroundSessions) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     const client = getDaemonClient()
     if (client === null || !client.connectedNow) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     try {
@@ -311,6 +315,7 @@ app.whenReady().then(async () => {
     }
   })
   ipcMain.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {
+    if (!settings.get().backgroundSessions) return { ok: false, stopped: 0, error: 'Background sessions are disabled in settings' }
     const client = getDaemonClient()
     if (client === null || !client.connectedNow) return { ok: false, stopped: 0, error: 'Daemon is not running' }
     try {

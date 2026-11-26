@@ -208,6 +208,7 @@ function ProjectRow({
   const renameProject = useSessionsStore((s) => s.renameProject)
   const refreshHistory = useSessionsStore((s) => s.refreshHistory)
   const setShowAll = useSessionsStore((s) => s.setShowAll)
+  const backgroundSessions = useSessionsStore((s) => s.settings?.backgroundSessions ?? false)
   const t = useT()
   const [menuOpen, setMenuOpen] = useState(false)
   const [projRenaming, setProjRenaming] = useState(false)
@@ -499,7 +500,7 @@ function ProjectRow({
                       </svg>
                     </button>
                   )}
-                  <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>
+                  {backgroundSessions && <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>}
                   <button className="icon" title={t('Rename (or double-click title)')} onClick={() => void startSessionRename(s.hostId, s.title)}>✎</button>
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>
