@@ -1,6 +1,6 @@
 {
   "name": "piwright",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Desktop workbench for the pi coding agent",
   "main": "./out/main/index.js",
   "author": "PiWright",
@@ -14,7 +14,7 @@
     "dev": "electron-vite dev",
     "dev:min": "electron-vite dev -- --smoke",
     "build": "electron-vite build",
-  "serve": "node out/headless/index.js",
+    "serve": "node out/headless/index.js",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
