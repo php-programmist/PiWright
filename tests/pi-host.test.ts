@@ -329,6 +329,7 @@ describe('PiHost', () => {
 
   it('close with keepAlive detaches (child stdin stays open), default close kills', async () => {
     const child = scriptedChild('C:\\proj\\a.jsonl')
+    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-1'
     currentChild = child
     const { piHost } = makePiHost([child])
     const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
@@ -345,6 +346,20 @@ describe('PiHost', () => {
     await host2.ensureStarted()
     second.piHost.close(host2.id)
     expect(killChild.stdin.writableEnded).toBe(true)
+  })
+
+  it('detached session forgets its restore tab when the watcher reports settled/exit', async () => {
+    const child = scriptedChild('C:\\proj\\a.jsonl')
+    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-9'
+    currentChild = child
+    const { piHost } = makePiHost([child])
+    const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
+    await host.ensureStarted()
+    piHost.close(host.id, { keepAlive: true })
+    piHost.forgetDetached('k-9')
+    // Повторный forget безвреден; вкладка уже забыта — новая не появляется.
+    piHost.forgetDetached('k-9')
+    expect(piHost.get(host.id)).toBeNull()
   })
 
   it('persists open session tabs on create and removes on close', async () => {

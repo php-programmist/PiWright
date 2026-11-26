@@ -39,6 +39,9 @@ export interface DaemonClientOptions {
   connectRetryTotalMs?: number
   helloTimeoutMs?: number
   spawnTimeoutMs?: number
+  /** Грейс отвязанной сессии после завершения хода: столько живёт процесс без нового хода,
+   *  потом закрывается (держать агента в памяти дороже, чем восстановить из транскрипта). */
+  detachedGraceMs?: number
 }
 
 export interface DaemonSpawnResult {
@@ -65,8 +68,13 @@ export class DaemonClient implements DaemonChildTransport {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly adapters = new Map<string, DaemonChildProcess>()
   private readonly buffered = new Map<string, DaemonPush[]>()
-  /** Ключи отвязанных детей (detach вкладки): живы в демоне, пуши не буферизуются. */
+  /** Ключи отвязанных детей (detach вкладки во время хода): живы в демоне, пуши не буферизуются.
+   *  stdout легковесно парсится: ход завершился (agent_settled) → грейс 10 мин без нового хода →
+   *  ребёнок закрывается (держать агента в памяти дороже, чем восстановить из транскрипта). */
   private readonly detached = new Set<string>()
+  private detachedListener: ((sessionKey: string, reason: 'settled' | 'exit') => void) | null = null
+  /** Таймеры грейса отвязанных сессий (agent_settled → грейс → close; agent_start → отмена). */
+  private readonly detachedTimers = new Map<string, NodeJS.Timeout>()
   private welcomeWaiter: { resolve: (welcome: DaemonWelcome) => void; reject: (error: Error) => void; timer: NodeJS.Timeout | null } | null = null
 
   constructor(options: DaemonClientOptions) {
@@ -95,6 +103,10 @@ export class DaemonClient implements DaemonChildTransport {
 
   private get spawnTimeoutMs(): number {
     return this.options.spawnTimeoutMs ?? 60_000
+  }
+
+  private get detachedGraceMs(): number {
+    return this.options.detachedGraceMs ?? 10 * 60_000
   }
 
   /** Спавн/attach ребёнка через демона. Ответ ошибки spawn пробрасывается как есть —
@@ -322,7 +334,55 @@ export class DaemonClient implements DaemonChildTransport {
     const push = message as DaemonPush
     const adapter = this.adapters.get(push.sessionKey)
     if (adapter !== undefined) adapter.handlePush(push)
-    else if (!this.detached.has(push.sessionKey)) this.bufferPush(push)
+    else if (this.detached.has(push.sessionKey)) this.handleDetachedPush(push)
+    else this.bufferPush(push)
+  }
+
+  /** Колбэк «отвязанная сессия завершилась» (ход дописан или процесс умер) — реестр вкладок чистит. */
+  setDetachedListener(listener: (sessionKey: string, reason: 'settled' | 'exit') => void): void {
+    this.detachedListener = listener
+  }
+
+  private handleDetachedPush(push: DaemonPush): void {
+    if (push.type === 'exit') {
+      this.clearDetachedGrace(push.sessionKey)
+      this.detached.delete(push.sessionKey)
+      this.detachedListener?.(push.sessionKey, 'exit')
+      return
+    }
+    if (push.type !== 'stdout') return
+    let eventType: string | null = null
+    try {
+      const parsed: unknown = JSON.parse(push.line)
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const t = (parsed as Record<string, unknown>)['type']
+        if (typeof t === 'string') eventType = t
+      }
+    } catch {
+      // не JSON — строка не про ход агента
+    }
+    if (eventType === 'agent_settled') {
+      // Ход в фоне дописан: грейс (по умолчанию 10 мин) — вдруг начнётся новый ход;
+      // по истечении закрываем ребёнка (stdin.end + kill через 2 c у демона).
+      if (this.detachedTimers.has(push.sessionKey)) return
+      const timer = setTimeout(() => {
+        this.detachedTimers.delete(push.sessionKey)
+        this.sendClose(push.sessionKey)
+        this.detachedListener?.(push.sessionKey, 'settled')
+      }, this.detachedGraceMs)
+      timer.unref()
+      this.detachedTimers.set(push.sessionKey, timer)
+      return
+    }
+    if (eventType === 'agent_start') this.clearDetachedGrace(push.sessionKey)
+  }
+
+  private clearDetachedGrace(sessionKey: string): void {
+    const timer = this.detachedTimers.get(sessionKey)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this.detachedTimers.delete(sessionKey)
+    }
   }
 
   private bufferPush(push: DaemonPush): void {
@@ -357,6 +417,9 @@ export class DaemonClient implements DaemonChildTransport {
     if (!this.connected && this.pending.size === 0 && this.adapters.size === 0 && this.welcomeWaiter === null) return
     this.connected = false
     this.socket = null
+    for (const timer of this.detachedTimers.values()) clearTimeout(timer)
+    this.detachedTimers.clear()
+    this.detached.clear()
     const error = new DaemonUnavailableError('connection lost')
     for (const pending of this.pending.values()) {
       if (pending.timer !== null) clearTimeout(pending.timer)

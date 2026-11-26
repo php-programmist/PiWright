@@ -19,6 +19,9 @@ export class PiHost {
   private readonly catalogs = new Map<BackendMode, { models: PiModelInfo[]; thinkingLevels: string[] }>()
   /** Открытые вкладки сессий (hostId → вкладка) — пишутся в настройки при открытии/закрытии/rekey. */
   private readonly openTabs = new Map<string, SavedSessionTab>()
+  /** Отвязанные сессии (крестик во время хода): sessionKey демона → hostId. Ход допишется —
+   *  вотчер демона закроет ребёнка, вкладка восстановления забудется. */
+  private readonly detachedTabs = new Map<string, string>()
 
   constructor(
     private readonly getSettings: () => Settings,
@@ -27,7 +30,9 @@ export class PiHost {
     private readonly installExtensions?: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>,
     private readonly checkpoints?: CodeCheckpoints | null,
     /** Персист открытых вкладок сессий (settings.openSessionTabs) — восстановление после рестарта. */
-    private readonly persistOpenTabs?: (tabs: SavedSessionTab[]) => void
+    private readonly persistOpenTabs?: (tabs: SavedSessionTab[]) => void,
+    /** Восстановление тогглов сессии (telegram/shared) по файлу — при открытии существующей сессии. */
+    private readonly restoreToggles?: (host: SessionHost, sessionFile: string) => void
   ) {}
 
   /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
@@ -51,10 +56,16 @@ export class PiHost {
       // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
       initialModel: sessionFile == null ? overrides?.model ?? settings.lastModel : null,
       initialThinkingLevel: sessionFile == null ? overrides?.thinkingLevel ?? settings.lastThinkingLevel : null,
-      onSessionFile: (file) => this.trackOpenTab(host.id, project, file)
+      onSessionFile: (file, sessionKey) => {
+        if (sessionKey !== null) this.detachedTabs.delete(sessionKey)
+        this.trackOpenTab(host.id, project, file)
+      }
     })
     this.hosts.set(host.id, host)
-    if (sessionFile != null) this.trackOpenTab(host.id, project, sessionFile)
+    if (sessionFile != null) {
+      this.trackOpenTab(host.id, project, sessionFile)
+      this.restoreToggles?.(host, sessionFile)
+    }
     return host
   }
 
@@ -96,7 +107,10 @@ export class PiHost {
       seedThinkingLevels: seed?.thinkingLevels,
       initialSessionName: `(fork) ${parent.displayTitle}`,
       initialThinkingLevel: parent.lastStatus()?.thinkingLevel ?? null,
-      onSessionFile: (file) => this.trackOpenTab(host.id, parent.project, file)
+      onSessionFile: (file, sessionKey) => {
+        if (sessionKey !== null) this.detachedTabs.delete(sessionKey)
+        this.trackOpenTab(host.id, parent.project, file)
+      }
     })
     this.hosts.set(host.id, host)
     this.trackOpenTab(host.id, parent.project, sessionFile)
@@ -139,16 +153,31 @@ export class PiHost {
     return result
   }
 
-  /** keepAlive=true — отключиться от сессии (крестик вкладки): ребёнок демона живёт.
-   *  keepAlive=false (по умолчанию) — остановить процесс («Остановить сессию», worktree). */
+  /** keepAlive=true — отключиться от сессии (крестик вкладки во время хода): ребёнок демона живёт,
+   *  вотчер закроет его после завершения хода. Без ключа демона (локальный спавн) — kill, иначе
+   *  процесс осиротеет. keepAlive=false — остановить процесс сразу («Остановить сессию», worktree,
+   *  завершённая сессия). */
   close(hostId: string, opts?: { keepAlive?: boolean }): HostRef | null {
     const host = this.hosts.get(hostId)
     if (host === undefined) return null
-    if (opts?.keepAlive === true) host.detach()
-    else host.dispose()
+    const sessionKey = opts?.keepAlive === true ? host.detach() : null
+    if (sessionKey !== null) {
+      this.detachedTabs.set(sessionKey, hostId)
+    } else {
+      // keepAlive без ключа демона уже привёл к dispose внутри detach(); явный kill — тоже dispose.
+      host.dispose()
+      this.forgetOpenTab(hostId)
+    }
     this.hosts.delete(hostId)
-    this.forgetOpenTab(hostId)
     return { hostId }
+  }
+
+  /** Отвязанная сессия завершилась (ход дописан или процесс умер) — забыть вкладку восстановления. */
+  forgetDetached(sessionKey: string): void {
+    const hostId = this.detachedTabs.get(sessionKey)
+    if (hostId === undefined) return
+    this.detachedTabs.delete(sessionKey)
+    this.forgetOpenTab(hostId)
   }
 
   /** То же, что close(), но ждёт выхода процесса — перед удалением worktree-каталога. */
@@ -164,6 +193,7 @@ export class PiHost {
   disposeAll(): void {
     for (const host of this.hosts.values()) host.dispose()
     this.hosts.clear()
+    this.detachedTabs.clear()
     if (this.openTabs.size > 0) {
       this.openTabs.clear()
       this.persistOpenTabs?.([])

@@ -88,6 +88,8 @@ export interface Settings {
   projectTabs: Record<string, ProjectTabsSnapshot>
   /** Открытые вкладки сессий — при старте восстанавливаются (живые дети демона аттачатся). Пишет только main. */
   openSessionTabs: SavedSessionTab[]
+  /** Тогглы сессии по файлу (telegram/shared) — восстанавливаются при открытии сессии из истории. Пишет только main. */
+  sessionToggles: Record<string, SessionToggles>
   /** Закреплённые ветки проекта (ключ projectKey) — всегда вверху списка переключателя веток. */
   pinnedBranches: Record<string, string[]>
   /** Последний активный проект (ключ projectKey) — восстанавливается при старте. */
@@ -140,6 +142,12 @@ export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'se
 export interface SavedSessionTab {
   project: ProjectEntry
   sessionFile: string
+}
+
+/** Тогглы сессии, переживают закрытие: telegram-уведомления и шаринг на телефон. */
+export interface SessionToggles {
+  telegram: boolean
+  shared: boolean
 }
 
 /** Сохранённая вкладка терминала: профиль + юзерское имя (пусто/undefined — имя профиля). */

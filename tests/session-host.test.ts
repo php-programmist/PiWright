@@ -1541,18 +1541,20 @@ describe('SessionHost', () => {
 
   it('detach keeps the child alive: no stdin end and no kill (dispose ends stdin)', async () => {
     const child = scriptedChild('C:\\proj\\.pi\\sessions\\a.jsonl')
+    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-1'
     currentChild = child
     const { host } = makeHost([child])
     await host.ensureStarted()
-    host.detach()
+    expect(host.detach()).toBe('k-1')
     expect(child.stdin.writableEnded).toBe(false)
     expect(child.killed).toBe(false)
 
+    // Локальный спавн (без ключа демона) отвязать нельзя — процесс остановится, иначе сирота.
     const other = scriptedChild('C:\\proj\\.pi\\sessions\\b.jsonl')
     currentChild = other
     const second = makeHost([other])
     await second.host.ensureStarted()
-    second.host.dispose()
+    expect(second.host.detach()).toBeNull()
     expect(other.stdin.writableEnded).toBe(true)
   })
 
@@ -1566,7 +1568,7 @@ describe('SessionHost', () => {
     const { host } = makeHost([child], SETTINGS, { onSessionFile })
     await host.ensureStarted()
     expect(rekey).toHaveBeenCalledWith('k-1', 'C:\\proj\\.pi\\sessions\\new.jsonl')
-    expect(onSessionFile).toHaveBeenCalledWith('C:\\proj\\.pi\\sessions\\new.jsonl')
+    expect(onSessionFile).toHaveBeenCalledWith('C:\\proj\\.pi\\sessions\\new.jsonl', 'k-1')
     setDaemonClientForTests(null)
     host.dispose()
   })

@@ -158,7 +158,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeOpenSessionTabs, mergeSshServers, mergeTerminalTabs } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -179,6 +179,30 @@ import { readSessionTranscript } from '../sessions/transcript'
 import { worktreeNameFromCwd } from '../../shared/worktree'
 import { buildWslUncPath, stripWslUncPrefix } from '../pi/backends/shell'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
+import type { SessionToggles } from '../../shared/ipc-contracts'
+
+/** Запомнить тоггл сессии (settings.sessionToggles по файлу сессии) — восстановится при
+ *  повторном открытии из истории. Оба тоггла false — запись удаляется. */
+function persistSessionToggles(
+  settings: SettingsService,
+  piHost: PiHost,
+  hostId: string,
+  patch: Partial<SessionToggles>
+): void {
+  const host = piHost.get(hostId)
+  const sessionFile = host?.sessionFilePath ?? null
+  if (sessionFile === null) return
+  const current = settings.get().sessionToggles
+  const merged = { ...(current[sessionFile] ?? { telegram: false, shared: false }), ...patch }
+  const next: Record<string, SessionToggles> = {}
+  if (merged.telegram || merged.shared) next[sessionFile] = { telegram: merged.telegram, shared: merged.shared }
+  for (const [key, value] of Object.entries(current)) {
+    if (key === sessionFile) continue
+    if (Object.keys(next).length >= SESSION_TOGGLES_MAX) break
+    next[key] = value
+  }
+  settings.set({ sessionToggles: next })
+}
 
 function isDialogAnswer(value: unknown): value is DialogAnswer {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
@@ -424,6 +448,9 @@ export function registerIpc(
       }
       if (raw['openSessionTabs'] !== undefined) {
         safe.openSessionTabs = mergeOpenSessionTabs(raw['openSessionTabs'])
+      }
+      if (raw['sessionToggles'] !== undefined) {
+        safe.sessionToggles = mergeSessionToggles(raw['sessionToggles'])
       }
       if (raw['pinnedBranches'] !== null && typeof raw['pinnedBranches'] === 'object' && !Array.isArray(raw['pinnedBranches'])) {
         safe.pinnedBranches = mergePinnedBranches(raw['pinnedBranches'])
@@ -1247,12 +1274,14 @@ export function registerIpc(
   ipcMain.handle(TELEGRAM_TOGGLE_SESSION_CHANNEL, (_event, hostId: unknown, enabled: unknown) => {
     if (typeof hostId !== 'string' || typeof enabled !== 'boolean') return { ok: false, error: 'Invalid arguments' }
     const done = notifications?.bridge.setTelegramEnabledByHost(hostId, enabled) ?? false
+    if (done) persistSessionToggles(settings, piHost, hostId, { telegram: enabled })
     return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
   })
 
   ipcMain.handle(REMOTE_SHARE_SESSION_CHANNEL, (_event, hostId: unknown, shared: unknown) => {
     if (typeof hostId !== 'string' || typeof shared !== 'boolean') return { ok: false, error: 'Invalid arguments' }
     const done = notifications?.bridge.setSharedByHost(hostId, shared) ?? false
+    if (done) persistSessionToggles(settings, piHost, hostId, { shared })
     return done ? { ok: true, error: null } : { ok: false, error: 'Session not found' }
   })
 

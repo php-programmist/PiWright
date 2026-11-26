@@ -125,8 +125,9 @@ export interface SessionHostOptions {
   subagentGraceMs?: number
   /** Чекпоинты кода для отката (rewind); null — откат кода недоступен (только сессия). */
   checkpoints?: CodeCheckpoints | null
-  /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления. */
-  onSessionFile?: (sessionFile: string) => void
+  /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления.
+   *  sessionKey — ключ ребёнка в демоне (null — локальный спавн); по нему чистятся отвязанные вкладки. */
+  onSessionFile?: (sessionFile: string, sessionKey: string | null) => void
 }
 
 export class SessionHost {
@@ -182,7 +183,9 @@ export class SessionHost {
   private readonly installExtensions: (project: ProjectEntry, settings: Settings) => Promise<(string | null)[]>
   /** Чекпоинты кода (rewind): слот user-промпта активной ветки → снапшот перед его отправкой. */
   private readonly checkpoints: CodeCheckpoints | null
-  private readonly onSessionFile: ((sessionFile: string) => void) | null
+  /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления.
+   *  sessionKey — ключ ребёнка в демоне (null — локальный спавн); по нему чистятся отвязанные вкладки. */
+  private readonly onSessionFile: ((sessionFile: string, sessionKey: string | null) => void) | null
   private checkpointsMap = new Map<number, { sha: string; ts: number }>()
   private checkpointsLoaded: Promise<void> | null = null
   /** Слот следующего промпта (= число user-промптов активной ветки); null — не синхронизировано. */
@@ -1222,7 +1225,7 @@ export class SessionHost {
     if (sessionFile === null) return
     const sessionKey = conn.daemonSessionKey
     if (sessionKey !== null) void getDaemonClient()?.rekey(sessionKey, sessionFile).catch(() => {})
-    this.onSessionFile?.(sessionFile)
+    this.onSessionFile?.(sessionFile, sessionKey)
   }
 
   dispose(): void {
@@ -1241,21 +1244,27 @@ export class SessionHost {
     this.conn = null
   }
 
-  /** Отключение от сессии без остановки процесса (крестик вкладки): ребёнок демона живёт,
-   *  повторное открытие вкладки аттачится к нему (spawn с тем же sessionFile). */
-  detach(): void {
+  /** Отключение от сессии без остановки процесса (крестик вкладки во время хода): ребёнок демона
+   *  живёт, повторное открытие вкладки аттачится к нему. Возвращает ключ ребёнка в демоне
+   *  (null — локальный спавн/не запущен) — по нему вотчер демона закроет сессию после хода.
+   *  Отвязать без демона нельзя (процесс осиротеет) — локальный спавн останавливается. */
+  detach(): string | null {
     this.clearPendingDialogs()
     this.cancelTurnEndTimer()
     this.cancelResolveTimer()
     if (this.startPromise !== null) {
-      void this.startPromise.then(() => {
-        this.conn?.detach()
-        this.conn = null
-      }).catch(() => {})
-      return
+      // Старт в полёте: отвязка осиротит ребёнка — останавливаем (dispose сам закроет после старта).
+      this.dispose()
+      return null
+    }
+    const sessionKey = this.conn?.daemonSessionKey ?? null
+    if (sessionKey === null) {
+      this.dispose()
+      return null
     }
     this.conn?.detach()
     this.conn = null
+    return sessionKey
   }
 
   /** dispose() и ожидание выхода процесса (с таймаутом) — чтобы каталог перестал быть занятым

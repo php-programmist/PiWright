@@ -195,6 +195,16 @@ app.whenReady().then(async () => {
     // Персист открытых вкладок сессий — восстановление после рестарта (эффект Herdr).
     (tabs) => {
       settings.set({ openSessionTabs: tabs })
+    },
+    // Тогглы сессии (telegram/shared) восстанавливаются по файлу при открытии существующей сессии.
+    (host, sessionFile) => {
+      const toggles = settings.get().sessionToggles[sessionFile]
+      if (toggles === undefined) return
+      if (toggles.telegram && !host.telegramEnabled) {
+        host.telegramEnabled = true
+        bridge?.setTelegramEnabledByHost(host.id, true)
+      }
+      if (toggles.shared && !(bridge?.sharedFor(host.id) ?? false)) bridge?.setSharedByHost(host.id, true)
     }
   )
   const git = gitService
@@ -249,6 +259,8 @@ app.whenReady().then(async () => {
   for (const tab of settings.get().openSessionTabs) {
     piHost.create(tab.project, tab.sessionFile)
   }
+  // Отвязанная сессия (крестик во время хода) завершилась в фоне — забыть вкладку восстановления.
+  getDaemonClient()?.setDetachedListener((sessionKey) => piHost?.forgetDetached(sessionKey))
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg, () => settings.get().language)
   app.on('activate', () => {

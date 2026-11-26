@@ -3,7 +3,7 @@
  *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { TERMINAL_PROFILE_IDS, type NotificationSettings, type ProjectEntry, type SessionToggles, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   terminalTabs: {},
   projectTabs: {},
   openSessionTabs: [],
+  sessionToggles: {},
   pinnedBranches: {},
   dismissedUpdateVersion: null,
   lastProjectKey: null,
@@ -113,6 +114,9 @@ export const TERMINAL_TABS_MAX = 16
 /** Лимит восстанавливаемых вкладок сессий (санитайзер). */
 export const OPEN_SESSION_TABS_MAX = 32
 
+/** Лимит запомненных тогглов сессий (санитайзер). */
+export const SESSION_TOGGLES_MAX = 200
+
 const PROJECT_KINDS = ['native', 'wsl', 'ssh'] as const
 
 /** openSessionTabs из файла/settings:set: валидный проект + непустой файл, дедуп по ключу. */
@@ -142,6 +146,24 @@ export function mergeOpenSessionTabs(value: unknown): SavedSessionTab[] {
     if (seen.has(key)) continue
     seen.add(key)
     out.push(entry)
+  }
+  return out
+}
+
+/** sessionToggles из файла/settings:set: непустой ключ файла, boolean-значения, лимит 200. */
+export function mergeSessionToggles(value: unknown): Record<string, SessionToggles> {
+  const out: Record<string, SessionToggles> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(out).length >= SESSION_TOGGLES_MAX) break
+    if (key.length === 0 || key.length > 2000) continue
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const record = raw as Record<string, unknown>
+    const telegram = record['telegram']
+    const shared = record['shared']
+    if (typeof telegram !== 'boolean' || typeof shared !== 'boolean') continue
+    if (!telegram && !shared) continue
+    out[key] = { telegram, shared }
   }
   return out
 }
@@ -263,6 +285,7 @@ export class SettingsService {
       merged.terminalTabs = mergeTerminalTabs((raw as Partial<Settings>)['terminalTabs'])
       merged.projectTabs = mergeProjectTabs((raw as Partial<Settings>)['projectTabs'])
       merged.openSessionTabs = mergeOpenSessionTabs((raw as Partial<Settings>)['openSessionTabs'])
+      merged.sessionToggles = mergeSessionToggles((raw as Partial<Settings>)['sessionToggles'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
       merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
       if (typeof merged.lastModel !== 'string') merged.lastModel = null

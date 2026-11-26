@@ -33,6 +33,7 @@ const baseSettings: Settings = {
   terminalTabs: {},
   projectTabs: {},
   openSessionTabs: [],
+  sessionToggles: {},
   pinnedBranches: {},
   dismissedUpdateVersion: null,
   lastProjectKey: null,
