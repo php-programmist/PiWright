@@ -216,17 +216,40 @@ export class DaemonClient implements DaemonChildTransport {
     })
   }
 
-  /** Демон — Electron в режиме чистого Node: полный доступ к node_modules из asar. */
+  /** Демон — Electron в режиме чистого Node: полный доступ к node_modules из asar.
+   *  Windows: запуск через посредника PowerShell Start-Process — .NET зовёт CreateProcess
+   *  с bInheritHandles=FALSE, демон не наследует хэндлы приложения. Прямой spawn (libuv) и
+   *  cmd start наследуют всё: после выхода приложения демон держал унаследованный сокет CDP
+   *  (и хэндл job-объекта, не давая умереть детям), порт оставался занят и перезапуск не мог
+   *  подняться («Cannot start http server for devtools»). Сам powershell спавнится БЕЗ
+   *  detached: DETACHED_PROCESS молча ломает его выполнение (exit 0 без запуска команды);
+   *  windowsHide скрывает консоль, сам powershell выходит сразу после Start-Process. */
   private launchDaemon(): void {
     const daemonJs = this.options.daemonJsPath ?? join(__dirname, '..', 'daemon', 'index.js')
     if (!existsSync(daemonJs)) return
+    if (process.platform === 'win32') {
+      const psq = (value: string): string => `'${value.replace(/'/g, "''")}'`
+      const command = [
+        'Start-Process', '-FilePath', psq(process.execPath),
+        '-ArgumentList', psq(daemonJs), ',', psq('--user-data'), ',', psq(this.options.userDataDir),
+        ',', psq('--app-version'), ',', psq(this.options.appVersion),
+        '-WindowStyle', 'Hidden'
+      ].join(' ')
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+        stdio: 'ignore',
+        windowsHide: true,
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+      })
+      child.on('error', () => {})
+      child.unref()
+      return
+    }
     const child = spawn(
       process.execPath,
       [daemonJs, '--user-data', this.options.userDataDir, '--app-version', this.options.appVersion],
       {
         detached: true,
         stdio: 'ignore',
-        windowsHide: true,
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
       }
     )
