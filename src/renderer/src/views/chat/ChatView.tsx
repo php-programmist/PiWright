@@ -1206,7 +1206,7 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => {
             const files = Array.from(e.clipboardData.items)
-              .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+              .filter((item) => item.kind === 'file')
               .map((item) => item.getAsFile())
               .filter((file): file is File => file !== null)
             if (files.length > 0) {
