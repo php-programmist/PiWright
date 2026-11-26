@@ -73,6 +73,10 @@ interface ChildRecord {
   streaming: boolean
   turnError: string | null
   graceTimer: NodeJS.Timeout | null
+  /** Фоновый ход уже уведомлён (agent_end и agent_settled — один ход, не два). */
+  turnNotified: boolean
+  /** Id диалогов, уже уведомлённых в фоне (повторные кадры того же диалога — молча). */
+  notifiedDialogs: Set<string>
 }
 
 const STDERR_TAIL_LINES = 20
@@ -252,7 +256,14 @@ export class DaemonServer {
   }
 
   private async onRequest(conn: ConnState, message: DaemonClientMessage): Promise<void> {
-    if (message.type === 'hello') return
+    if (message.type === 'hello') {
+      // Повторный hello на живом подключении — обновление токена бота (сохранён после старта).
+      if (typeof message.telegramToken === 'string' && message.telegramToken.length > 0) {
+        this.telegramToken = message.telegramToken
+        this.log('telegram token updated')
+      }
+      return
+    }
     if (message.type === 'spawn') {
       await this.handleSpawn(conn, message.id, message.spec, message.sessionFile)
       return
@@ -355,7 +366,9 @@ export class DaemonServer {
         title: null,
         streaming: false,
         turnError: null,
-        graceTimer: null
+        graceTimer: null,
+        turnNotified: false,
+        notifiedDialogs: new Set()
       }
       this.registerChild(record)
       return record
@@ -411,6 +424,7 @@ export class DaemonServer {
     if (type === 'agent_start') {
       record.streaming = true
       record.turnError = null
+      record.turnNotified = false
       this.cancelGrace(record)
       return
     }
@@ -431,7 +445,9 @@ export class DaemonServer {
     }
     if (type === 'agent_end' || type === 'agent_settled') {
       record.streaming = false
-      if (record.clients.size === 0 && record.sessionFile !== null) {
+      // agent_end и agent_settled — конец одного и того же хода: уведомляем один раз.
+      if (!record.turnNotified && record.clients.size === 0 && record.sessionFile !== null) {
+        record.turnNotified = true
         this.onBackgroundTurnEnd(record)
       }
       return
@@ -448,11 +464,19 @@ export class DaemonServer {
     this.startGrace(record)
   }
 
-  /** Диалог расширения без клиента: уведомить и запустить grace — время открыть приложение и ответить. */
+  /** Диалог расширения без клиента: уведомить и запустить grace — время открыть приложение и ответить.
+   *  setStatus/setWidget тоже идут через extension_ui_request — это не диалоги, молча пропускаем. */
   private onBackgroundDialog(record: ChildRecord, frame: Record<string, unknown>): void {
     const method = typeof frame['method'] === 'string' ? frame['method'] : ''
     const dialog = decodeExtensionDialog(method, frame as never)
-    this.notifyBackground(record, dialog?.kind === 'confirm' ? 'permission' : 'question')
+    if (dialog === null) return
+    const id = typeof frame['id'] === 'string' ? frame['id'] : ''
+    if (id.length > 0) {
+      if (record.notifiedDialogs.has(id)) return
+      record.notifiedDialogs.add(id)
+      if (record.notifiedDialogs.size > 50) record.notifiedDialogs.delete(record.notifiedDialogs.keys().next().value ?? '')
+    }
+    this.notifyBackground(record, dialog.kind === 'confirm' ? 'permission' : 'question')
     this.startGrace(record)
   }
 

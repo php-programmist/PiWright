@@ -571,13 +571,32 @@ describe('daemon background notifications', () => {
     startServer({ backgroundGraceMs: 10_000 })
     await server.start()
     await spawnChild(SESSION_FILE, { startTurn: true })
+    // setStatus/setWidget — не диалоги, уведомления нет.
+    children[0].emitData('{"type":"extension_ui_request","id":"s1","method":"setStatus","statusKey":"lsp","statusText":"ok"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([])
     children[0].emitData('{"type":"extension_ui_request","id":"d1","method":"confirm","title":"run?"}\n')
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: просит разрешение на команду' }])
     telegramPosts.length = 0
+    // Повторный кадр того же диалога — молча.
+    children[0].emitData('{"type":"extension_ui_request","id":"d1","method":"confirm","title":"run?"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([])
     children[0].emitData('{"type":"extension_ui_request","id":"d2","method":"input","title":"q?"}\n')
     await new Promise((resolve) => setTimeout(resolve, 60))
     expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: нужен ответ' }])
+  })
+
+  it('agent_end and agent_settled of one turn notify once', async () => {
+    writeSettings({})
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { startTurn: true })
+    children[0].emitData('{"type":"agent_end"}\n')
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: ход завершён' }])
   })
 
   it('attach during the grace cancels the kill', async () => {

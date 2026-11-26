@@ -177,6 +177,7 @@ import { listSkills, revealSkillsFolder, toggleSkill } from '../skills/skills-se
 import { deleteSessionFile, listProjectHistory, projectBackendCwd, resolveSessionsRoot, sessionsFs, toBackendPath, checkSessionPath, readSessionHeader } from '../sessions/session-catalog'
 import { readSessionTranscript } from '../sessions/transcript'
 import { worktreeNameFromCwd } from '../../shared/worktree'
+import { getDaemonClient } from '../daemon/client'
 import { buildWslUncPath, stripWslUncPrefix } from '../pi/backends/shell'
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 import type { SessionToggles } from '../../shared/ipc-contracts'
@@ -1260,6 +1261,8 @@ export function registerIpc(
   ipcMain.handle(TELEGRAM_SET_TOKEN_CHANNEL, (_event, token: unknown) => {
     if (typeof token !== 'string') return { ok: false, error: 'Invalid token' }
     notifications?.tokenStore.write(token)
+    // Демон получил hello до сохранения токена — обновить на живом канале (фоновые уведомления).
+    if (token.trim().length > 0) getDaemonClient()?.sendTelegramToken(token)
     return { ok: true, error: null }
   })
 

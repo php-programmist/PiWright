@@ -193,6 +193,18 @@ export class DaemonClient implements DaemonChildTransport {
     return this.ensureConnected()
   }
 
+  /** Токен бота сохранён после hello — обновить на живом подключении (фоновые уведомления). */
+  sendTelegramToken(token: string): void {
+    if (token.trim().length === 0 || !this.connectedNow) return
+    this.send({
+      type: 'hello',
+      token: readDaemonToken(this.options.userDataDir) ?? '',
+      protoVersion: DAEMON_PROTO_VERSION,
+      appVersion: this.options.appVersion,
+      telegramToken: token
+    })
+  }
+
   /** Активен ли блокиратор после version-skew (спавнеры не делают локальный фолбэк). */
   get versionSkew(): boolean {
     return this.disabled
