@@ -12,8 +12,11 @@ const API_HINTS = ['openai-completions', 'openai-responses', 'anthropic-messages
 const LEVEL_HINTS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const INPUT_KINDS = ['text', 'image']
 
-function otherBackend(backend: BackendMode): BackendMode {
-  return backend === 'native' ? 'wsl' : 'native'
+/** Цель копирования: бэкенд (+ конкретный SSH-сервер) и его отображаемое имя. */
+interface BackendRef {
+  backend: BackendMode
+  serverId?: string
+  label: string
 }
 
 function backendLabel(backend: BackendMode): string {
@@ -28,6 +31,41 @@ function emptyModel(): ModelEdit {
   return { id: '', name: '', contextWindow: '', maxTokens: '', input: ['text'], reasoning: false, thinkingLevelMap: [], extraText: '' }
 }
 
+function CopyMenu({ targets, onPick, icon }: { targets: BackendRef[]; onPick: (target: BackendRef) => void; icon?: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const t = useT()
+  return (
+    <div className="menu-wrap">
+      <button
+        className={icon === true ? 'icon' : 'ghost'}
+        title={icon === true ? t('Copy to another backend') : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        {icon === true ? '⇉' : t('Copy to…')}
+      </button>
+      {open && (
+        <>
+          <div className="popup-overlay" onClick={() => setOpen(false)} />
+          <div className="project-menu">
+            {targets.map((target) => (
+              <button
+                key={`${target.backend}:${target.serverId ?? ''}`}
+                className="project-menu-item"
+                onClick={() => {
+                  setOpen(false)
+                  onPick(target)
+                }}
+              >
+                {target.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 interface ProviderFormProps {
   draft: ProviderEdit
   isNew: boolean
@@ -35,7 +73,8 @@ interface ProviderFormProps {
   onChange: (next: ProviderEdit) => void
   onApply: () => void
   onCancel: () => void
-  onCopyModel: (model: ModelEdit) => void
+  copyTargets: BackendRef[]
+  onCopyModel: (model: ModelEdit, target: BackendRef) => void
 }
 
 function ModelForm({ model, onChange }: { model: ModelEdit; onChange: (next: ModelEdit) => void }): React.JSX.Element {
@@ -117,12 +156,14 @@ function ModelRow({
   model,
   onChange,
   onDelete,
-  onCopy
+  copyTargets,
+  onCopyTarget
 }: {
   model: ModelEdit
   onChange: (next: ModelEdit) => void
   onDelete: () => void
-  onCopy: () => void
+  copyTargets: BackendRef[]
+  onCopyTarget: (model: ModelEdit, target: BackendRef) => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const t = useT()
@@ -139,9 +180,7 @@ function ModelRow({
         <button className="icon" title={open ? t('Collapse') : t('Expand')} onClick={() => setOpen(!open)}>
           {open ? '▾' : '▸'}
         </button>
-        <button className="icon" title={t('Copy to another backend')} onClick={onCopy}>
-          ⇉
-        </button>
+        <CopyMenu icon targets={copyTargets} onPick={(target) => onCopyTarget(model, target)} />
         <button className="icon remove" title={t('Remove model')} onClick={onDelete}>
           ×
         </button>
@@ -151,7 +190,7 @@ function ModelRow({
   )
 }
 
-function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, onCopyModel }: ProviderFormProps): React.JSX.Element {
+function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, copyTargets, onCopyModel }: ProviderFormProps): React.JSX.Element {
   const t = useT()
   const setModel = (index: number, next: ModelEdit): void => {
     onChange({ ...draft, models: draft.models.map((m, i) => (i === index ? next : m)) })
@@ -188,7 +227,8 @@ function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, onCopy
           model={model}
           onChange={(next) => setModel(index, next)}
           onDelete={() => onChange({ ...draft, models: draft.models.filter((_, i) => i !== index) })}
-          onCopy={() => onCopyModel(model)}
+          copyTargets={copyTargets}
+          onCopyTarget={onCopyModel}
         />
       ))}
       <button className="ghost" onClick={() => onChange({ ...draft, models: [...draft.models, emptyModel()] })}>
@@ -207,7 +247,7 @@ function ProviderForm({ draft, isNew, error, onChange, onApply, onCancel, onCopy
 
 interface CopyPanelProps {
   modelId: string
-  targetBackend: BackendMode
+  targetLabel: string
   target: ParsedModelsDoc
   targetName: string
   isNew: boolean
@@ -229,7 +269,7 @@ function CopyPanel(props: CopyPanelProps): React.JSX.Element {
   return (
     <div className="copy-panel">
       <div className="copy-title">
-        {t('Copy model {id} to {backend}', { id: props.modelId, backend: backendLabel(props.targetBackend) })}
+        {t('Copy model {id} to {backend}', { id: props.modelId, backend: props.targetLabel })}
       </div>
       <label className="settings-check">
         <input type="checkbox" checked={props.isNew} onChange={(e) => props.onNew(e.target.checked)} />
@@ -291,7 +331,9 @@ export function ModelsTab(): React.JSX.Element {
   const [draft, setDraft] = useState<ProviderEdit | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [copyState, setCopyState] = useState<{ model: ModelEdit; target: ParsedModelsDoc } | null>(null)
+  const [copyState, setCopyState] = useState<{ model: ModelEdit; target: ParsedModelsDoc; targetRef: BackendRef } | null>(null)
+  const [jsonText, setJsonText] = useState<string | null>(null)
+  const [jsonError, setJsonError] = useState<string | null>(null)
   const [copyTargetName, setCopyTargetName] = useState('')
   const [copyNew, setCopyNew] = useState(false)
   const [copyNewName, setCopyNewName] = useState('')
@@ -300,6 +342,14 @@ export function ModelsTab(): React.JSX.Element {
   const [copyError, setCopyError] = useState<string | null>(null)
 
   const loading = loadedFor !== backend || (backend === 'ssh' && sshServerId.length === 0 && sshServers.length > 0)
+
+  const copyTargets: BackendRef[] = [
+    ...(backend !== 'native' ? [{ backend: 'native' as const, label: 'Windows' }] : []),
+    ...(backend !== 'wsl' ? [{ backend: 'wsl' as const, label: 'WSL' }] : []),
+    ...sshServers
+      .filter((s) => !(backend === 'ssh' && s.id === sshServerId))
+      .map((s) => ({ backend: 'ssh' as const, serverId: s.id, label: `SSH: ${s.name}` }))
+  ]
 
   useEffect(() => {
     let cancelled = false
@@ -315,6 +365,8 @@ export function ModelsTab(): React.JSX.Element {
       setFormError(null)
       setNotice(null)
       setCopyState(null)
+      setJsonText(null)
+      setJsonError(null)
       setLoadedFor(backend)
     })()
     return () => {
@@ -322,14 +374,14 @@ export function ModelsTab(): React.JSX.Element {
     }
   }, [backend, sshServerId, t])
 
-  const persist = async (next: ParsedModelsDoc, target: BackendMode): Promise<string | null> => {
+  const persist = async (next: ParsedModelsDoc, target: BackendMode, targetServerId?: string): Promise<string | null> => {
     let doc: unknown
     try {
       doc = serializeModelsDoc(next)
     } catch (err) {
       return err instanceof Error ? err.message : String(err)
     }
-    const res = await window.piwright.modelsSave(target, doc, target === 'ssh' ? sshServerId : undefined)
+    const res = await window.piwright.modelsSave(target, doc, target === 'ssh' ? targetServerId : undefined)
     if (res.ok) void window.piwright.modelsRefresh().catch(() => {})
     return res.ok ? null : (res.error ?? t('save failed'))
   }
@@ -367,7 +419,7 @@ export function ModelsTab(): React.JSX.Element {
         : parsed.providers.map((p) => (p.name === editing.name ? { ...draft, name } : p)),
       rest: parsed.rest
     }
-    const err = await persist(next, backend)
+    const err = await persist(next, backend, sshServerId)
     if (err !== null) {
       setFormError(err)
       return
@@ -382,21 +434,20 @@ export function ModelsTab(): React.JSX.Element {
   const deleteProvider = async (provider: ProviderEdit): Promise<void> => {
     if (!(await confirmDialog({ message: t('Delete provider {name} from {backend} models.json?', { name: provider.name, backend: backendLabel(backend) }), confirmLabel: t('Delete'), danger: true }))) return
     const next: ParsedModelsDoc = { providers: parsed.providers.filter((p) => p.name !== provider.name), rest: parsed.rest }
-    const err = await persist(next, backend)
+    const err = await persist(next, backend, sshServerId)
     setNotice(err ?? t('Deleted {name}', { name: provider.name }))
     if (err === null) setParsed(next)
   }
 
-  const copyProviderTo = async (provider: ProviderEdit): Promise<void> => {
-    const target = otherBackend(backend)
-    const res = await window.piwright.modelsList(target)
+  const copyProviderTo = async (provider: ProviderEdit, targetRef: BackendRef): Promise<void> => {
+    const res = await window.piwright.modelsList(targetRef.backend, targetRef.serverId)
     if (!res.ok) {
       setNotice(res.error ?? t('load failed'))
       return
     }
     const targetDoc = parseModelsDoc(res.doc)
     const existing = targetDoc.providers.some((p) => p.name === provider.name)
-    if (existing && !(await confirmDialog({ message: t('Provider {name} already exists on {backend}. Overwrite?', { name: provider.name, backend: backendLabel(target) }), confirmLabel: t('Overwrite') }))) return
+    if (existing && !(await confirmDialog({ message: t('Provider {name} already exists on {backend}. Overwrite?', { name: provider.name, backend: targetRef.label }), confirmLabel: t('Overwrite') }))) return
     const clone = cloneProvider(provider, provider.name)
     const next: ParsedModelsDoc = {
       providers: existing
@@ -404,19 +455,18 @@ export function ModelsTab(): React.JSX.Element {
         : [...targetDoc.providers, clone],
       rest: targetDoc.rest
     }
-    const err = await persist(next, target)
-    setNotice(err ?? t('Copied {name} to {backend}', { name: provider.name, backend: backendLabel(target) }))
+    const err = await persist(next, targetRef.backend, targetRef.serverId)
+    setNotice(err ?? t('Copied {name} to {backend}', { name: provider.name, backend: targetRef.label }))
   }
 
-  const openCopyModel = async (model: ModelEdit): Promise<void> => {
-    const target = otherBackend(backend)
-    const res = await window.piwright.modelsList(target)
+  const openCopyModel = async (model: ModelEdit, targetRef: BackendRef): Promise<void> => {
+    const res = await window.piwright.modelsList(targetRef.backend, targetRef.serverId)
     if (!res.ok) {
       setNotice(res.error ?? t('load failed'))
       return
     }
     const targetDoc = parseModelsDoc(res.doc)
-    setCopyState({ model: cloneModel(model), target: targetDoc })
+    setCopyState({ model: cloneModel(model), target: targetDoc, targetRef })
     setCopyTargetName(targetDoc.providers[0]?.name ?? '')
     setCopyNew(targetDoc.providers.length === 0)
     setCopyNewName('')
@@ -446,15 +496,50 @@ export function ModelsTab(): React.JSX.Element {
       return
     }
     providers = providers.map((p, i) => (i === index ? { ...p, models: [...p.models, cloneModel(copyState.model)] } : p))
-    const target = otherBackend(backend)
-    const err = await persist({ providers, rest: copyState.target.rest }, target)
-    setNotice(err ?? t('Copied {name} to {backend}', { name: copyState.model.id, backend: backendLabel(target) }))
+    const err = await persist({ providers, rest: copyState.target.rest }, copyState.targetRef.backend, copyState.targetRef.serverId)
+    setNotice(err ?? t('Copied {name} to {backend}', { name: copyState.model.id, backend: copyState.targetRef.label }))
     if (err === null) setCopyState(null)
   }
 
   const reveal = async (): Promise<void> => {
     const res = await window.piwright.modelsReveal(backend, backend === 'ssh' ? sshServerId : undefined)
     if (!res.ok) setNotice(res.error ?? t('open failed'))
+  }
+
+  const openJsonEditor = (): void => {
+    let doc: unknown
+    try {
+      doc = serializeModelsDoc(parsed)
+    } catch {
+      doc = { providers: {} }
+    }
+    setJsonText(JSON.stringify(doc, null, 2))
+    setJsonError(null)
+    setEditing(null)
+    setDraft(null)
+    setFormError(null)
+    setCopyState(null)
+  }
+
+  const saveJson = async (): Promise<void> => {
+    if (jsonText === null) return
+    let doc: unknown
+    try {
+      doc = JSON.parse(jsonText)
+    } catch (err) {
+      setJsonError(`${t('Invalid JSON')}: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+    const res = await window.piwright.modelsSave(backend, doc, backend === 'ssh' ? sshServerId : undefined)
+    if (!res.ok) {
+      setJsonError(res.error ?? t('save failed'))
+      return
+    }
+    void window.piwright.modelsRefresh().catch(() => {})
+    setParsed(parseModelsDoc(doc))
+    setExists(true)
+    setJsonText(null)
+    setJsonError(null)
   }
 
   return (
@@ -481,6 +566,9 @@ export function ModelsTab(): React.JSX.Element {
           )}
         </div>
         <span className="spacer" />
+        <button className="ghost" onClick={openJsonEditor}>
+          {t('Edit JSON')}
+        </button>
         {backend !== 'ssh' && (
           <button className="ghost" onClick={() => void reveal()}>
             {t('Open models.json in editor')}
@@ -492,10 +580,10 @@ export function ModelsTab(): React.JSX.Element {
       </div>
       {loadError !== null && <div className="settings-error">{loadError}</div>}
       {notice !== null && <div className="panel-hint">{notice}</div>}
-      {!loading && copyState !== null && (
+      {!loading && jsonText === null && copyState !== null && (
         <CopyPanel
           modelId={copyState.model.id}
-          targetBackend={otherBackend(backend)}
+          targetLabel={copyState.targetRef.label}
           target={copyState.target}
           targetName={copyTargetName}
           isNew={copyNew}
@@ -512,7 +600,7 @@ export function ModelsTab(): React.JSX.Element {
           onCancel={() => setCopyState(null)}
         />
       )}
-      {!loading && editing !== null && editing.isNew && draft !== null && (
+      {!loading && jsonText === null && editing !== null && editing.isNew && draft !== null && (
         <div className="provider-list">
           <div className="provider-card">
             <ProviderForm
@@ -526,12 +614,13 @@ export function ModelsTab(): React.JSX.Element {
                 setDraft(null)
                 setFormError(null)
               }}
-              onCopyModel={(model) => void openCopyModel(model)}
+              onCopyModel={(model, target) => void openCopyModel(model, target)}
+              copyTargets={copyTargets}
             />
           </div>
         </div>
       )}
-      {!loading && (
+      {!loading && jsonText === null && (
         <div className="provider-list">
           {parsed.providers.map((provider) => (
             <div key={provider.name} className="provider-card">
@@ -547,7 +636,8 @@ export function ModelsTab(): React.JSX.Element {
                     setDraft(null)
                     setFormError(null)
                   }}
-                  onCopyModel={(model) => void openCopyModel(model)}
+                  onCopyModel={(model, target) => void openCopyModel(model, target)}
+                  copyTargets={copyTargets}
                 />
               ) : (
                 <>
@@ -564,11 +654,7 @@ export function ModelsTab(): React.JSX.Element {
                     >
                       {t('Edit')}
                     </button>
-                    {backend !== 'ssh' && (
-                      <button className="ghost" onClick={() => void copyProviderTo(provider)}>
-                        {t('Copy → {backend}', { backend: backendLabel(otherBackend(backend)) })}
-                      </button>
-                    )}
+                    <CopyMenu targets={copyTargets} onPick={(target) => void copyProviderTo(provider, target)} />
                     <button className="ghost danger" onClick={() => void deleteProvider(provider)}>
                       {t('Delete')}
                     </button>
@@ -584,6 +670,30 @@ export function ModelsTab(): React.JSX.Element {
           <button className="add-provider" disabled={editing !== null} onClick={startAdd}>
             {t('+ Add provider')}
           </button>
+        </div>
+      )}
+      {!loading && jsonText !== null && (
+        <div className="models-json-editor">
+          <textarea
+            className="json-editor-text"
+            spellCheck={false}
+            value={jsonText}
+            onChange={(e) => setJsonText(e.target.value)}
+          />
+          {jsonError !== null && <div className="settings-error">{jsonError}</div>}
+          <div className="form-actions">
+            <button
+              onClick={() => {
+                setJsonText(null)
+                setJsonError(null)
+              }}
+            >
+              {t('Cancel')}
+            </button>
+            <button className="primary" onClick={() => void saveJson()}>
+              {t('Save')}
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -512,6 +512,32 @@ body {
   white-space: nowrap;
 }
 
+/* Меню «Копировать в…» над оверлеем (базовый .project-menu z-30 ниже .popup-overlay). */
+.models-tab .project-menu {
+  z-index: 50;
+}
+
+.models-json-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.json-editor-text {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  min-height: 320px;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
 .provider-list {
   display: flex;
   flex-direction: column;
