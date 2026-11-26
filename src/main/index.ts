@@ -98,7 +98,9 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
     height: state.height,
     title: 'PiWright',
     backgroundColor: bg,
-    icon: app.isPackaged ? join(process.resourcesPath, 'icon.ico') : join(__dirname, '../../build/icon.ico'),
+    icon: app.isPackaged
+      ? join(process.resourcesPath, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+      : join(__dirname, '../../build', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

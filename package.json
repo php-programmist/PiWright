@@ -5,6 +5,7 @@
   "main": "./out/main/index.js",
   "author": "PiWright",
   "license": "MIT",
+  "desktopName": "piwright.desktop",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/php-programmist/PiWright.git"
@@ -19,7 +20,9 @@
     "rebuild": "electron-rebuild -f -w node-pty",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder --win",
-    "dist:dir": "electron-vite build && electron-builder --dir"
+    "dist:dir": "electron-vite build && electron-builder --dir",
+    "dist:linux": "electron-vite build && electron-builder --linux",
+    "dist:dir:linux": "electron-vite build && electron-builder --dir --linux"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
@@ -69,6 +72,10 @@
       {
         "from": "build/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
       }
     ],
     "npmRebuild": false,
@@ -91,6 +98,17 @@
       "perMachine": false,
       "deleteAppDataOnUninstall": false,
       "include": "build/installer.nsh"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "artifactName": "${productName}-${version}.${ext}",
+      "maintainer": "PiWright",
+      "syncDesktopName": true
     },
     "publish": {
       "provider": "generic",
