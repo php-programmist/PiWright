@@ -9,6 +9,8 @@ import type { ChildProcess } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type {
+  GitBranchSync,
+  GitBranchSyncResult,
   GitBranchesResult,
   GitCommitFileDiffResult,
   GitCommitFilesResult,
@@ -319,6 +321,77 @@ export class GitService {
     const args = upstream.code === 0 ? ['push'] : ['push', '-u', 'origin', 'HEAD']
     const result = await this.run(project, args, PUSH_TIMEOUT_MS)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Push конкретной ветки: с upstream — `push <remote> <branch>:<leaf>`, без — `push -u origin <branch>`.
+   *  Работает и для не текущей ветки. */
+  async pushBranch(project: ProjectEntry, branch: string, forceWithLease: boolean): Promise<GitOpResult> {
+    const name = branch.trim()
+    if (name.length === 0 || /\s/.test(name)) return { ok: false, error: 'Invalid branch name' }
+    const force = forceWithLease ? ['--force-with-lease'] : []
+    const upstream = await this.run(project, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${name}@{u}`])
+    let args: string[]
+    if (upstream.code === 0) {
+      const full = upstream.stdout.trim()
+      const slash = full.indexOf('/')
+      const remote = slash > 0 ? full.slice(0, slash) : 'origin'
+      const leaf = slash > 0 ? full.slice(slash + 1) : full
+      args = ['push', remote, `${name}:${leaf}`, ...force]
+    } else {
+      args = ['push', '-u', 'origin', name, ...force]
+    }
+    const result = await this.run(project, args, PUSH_TIMEOUT_MS)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Pull ветки. Текущая: rebase/merge — `git pull --rebase|--no-rebase`, ff — `merge --ff-only`.
+   *  Не текущая: только fast-forward через `fetch . <upstream>:<branch>` (git отказывается
+   *  фетчить в checked-out ветку — для неё путь только через pull/merge). */
+  async pullBranch(project: ProjectEntry, branch: string, mode: 'rebase' | 'merge' | 'ff'): Promise<GitOpResult> {
+    const name = branch.trim()
+    if (name.length === 0 || /\s/.test(name)) return { ok: false, error: 'Invalid branch name' }
+    const upstream = await this.run(project, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${name}@{u}`])
+    if (upstream.code !== 0) return { ok: false, error: `No upstream configured for branch '${name}'` }
+    const upstreamRef = upstream.stdout.trim()
+    const current = await this.run(project, ['rev-parse', '--abbrev-ref', 'HEAD'])
+    const isCurrent = current.code === 0 && current.stdout.trim() === name
+    let args: string[]
+    if (!isCurrent) {
+      args = ['fetch', '.', `${upstreamRef}:${name}`]
+    } else if (mode === 'rebase') {
+      args = ['pull', '--rebase']
+    } else if (mode === 'merge') {
+      args = ['pull', '--no-rebase']
+    } else {
+      args = ['merge', '--ff-only', upstreamRef]
+    }
+    const result = await this.run(project, args, mode === 'rebase' || mode === 'merge' ? FETCH_TIMEOUT_MS : GIT_TIMEOUT_MS)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Ahead/behind всех локальных веток одним for-each-ref (данные с последнего fetch). */
+  async branchSync(project: ProjectEntry): Promise<GitBranchSyncResult> {
+    const result = await this.run(project, [
+      'for-each-ref',
+      'refs/heads',
+      '--format=%(refname:short)%09%(upstream:short)%09%(upstream:track,nobracket)'
+    ])
+    if (result.code !== 0) return { ok: false, error: errorOf(result, ['for-each-ref']), branches: [] }
+    const branches: GitBranchSync[] = []
+    for (const line of result.stdout.split('\n')) {
+      if (line.trim().length === 0) continue
+      const [name, upstream = '', track = ''] = line.split('\t')
+      const aheadMatch = track.match(/ahead (\d+)/)
+      const behindMatch = track.match(/behind (\d+)/)
+      branches.push({
+        name,
+        upstream: upstream.length > 0 ? upstream : null,
+        ahead: aheadMatch === null ? 0 : Number(aheadMatch[1]),
+        behind: behindMatch === null ? 0 : Number(behindMatch[1]),
+        gone: track.trim() === 'gone'
+      })
+    }
+    return { ok: true, error: null, branches }
   }
 
   /** Забрать изменения с удалений; ошибки (нет сети/remote) — обычный GitOpResult, не throw. */

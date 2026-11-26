@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
+import type { GitBranchSync, GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
 
 /** Состояние git-панели для активного проекта; смена проекта сбрасывает всё, кроме open/width. */
@@ -17,6 +17,7 @@ type GitData = Pick<
   | 'generating'
   | 'busy'
   | 'branches'
+  | 'branchSync'
 >
 
 interface GitState {
@@ -37,10 +38,14 @@ interface GitState {
   generating: boolean
   busy: boolean
   branches: string[]
+  /** Ahead/behind по локальным веткам (для стрелок в селекторе); обновляется после fetch/push/pull. */
+  branchSync: GitBranchSync[]
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Только статус; silent — не трогать error/status при сбое (поллинг, конец хода). */
   refreshStatus: (project: ProjectEntry, silent?: boolean) => Promise<void>
+  /** Только ahead/behind веток; при сбое данные остаются старыми (стрелки просто не обновляются). */
+  refreshBranchSync: (project: ProjectEntry) => Promise<void>
   openFile: (project: ProjectEntry, path: string) => Promise<void>
   /** Дифф файла в коммите (из истории Git). */
   openCommitFile: (project: ProjectEntry, hash: string, path: string) => Promise<void>
@@ -49,6 +54,10 @@ interface GitState {
   unstage: (project: ProjectEntry, paths: string[]) => Promise<void>
   commit: (project: ProjectEntry) => Promise<void>
   push: (project: ProjectEntry) => Promise<void>
+  /** Push конкретной ветки (кнопки в подменю селектора веток). */
+  pushBranch: (project: ProjectEntry, branch: string, forceWithLease: boolean) => Promise<void>
+  /** Pull ветки: rebase/merge — текущая, ff — не текущая. */
+  pullBranch: (project: ProjectEntry, branch: string, mode: 'rebase' | 'merge' | 'ff') => Promise<void>
   checkout: (project: ProjectEntry, name: string, create: boolean, startPoint?: string) => Promise<void>
   renameBranch: (project: ProjectEntry, oldName: string, newName: string) => Promise<void>
   deleteBranch: (project: ProjectEntry, name: string) => Promise<void>
@@ -72,7 +81,8 @@ function resetState(): GitData {
     message: '',
     generating: false,
     busy: false,
-    branches: []
+    branches: [],
+    branchSync: []
   }
 }
 
@@ -91,12 +101,17 @@ export const useGitStore = create<GitState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const [statusResult, branchesResult] = await Promise.all([window.piwright.gitStatus(project), window.piwright.gitBranches(project)])
+    const [statusResult, branchesResult, syncResult] = await Promise.all([
+      window.piwright.gitStatus(project),
+      window.piwright.gitBranches(project),
+      window.piwright.gitBranchSync(project)
+    ])
     set((state) => ({
       loading: false,
       status: statusResult.ok ? statusResult.status : state.status,
       error: statusResult.ok ? state.error : statusResult.error,
-      branches: branchesResult.branches
+      branches: branchesResult.branches,
+      branchSync: syncResult.ok ? syncResult.branches : state.branchSync
     }))
   },
 
@@ -107,6 +122,12 @@ export const useGitStore = create<GitState>((set, get) => ({
       if (!result.ok) return silent ? state : { error: result.error }
       return { status: result.status }
     })
+  },
+
+  refreshBranchSync: async (project) => {
+    if (projectKey(project) !== get().projectKey) return
+    const result = await window.piwright.gitBranchSync(project)
+    if (result.ok) set({ branchSync: result.branches })
   },
 
   openFile: async (project, path) => {
@@ -163,6 +184,20 @@ export const useGitStore = create<GitState>((set, get) => ({
   push: async (project) => {
     set({ busy: true, error: null })
     const result = await window.piwright.gitPush(project)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refresh(project)
+  },
+
+  pushBranch: async (project, branch, forceWithLease) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitPushBranch(project, branch, forceWithLease)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refresh(project)
+  },
+
+  pullBranch: async (project, branch, mode) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitPullBranch(project, branch, mode)
     set({ busy: false, error: result.ok ? null : result.error })
     if (result.ok) await get().refresh(project)
   },

@@ -381,6 +381,20 @@ export interface GitOpResult {
   error: string | null
 }
 
+/** Синк локальной ветки с upstream: количества коммитов на push/pull (из %(upstream:track)). */
+export interface GitBranchSync {
+  name: string
+  upstream: string | null
+  ahead: number
+  behind: number
+  /** upstream задан, но отсутствует на remote (удалён). */
+  gone: boolean
+}
+
+export interface GitBranchSyncResult extends GitOpResult {
+  branches: GitBranchSync[]
+}
+
 export interface GitStatusResult extends GitOpResult {
   status: GitStatus | null
 }
@@ -942,6 +956,12 @@ export interface PiWrightApi {
   gitUnstage(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
   gitCommit(project: ProjectEntry, message: string): Promise<GitOpResult>
   gitPush(project: ProjectEntry): Promise<GitOpResult>
+  /** Push конкретной ветки в её upstream (нет upstream — `push -u origin <branch>`); forceWithLease — `--force-with-lease`. */
+  gitPushBranch(project: ProjectEntry, branch: string, forceWithLease: boolean): Promise<GitOpResult>
+  /** Pull ветки: rebase/merge — только для текущей (`git pull`), ff — fast-forward апдейт не текущей (`fetch . <upstream>:<branch>`). */
+  gitPullBranch(project: ProjectEntry, branch: string, mode: 'rebase' | 'merge' | 'ff'): Promise<GitOpResult>
+  /** Ahead/behind по всем локальным веткам (для стрелок в селекторе веток). */
+  gitBranchSync(project: ProjectEntry): Promise<GitBranchSyncResult>
   /** `git fetch --quiet` — обновить remote-tracking ref'ы (ahead/behind в статусе). */
   gitFetch(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry, page?: number, filter?: GitLogFilter): Promise<GitLogResult>
@@ -1121,6 +1141,9 @@ export const GIT_STAGE_CHANNEL = 'git:stage'
 export const GIT_UNSTAGE_CHANNEL = 'git:unstage'
 export const GIT_COMMIT_CHANNEL = 'git:commit'
 export const GIT_PUSH_CHANNEL = 'git:push'
+export const GIT_PUSH_BRANCH_CHANNEL = 'git:push-branch'
+export const GIT_PULL_BRANCH_CHANNEL = 'git:pull-branch'
+export const GIT_BRANCH_SYNC_CHANNEL = 'git:branch-sync'
 export const GIT_FETCH_CHANNEL = 'git:fetch'
 export const GIT_LOG_CHANNEL = 'git:log'
 export const GIT_COMMIT_FILES_CHANNEL = 'git:commit-files'

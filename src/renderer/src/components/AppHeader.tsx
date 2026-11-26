@@ -35,7 +35,10 @@ export function AppHeader(): React.JSX.Element | null {
     let cancelled = false
     const run = (): void => {
       void window.piwright.gitFetch(project).then(() => {
-        if (!cancelled) void useGitStore.getState().refreshStatus(project, true)
+        if (!cancelled) {
+          void useGitStore.getState().refreshStatus(project, true)
+          void useGitStore.getState().refreshBranchSync(project)
+        }
       })
     }
     run()

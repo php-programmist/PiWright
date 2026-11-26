@@ -35,6 +35,9 @@ import {
   GIT_COMMIT_FILES_CHANNEL,
   GIT_COMMIT_FILE_DIFF_CHANNEL,
   GIT_PUSH_CHANNEL,
+  GIT_PUSH_BRANCH_CHANNEL,
+  GIT_PULL_BRANCH_CHANNEL,
+  GIT_BRANCH_SYNC_CHANNEL,
   GIT_FETCH_CHANNEL,
   GIT_STAGE_CHANNEL,
   GIT_STATUS_CHANNEL,
@@ -912,6 +915,25 @@ export function registerIpc(
   ipcMain.handle(GIT_PUSH_CHANNEL, async (_event, project: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
     return git.push(project)
+  })
+
+  ipcMain.handle(GIT_PUSH_BRANCH_CHANNEL, async (_event, project: unknown, branch: unknown, forceWithLease: unknown) => {
+    if (!isProjectEntry(project) || typeof branch !== 'string' || typeof forceWithLease !== 'boolean') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.pushBranch(project, branch, forceWithLease)
+  })
+
+  ipcMain.handle(GIT_PULL_BRANCH_CHANNEL, async (_event, project: unknown, branch: unknown, mode: unknown) => {
+    if (!isProjectEntry(project) || typeof branch !== 'string' || (mode !== 'rebase' && mode !== 'merge' && mode !== 'ff')) {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.pullBranch(project, branch, mode)
+  })
+
+  ipcMain.handle(GIT_BRANCH_SYNC_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', branches: [] }
+    return git.branchSync(project)
   })
 
   ipcMain.handle(GIT_FETCH_CHANNEL, async (_event, project: unknown) => {

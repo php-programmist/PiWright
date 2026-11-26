@@ -1,4 +1,4 @@
-﻿/** GitService против реального временного репозитория (native-бэкенд, настоящий git CLI). */
+/** GitService против реального временного репозитория (native-бэкенд, настоящий git CLI). */
 import { execSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -521,6 +521,122 @@ describe('GitService log filters and commit actions', () => {
       expect(after.status?.behind).toBe(1)
     } finally {
       rmSync(clone, { recursive: true, force: true })
+    }
+  })
+
+  it('branchSync reports upstream, ahead and behind per branch', async () => {
+    // ветка на origin/main^ — строго позади upstream на 1 коммит (история main переписана
+    // предыдущими тестами — от неё счётчики не контролируются)
+    run('git branch sync-behind origin/main~1')
+    run('git config branch.sync-behind.remote origin')
+    run('git config branch.sync-behind.merge refs/heads/main')
+    let sync = await git.branchSync(project)
+    expect(sync.ok).toBe(true)
+    expect(sync.branches.find((b) => b.name === 'sync-behind')).toMatchObject({ upstream: 'origin/main', ahead: 0, behind: 1, gone: false })
+
+    // ветка без upstream — нулевые счётчики
+    run('git branch sync-free')
+    sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'sync-free')).toMatchObject({ upstream: null, ahead: 0, behind: 0, gone: false })
+
+    // upstream задан через config, но ветки на remote нет — gone
+    run('git branch ghost')
+    run('git config branch.ghost.remote origin')
+    run('git config branch.ghost.merge refs/heads/ghost')
+    sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'ghost')).toMatchObject({ upstream: 'origin/ghost', gone: true })
+
+    run('git branch -D sync-behind sync-free ghost')
+  })
+
+  it('pushBranch creates upstream when missing and pushes the current branch', async () => {
+    run('git branch sync-a')
+    run('git checkout -q sync-a')
+    expect((await git.pushBranch(project, 'sync-a', false)).ok).toBe(true)
+    let sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'sync-a')).toMatchObject({ upstream: 'origin/sync-a', ahead: 0 })
+
+    writeFileSync(join(dir, 'sync-a.txt'), 'y')
+    run('git add .')
+    run('git commit -q -m sync-a-local-2')
+    sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'sync-a')?.ahead).toBe(1)
+    expect((await git.pushBranch(project, 'sync-a', true)).ok).toBe(true)
+    sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'sync-a')?.ahead).toBe(0)
+  })
+
+  it('pushBranch pushes a non-current branch', async () => {
+    run('git checkout -q sync-a')
+    writeFileSync(join(dir, 'sync-a.txt'), 'z')
+    run('git add .')
+    run('git commit -q -m sync-a-local-3')
+    run('git checkout -q main')
+    expect((await git.pushBranch(project, 'sync-a', false)).ok).toBe(true)
+    const sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'sync-a')?.ahead).toBe(0)
+    run('git branch -D sync-a')
+  })
+
+  it('pullBranch fast-forwards a non-current branch from its upstream', async () => {
+    // ветка строго позади upstream (origin/main^) — иначе ff невозможен
+    run('git branch stale origin/main~1')
+    run('git config branch.stale.remote origin')
+    run('git config branch.stale.merge refs/heads/main')
+    let sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'stale')).toMatchObject({ upstream: 'origin/main', behind: 1 })
+    expect((await git.pullBranch(project, 'stale', 'ff')).ok).toBe(true)
+    sync = await git.branchSync(project)
+    expect(sync.branches.find((b) => b.name === 'stale')).toMatchObject({ behind: 0 })
+    expect(execSync('git rev-parse stale', { cwd: dir, encoding: 'utf8' }).trim()).toBe(
+      execSync('git rev-parse origin/main', { cwd: dir, encoding: 'utf8' }).trim()
+    )
+    run('git branch -D stale')
+  })
+
+  it('pullBranch rebases and merges the current branch', async () => {
+    const clone = mkdtempSync(join(tmpdir(), 'piwright-git-clone-'))
+    try {
+      execSync(`git clone -q "${remote}" "${clone}"`, { stdio: 'pipe' })
+      execSync('git config user.email test@test', { cwd: clone, stdio: 'pipe' })
+      execSync('git config user.name test', { cwd: clone, stdio: 'pipe' })
+
+      // ветка от origin/main с upstream; расходимся: локальный коммит + коммит из клона
+      run('git checkout -q -b rb origin/main')
+      run('git config branch.rb.remote origin')
+      run('git config branch.rb.merge refs/heads/main')
+      writeFileSync(join(dir, 'diverge.txt'), 'local')
+      run('git add .')
+      run('git commit -q -m diverge-local')
+      writeFileSync(join(clone, 'diverge-remote.txt'), 'remote')
+      execSync('git add .', { cwd: clone, stdio: 'pipe' })
+      execSync('git commit -q -m diverge-remote', { cwd: clone, stdio: 'pipe' })
+      execSync('git push -q origin main', { cwd: clone, stdio: 'pipe' })
+      run('git fetch -q')
+      let sync = await git.branchSync(project)
+      expect(sync.branches.find((b) => b.name === 'rb')).toMatchObject({ ahead: 1, behind: 1 })
+
+      expect((await git.pullBranch(project, 'rb', 'rebase')).ok).toBe(true)
+      sync = await git.branchSync(project)
+      expect(sync.branches.find((b) => b.name === 'rb')).toMatchObject({ ahead: 1, behind: 0 })
+      run('git push -q origin rb')
+
+      // расходимся ещё раз — merge создаёт merge-коммит
+      writeFileSync(join(dir, 'diverge2.txt'), 'local')
+      run('git add .')
+      run('git commit -q -m diverge2-local')
+      writeFileSync(join(clone, 'diverge2-remote.txt'), 'remote')
+      execSync('git add .', { cwd: clone, stdio: 'pipe' })
+      execSync('git commit -q -m diverge2-remote', { cwd: clone, stdio: 'pipe' })
+      execSync('git push -q origin main', { cwd: clone, stdio: 'pipe' })
+      run('git fetch -q')
+      expect((await git.pullBranch(project, 'rb', 'merge')).ok).toBe(true)
+      sync = await git.branchSync(project)
+      expect(sync.branches.find((b) => b.name === 'rb')).toMatchObject({ ahead: 3, behind: 0 })
+    } finally {
+      rmSync(clone, { recursive: true, force: true })
+      run('git checkout -q main')
+      run('git branch -D rb')
     }
   })
 })

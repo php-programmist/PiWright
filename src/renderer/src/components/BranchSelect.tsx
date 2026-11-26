@@ -1,5 +1,6 @@
 /** Попап веток (референс PHPStorm): поиск, «New branch...», клик по ветке — подменю
- *  (Pin/Unpin / Checkout / New Branch from / Rename / Delete; у текущей — без Checkout и Delete).
+ *  (Pin/Unpin / Checkout / Push / Force push / Pull / New Branch from / Rename / Delete; у текущей — без Checkout и Delete).
+ *  У веток с upstream — стрелки ahead/behind (зелёная ↑ / синяя ↓, данные с последнего fetch).
  *  Порядок: закреплённые → main/master → алфавит. Живёт в шапке приложения; данные — из git-стора проекта. */
 import { useMemo, useState } from 'react'
 import { useGitStore } from '../stores/git'
@@ -15,11 +16,15 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
   const checkout = useGitStore((s) => s.checkout)
   const renameBranch = useGitStore((s) => s.renameBranch)
   const deleteBranch = useGitStore((s) => s.deleteBranch)
+  const branchSync = useGitStore((s) => s.branchSync)
+  const pushBranch = useGitStore((s) => s.pushBranch)
+  const pullBranch = useGitStore((s) => s.pullBranch)
   const t = useT()
   const settings = useSessionsStore((s) => s.settings)
   const pKey = projectKey(project)
   const pinned = useMemo(() => settings?.pinnedBranches[pKey] ?? [], [settings, pKey])
   const sorted = useMemo(() => sortBranches(branches, pinned), [branches, pinned])
+  const syncByName = useMemo(() => new Map(branchSync.map((b) => [b.name, b])), [branchSync])
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'list' | 'submenu' | 'new' | 'rename'>('list')
   const [target, setTarget] = useState<string | null>(null)
@@ -38,6 +43,13 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
     setName('')
   }
   const filtered = sorted.filter((b) => b.toLowerCase().includes(filter.toLowerCase()))
+  const targetSync = target !== null ? syncByName.get(target) : undefined
+  // Push: есть что пушить, нет upstream (создастся -u) или upstream удалён на remote.
+  const canPush = targetSync === undefined || targetSync.upstream === null || targetSync.gone || targetSync.ahead > 0
+  // Pull: есть upstream с отстающими коммитами (gone — тянуть неоткуда).
+  const canPull = targetSync !== undefined && targetSync.upstream !== null && !targetSync.gone && targetSync.behind > 0
+  // Расхождение (локальные И remote коммиты) — тогда выбор rebase/merge; иначе достаточно fast-forward.
+  const diverged = (targetSync?.ahead ?? 0) > 0 && (targetSync?.behind ?? 0) > 0
 
   const createBranch = (): void => {
     const trimmed = name.trim()
@@ -95,6 +107,7 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
               </button>
               {filtered.map((b) => {
                 const isPinned = pinned.includes(b)
+                const sync = syncByName.get(b)
                 return (
                   <button
                     key={b}
@@ -106,6 +119,16 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
                   >
                     <span className={`branch-glyph${b === branch ? ' star' : isPinned ? ' pin' : ''}`}>{b === branch ? '★' : isPinned ? '📌' : '⑂'}</span>
                     <span className="branch-item-name">{b}</span>
+                    {sync !== undefined && sync.ahead > 0 && (
+                      <span className="branch-ab up" title={t('Ahead: {count}', { count: sync.ahead })}>
+                        ↑{sync.ahead}
+                      </span>
+                    )}
+                    {sync !== undefined && sync.behind > 0 && (
+                      <span className="branch-ab down" title={t('Behind: {count}', { count: sync.behind })}>
+                        ↓{sync.behind}
+                      </span>
+                    )}
                   </button>
                 )
               })}
@@ -159,6 +182,81 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
               <span>{t('Checkout')}</span>
             </button>
           )}
+          {canPush && (
+            <>
+              <button
+                className="branch-item"
+                onClick={() => {
+                  void pushBranch(project, target, false)
+                  close()
+                }}
+              >
+                <span className="branch-glyph up">↑</span>
+                <span>{t('Push')}</span>
+              </button>
+              <button
+                className="branch-item"
+                onClick={() => {
+                  void pushBranch(project, target, true)
+                  close()
+                }}
+              >
+                <span className="branch-glyph up">⇧</span>
+                <span>{t('Force push (lease)')}</span>
+              </button>
+            </>
+          )}
+          {canPull &&
+            (target === branch ? (
+              diverged ? (
+                <>
+                  <button
+                    className="branch-item"
+                    onClick={() => {
+                      void pullBranch(project, target, 'rebase')
+                      close()
+                    }}
+                  >
+                    <span className="branch-glyph down">↓</span>
+                    <span>{t('Pull (rebase)')}</span>
+                  </button>
+                  <button
+                    className="branch-item"
+                    onClick={() => {
+                      void pullBranch(project, target, 'merge')
+                      close()
+                    }}
+                  >
+                    <span className="branch-glyph down">↓</span>
+                    <span>{t('Pull (merge)')}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="branch-item"
+                  onClick={() => {
+                    void pullBranch(project, target, 'ff')
+                    close()
+                  }}
+                >
+                  <span className="branch-glyph down">↓</span>
+                  <span>{t('Pull')}</span>
+                </button>
+              )
+            ) : (
+              diverged ? null : (
+                <button
+                  className="branch-item"
+                  onClick={() => {
+                    void pullBranch(project, target, 'ff')
+                    close()
+                  }}
+                >
+                  <span className="branch-glyph down">↓</span>
+                  <span>{t('Pull')}</span>
+                </button>
+              )
+            ))}
           <button
             className="branch-item"
             onClick={() => {
