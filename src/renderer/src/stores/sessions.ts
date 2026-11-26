@@ -18,6 +18,9 @@ export interface SessionRow {
   telegram: boolean
   /** Сессия расшарена на телефон глобусом (RemoteBridge, в памяти). */
   shared: boolean
+  /** Фоновая сессия: вкладка закрыта крестиком при идущем ходе, агент работает — строка
+   *  остаётся в панели с живым индикатором и play-иконкой аттача. */
+  background: boolean
 }
 
 /** Проект панели: строка + его история (подгружается лениво). */
@@ -45,6 +48,8 @@ interface SessionsState {
   load: () => Promise<void>
   applyStatus: (status: import('../../../shared/ipc-contracts').PiStatus) => void
   forgetHost: (hostId: string) => void
+  /** Сессия уходит в фон/возвращается (play-иконка, клик по строке): флаг + переключение активной вкладки. */
+  setBackground: (hostId: string, background: boolean) => void
   setActive: (hostId: string | null) => void
   /** Тоггл telegram-уведомлений сессии (оптимистично, флаг живёт в main). */
   toggleTelegram: (hostId: string) => void
@@ -66,6 +71,29 @@ export const HISTORY_PREVIEW_LIMIT = 3
 
 export function projectKey(project: ProjectEntry): string {
   return `${project.kind}\u0000${normalizeDir(project.dir)}`
+}
+
+/** Активировать предыдущую вкладку/сессию проекта после ухода активной сессии: MRU → первая
+ *  не-фоновая сессия проекта → первая вкладка проекта → первая не-фоновая сессия. Фоновые
+ *  сессии (вкладка закрыта) не подхватываются — их открывает только явный клик/play. */
+function activateNextAfter(hostId: string, project: ProjectEntry): void {
+  const key = parentTabKey(project)
+  const tabsStore = useTabsStore.getState()
+  const prev = tabsStore.mru.find((e) => e.key === key && !(e.kind === 'session' && e.hostId === hostId) && mruAlive(e))
+  if (prev !== undefined && tabsStore.activateMru(prev)) return
+  const st = useSessionsStore.getState()
+  const host = st.active.find((r) => !r.background && r.hostId !== hostId && parentTabKey(r.project) === key)?.hostId
+  if (host !== undefined) {
+    st.setActive(host)
+    return
+  }
+  const tab = tabsStore.byProject[key]?.tabs[0]
+  if (tab !== undefined) {
+    tabsStore.setActiveProject(key)
+    tabsStore.setActive(tab.project, tabId(tab))
+    return
+  }
+  useSessionsStore.setState({ activeHostId: st.active.find((r) => !r.background)?.hostId ?? null })
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -94,7 +122,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         sessionId: s.sessionId,
         sessionFile: s.sessionFile,
         telegram: s.telegram ?? false,
-        shared: s.shared ?? false
+        shared: s.shared ?? false,
+        background: false
       })),
       activeHostId: state.activeHostId ?? snapshot.active[0]?.hostId ?? null,
       settings,
@@ -119,7 +148,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
         sessionId: status.sessionId,
         sessionFile: status.sessionFile,
         telegram: status.telegram ?? state.active.find((r) => r.hostId === status.hostId)?.telegram ?? false,
-        shared: status.shared ?? state.active.find((r) => r.hostId === status.hostId)?.shared ?? false
+        shared: status.shared ?? state.active.find((r) => r.hostId === status.hostId)?.shared ?? false,
+        background: state.active.find((r) => r.hostId === status.hostId)?.background ?? false
       })
       return { active }
     })
@@ -134,29 +164,26 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     })
     useTabsStore.getState().pruneMru()
     if (!wasActive || closedRow === undefined) return
-    // Предыдущая активная вкладка этого же проекта из MRU (сессия или вкладка).
-    const key = parentTabKey(closedRow.project)
-    const tabsStore = useTabsStore.getState()
-    const prev = tabsStore.mru.find(
-      (e) => e.key === key && !(e.kind === 'session' && e.hostId === hostId) && mruAlive(e)
-    )
-    if (prev !== undefined && tabsStore.activateMru(prev)) return
-    // Fallback: первая оставшаяся сессия проекта, затем первая вкладка проекта, иначе старое поведение.
-    const host = get().active.find((r) => parentTabKey(r.project) === key)?.hostId
-    if (host !== undefined) {
-      get().setActive(host)
-      return
-    }
-    const tab = tabsStore.byProject[key]?.tabs[0]
-    if (tab !== undefined) {
-      tabsStore.setActiveProject(key)
-      tabsStore.setActive(tab.project, tabId(tab))
-      return
-    }
-    set({ activeHostId: get().active[0]?.hostId ?? null })
+    activateNextAfter(hostId, closedRow.project)
+  },
+
+  setBackground: (hostId, background) => {
+    const row = get().active.find((r) => r.hostId === hostId)
+    if (row === undefined || row.background === background) return
+    set((state) => ({ active: state.active.map((r) => (r.hostId === hostId ? { ...r, background } : r)) }))
+    if (!background) return
+    // Вкладка закрыта: если сессия была активной — переключиться на предыдущую (как forgetHost).
+    useTabsStore.getState().pruneMru()
+    if (get().activeHostId !== hostId) return
+    set({ activeHostId: null })
+    activateNextAfter(hostId, row.project)
   },
 
   setActive: (hostId) => {
+    // Явная активация (клик по строке/вкладке, play) возвращает сессию из фона — вкладка открывается.
+    if (hostId !== null && get().active.find((r) => r.hostId === hostId)?.background === true) {
+      set((state) => ({ active: state.active.map((r) => (r.hostId === hostId ? { ...r, background: false } : r)) }))
+    }
     set({ activeHostId: hostId })
     if (hostId !== null) useTabsStore.getState().touchSession(hostId)
   },

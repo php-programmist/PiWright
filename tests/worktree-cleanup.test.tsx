@@ -8,18 +8,19 @@ import type { ProjectEntry } from '../src/shared/ipc-contracts'
 const project: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj' }
 const wtProject: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj\\.pi\\worktrees\\wt1' }
 
-function seedStore(active: ProjectEntry[]): void {
+function seedStore(active: ProjectEntry[], dot: 'idle' | 'busy' = 'idle'): void {
   useSessionsStore.setState({
     active: active.map((p, i) => ({
       hostId: `h${i + 1}`,
       project: p,
       title: 't',
-      dot: 'idle' as const,
-      state: 'idle',
+      dot,
+      state: dot,
       sessionId: null,
       sessionFile: null,
       telegram: false,
-      shared: false
+      shared: false,
+      background: false
     })),
     projects: [{ project, history: [], historyLoading: false, showAllHistory: false }]
   })
@@ -52,6 +53,38 @@ describe('closeSessionAndSweepWorktree', () => {
     await stopSession('h1')
     expect(closeSession).toHaveBeenCalledWith('h1', false)
     expect(sessionHistory).toHaveBeenCalledWith(project)
+    expect(useSessionsStore.getState().active).toHaveLength(0)
+    vi.unstubAllGlobals()
+  })
+
+  it('не-idle сессия уходит в фон: closeSession не зовётся, строка остаётся в панели', async () => {
+    const sessionHistory = vi.fn().mockResolvedValue([])
+    const closeSession = vi.fn().mockResolvedValue(undefined)
+    const backgroundSession = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('window', { piwright: { closeSession, sessionHistory, backgroundSession } })
+
+    seedStore([project], 'busy')
+    await closeSessionAndSweepWorktree('h1')
+    expect(closeSession).not.toHaveBeenCalled()
+    expect(backgroundSession).toHaveBeenCalledWith('h1')
+    expect(sessionHistory).not.toHaveBeenCalled()
+    const row = useSessionsStore.getState().active.find((r) => r.hostId === 'h1')
+    expect(row?.background).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('повторный крестик у фоновой сессии закрывает её как обычно', async () => {
+    const sessionHistory = vi.fn().mockResolvedValue([])
+    const closeSession = vi.fn().mockResolvedValue(undefined)
+    const backgroundSession = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('window', { piwright: { closeSession, sessionHistory, backgroundSession } })
+
+    seedStore([project], 'busy')
+    useSessionsStore.setState({
+      active: useSessionsStore.getState().active.map((r) => ({ ...r, background: true }))
+    })
+    await closeSessionAndSweepWorktree('h1')
+    expect(closeSession).toHaveBeenCalledWith('h1', true)
     expect(useSessionsStore.getState().active).toHaveLength(0)
     vi.unstubAllGlobals()
   })

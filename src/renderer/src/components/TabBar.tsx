@@ -133,7 +133,8 @@ export function TabBar(): React.JSX.Element | null {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const centerProject = useCenterProject()
 
-  const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
+  // Фоновые сессии (вкладка закрыта, агент работает) не рисуются вкладками — только строка в панели.
+  const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => !r.background && parentTabKey(r.project) === activeProjectKey) : []
   const regularRows = sessionRows.filter((r) => splitWorktreeHostDir(r.project.dir) === null)
   const wtRows = sessionRows.filter((r) => splitWorktreeHostDir(r.project.dir) !== null)
   const sessionActive = sessionRows.some((r) => r.hostId === activeHostId) && (entry?.activeId ?? null) === null

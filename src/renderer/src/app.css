@@ -286,6 +286,18 @@ body {
   color: var(--red);
 }
 
+/* Остановка сессии — всегда красная (панель проектов и шапка чата). */
+.icon.stop {
+  color: var(--red);
+}
+
+/* Play-иконка фоновой сессии (аттач) — зелёная. */
+.session-row .icon.play {
+  color: var(--green);
+  display: inline-flex;
+  align-items: center;
+}
+
 .add-project {
   display: flex;
   gap: 4px;

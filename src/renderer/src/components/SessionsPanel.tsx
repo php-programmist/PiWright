@@ -275,6 +275,14 @@ function ProjectRow({
   }
 
   const activeIds = useMemo(() => new Set(active.map((r) => r.sessionId).filter((id): id is string => id !== null)), [active])
+
+  /** Открыть вкладку сессии (клик по строке и play-иконка фоновой сессии — одно и то же). */
+  const openSessionRow = (s: (typeof active)[number]): void => {
+    useTabsStore.getState().setActiveProject(parentTabKey(s.project))
+    useTabsStore.getState().activateSession(s.project)
+    useSessionsStore.getState().setActive(s.hostId)
+  }
+
   const q = query.trim().toLowerCase()
   const matches = (title: string): boolean => q === '' || title.toLowerCase().includes(q)
   const activeFiltered = q === '' ? active : active.filter((r) => r.title.toLowerCase().includes(q))
@@ -457,11 +465,7 @@ function ProjectRow({
               <div key={s.hostId}>
                 <div
                   className={`session-row${s.hostId === activeHostId ? ' current' : ''}`}
-                  onClick={() => {
-                    useTabsStore.getState().setActiveProject(parentTabKey(s.project))
-                    useTabsStore.getState().activateSession(s.project)
-                    useSessionsStore.getState().setActive(s.hostId)
-                  }}
+                  onClick={() => openSessionRow(s)}
                 >
                   <SessionDot hostId={s.hostId} dot={s.dot} />
                   {sub.length > 0 ? (
@@ -481,7 +485,21 @@ function ProjectRow({
                   <span className="session-title" onDoubleClick={() => void startSessionRename(s.hostId, s.title)}>{s.title}</span>
                   {wt !== null && <span className="kind-badge" title={s.project.dir}>{wt.name}</span>}
                   <span className="spacer" />
-                  <button className="icon" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>
+                  {s.background && (
+                    <button
+                      className="icon play"
+                      title={t('Attach session')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openSessionRow(s)
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 4.5v15l13-7.5z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  )}
+                  <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>
                   <button className="icon" title={t('Rename (or double-click title)')} onClick={() => void startSessionRename(s.hostId, s.title)}>✎</button>
                   <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
                 </div>

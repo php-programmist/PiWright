@@ -67,10 +67,11 @@ export function mruIdent(entry: MruEntry): string {
   return entry.kind === 'session' ? `s:${entry.hostId}` : `t:${entry.key}:${entry.id}`
 }
 
-/** Жива ли запись MRU: сессия ещё открыта / вкладка ещё существует. */
+/** Жива ли запись MRU: сессия ещё открыта и не в фоне (вкладка закрыта) / вкладка ещё существует. */
 export function mruAlive(entry: MruEntry): boolean {
   if (entry.kind === 'session') {
-    return useSessionsStore.getState().active.some((r) => r.hostId === entry.hostId)
+    const row = useSessionsStore.getState().active.find((r) => r.hostId === entry.hostId)
+    return row !== undefined && !row.background
   }
   return useTabsStore.getState().byProject[entry.key]?.tabs.some((t) => tabId(t) === entry.id) ?? false
 }
@@ -129,9 +130,9 @@ function persistLastProject(key: string | null): void {
     .catch(() => {})
 }
 
-/** hostId первой активной сессии проекта (для авто-активации вкладки чата). */
+/** hostId первой не-фоновой сессии проекта (для авто-активации вкладки чата). */
 function firstSessionHost(key: string): string | null {
-  return useSessionsStore.getState().active.find((r) => parentTabKey(r.project) === key)?.hostId ?? null
+  return useSessionsStore.getState().active.find((r) => !r.background && parentTabKey(r.project) === key)?.hostId ?? null
 }
 
 interface TabsState {

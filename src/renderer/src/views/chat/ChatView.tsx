@@ -976,9 +976,9 @@ export function ChatView({ chat }: { chat: HostChat | null }): React.JSX.Element
           </button>
         )}
         {activeHostId !== null && (
-          <button className="icon" title={t('Stop session')} onClick={() => void stopSession(activeHostId)}>
+          <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(activeHostId)}>
             <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="7" y="7" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <rect x="5" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />
             </svg>
           </button>
         )}

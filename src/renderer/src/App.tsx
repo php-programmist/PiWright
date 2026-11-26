@@ -199,7 +199,8 @@ export function App(): React.JSX.Element {
   }
   const chat = useChatStore((s) => (activeHostId !== null ? s.hosts[activeHostId] : undefined))
   const centerProject = useCenterProject()
-  const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => parentTabKey(r.project) === activeProjectKey) : []
+  // Фоновые сессии (вкладка закрыта) не считаются активным контентом чата.
+  const sessionRows = activeProjectKey !== null ? activeAll.filter((r) => !r.background && parentTabKey(r.project) === activeProjectKey) : []
   const sessionActive = sessionRows.some((r) => r.hostId === activeHostId) && (tabEntry?.activeId ?? null) === null
   const activeTab = !sessionActive && tabEntry !== undefined ? (tabEntry.tabs.find((tab) => tabId(tab) === tabEntry.activeId) ?? null) : null
   const closeActiveTab = (): void => {

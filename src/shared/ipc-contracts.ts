@@ -921,6 +921,9 @@ export interface PiWrightApi {
   /** keepAlive=true (крестик вкладки) — отключиться от сессии, ребёнок демона живёт;
    *  false/undefined — остановить процесс («Остановить сессию», worktree-пути). */
   closeSession(hostId: string, keepAlive?: boolean): Promise<PromptResult>
+  /** Сессия уходит в фон (крестик при идущем ходе): процесс не трогать, забыть вкладку
+   *  восстановления — после рестарта она не откроется заново. */
+  backgroundSession(hostId: string): Promise<PromptResult>
   renameSession(hostId: string, name: string): Promise<PromptResult>
   deleteHistorySession(project: ProjectEntry, sessionPath: string): Promise<PromptResult>
   chooseProjectDir(kind: BackendMode): Promise<{ ok: boolean; dir: string | null }>
@@ -1144,6 +1147,7 @@ export const SESSIONS_TRANSCRIPT_CHANNEL = 'sessions:transcript'
 export const SESSIONS_NEW_CHANNEL = 'sessions:new'
 export const SESSIONS_OPEN_CHANNEL = 'sessions:open'
 export const SESSIONS_CLOSE_CHANNEL = 'sessions:close'
+export const SESSIONS_BACKGROUND_CHANNEL = 'sessions:background'
 export const SESSIONS_RENAME_CHANNEL = 'sessions:rename'
 export const SESSIONS_DELETE_HISTORY_CHANNEL = 'sessions:delete-history'
 export const SESSIONS_CHOOSE_DIR_CHANNEL = 'sessions:choose-dir'

@@ -10,7 +10,7 @@ const projA: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj-a' }
 const projB: ProjectEntry = { kind: 'native', dir: 'D:\\tmp\\proj-b' }
 
 function session(hostId: string, project: ProjectEntry) {
-  return { hostId, project, title: hostId, dot: 'idle' as const, state: 'idle', sessionId: null, sessionFile: null, telegram: false, shared: false }
+  return { hostId, project, title: hostId, dot: 'idle' as const, state: 'idle', sessionId: null, sessionFile: null, telegram: false, shared: false, background: false }
 }
 
 function fileTab(path: string): ProjectTab {

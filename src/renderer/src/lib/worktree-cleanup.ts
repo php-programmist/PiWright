@@ -10,13 +10,20 @@ function translator(): TFunc {
   return tFor(useSessionsStore.getState().settings?.language ?? 'en')
 }
 
-/** Закрыть вкладку сессии. Решение «detach или kill» принимает main (sessions:close keepAlive):
- *  ход идёт — агент дозреет в фоне и закроется по грейсу; ход не идёт — процесс остановится
- *  сразу (держать его в памяти дороже, чем восстановить из транскрипта). Worktree-сессия —
- *  всегда kill (живой агент держит каталог и `git worktree remove` упадёт). askCleanup=false —
- *  не дергать диалог. */
+/** Закрыть вкладку сессии. Не-idle сессия (ход/диалог/ошибка): крестик закрывает только вкладку —
+ *  сессия работает дальше в фоне, строка остаётся в панели с живым индикатором и play-иконкой
+ *  аттача; повторный крестик у фоновой строки закрывает сессию как раньше (решение main:
+ *  ход идёт — агент дозреет в фоне и закроется по грейсу, ход не идёт — процесс остановится).
+ *  Worktree-сессия — всегда kill (живой агент держит каталог и `git worktree remove` упадёт).
+ *  askCleanup=false — не дергать диалог. */
 export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = true): Promise<void> {
-  const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
+  const sessions = useSessionsStore.getState()
+  const row = sessions.active.find((r) => r.hostId === hostId)
+  if (row !== undefined && !row.background && row.dot !== 'idle') {
+    void window.piwright.backgroundSession(hostId)
+    sessions.setBackground(hostId, true)
+    return
+  }
   const wt = row !== undefined ? splitWorktreeHostDir(row.project.dir) : null
   await window.piwright.closeSession(hostId, wt === null)
   useChatStore.getState().removeHost(hostId)

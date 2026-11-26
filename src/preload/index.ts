@@ -111,6 +111,7 @@ import {
   SESSIONS_CHOOSE_DIR_CHANNEL,
  PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
+  SESSIONS_BACKGROUND_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
   SSH_FORGET_HOST_KEY_CHANNEL,
   SSH_LIST_DIR_CHANNEL,
@@ -208,6 +209,7 @@ const api: PiWrightApi = {
   newSession: (project: ProjectEntry) => ipcRenderer.invoke(SESSIONS_NEW_CHANNEL, project),
   openSession: (project: ProjectEntry, sessionFile: string) => ipcRenderer.invoke(SESSIONS_OPEN_CHANNEL, project, sessionFile),
   closeSession: (hostId: string, keepAlive?: boolean) => ipcRenderer.invoke(SESSIONS_CLOSE_CHANNEL, hostId, keepAlive ?? null),
+  backgroundSession: (hostId: string) => ipcRenderer.invoke(SESSIONS_BACKGROUND_CHANNEL, hostId),
   renameSession: (hostId: string, name: string) => ipcRenderer.invoke(SESSIONS_RENAME_CHANNEL, hostId, name),
   deleteHistorySession: (project: ProjectEntry, sessionPath: string) =>
     ipcRenderer.invoke(SESSIONS_DELETE_HISTORY_CHANNEL, project, sessionPath),

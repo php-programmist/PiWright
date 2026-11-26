@@ -97,6 +97,7 @@ import {
   SESSIONS_CHOOSE_DIR_CHANNEL,
   PROJECTS_REVEAL_CHANNEL,
   SESSIONS_CLOSE_CHANNEL,
+  SESSIONS_BACKGROUND_CHANNEL,
   SESSIONS_DELETE_HISTORY_CHANNEL,
   SESSIONS_HISTORY_CHANNEL,
   SESSIONS_LIST_CHANNEL,
@@ -665,6 +666,11 @@ export function registerIpc(
     }
     // keepAlive=true — крестик вкладки: отключиться, ребёнок демона живёт. Иначе — остановить процесс.
     piHost.close(typeof hostId === 'string' ? hostId : '', { keepAlive: keepAlive === true })
+    return { ok: true, error: null }
+  })
+
+  ipcMain.handle(SESSIONS_BACKGROUND_CHANNEL, (_event, hostId: unknown) => {
+    if (typeof hostId === 'string') piHost.background(hostId)
     return { ok: true, error: null }
   })
 

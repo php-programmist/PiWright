@@ -35,6 +35,7 @@ function row(sessionId: string, dot: SessionRow['dot']): SessionRow {
     sessionFile: null,
     telegram: false,
     shared: false,
+    background: false,
   }
 }
 
