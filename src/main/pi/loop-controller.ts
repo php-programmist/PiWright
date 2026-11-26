@@ -5,6 +5,8 @@
  *  не отправляется, рабочая итерация сразу продолжается спавном новой сессии. Рабочий ход
  *  без инструментов = стоп. Ход с ожидающим
  *  диалогом или работающими субагентами/воркфлоу продолжения не получает, пока не разрешились.
+ *  Ход, закончившийся ошибкой модели (turn_end.error), останавливает петлю с reason 'error' —
+ *  сессия не закрывается, продолжение вручную.
  *  Спавн в worktree-сессии: перед create ветка worktree синкается merge'ем с базовой (ветка
  *  корневого checkout'а), а промпт итерации получает префикс «ты в worktree …» — без этого
  *  агент с чистым контекстом видит устаревший код и создаёт свой worktree.
@@ -56,6 +58,8 @@ interface LoopState {
   workTurnOpen: boolean
   /** Ход завершился, но в фоне ещё работают субагенты/воркфлоу — ждём их завершения. */
   waitingSubagents: boolean
+  /** Ошибка модели текущего хода (turn_end.error) — петля останавливается с reason 'error'. */
+  turnError: string | null
   /** Активные субагенты (subagents:created/started … completed/failed). */
   subagents: Set<string>
   /** Активные воркфлоу (subagents:workflow_started … workflow_settled). */
@@ -105,6 +109,7 @@ export class LoopController {
       externalTurn: false,
       workTurnOpen: false,
       waitingSubagents: false,
+      turnError: null,
       checkTimer: null,
       resolveWatchdog: null,
       subagents: new Set(),
@@ -193,6 +198,7 @@ export class LoopController {
       state.waitingSubagents = false
       state.turnEndHandled = false
       state.turnEndPending = false
+      state.turnError = null
       return
     }
     if (event.type === 'subagents_activity') {
@@ -200,6 +206,7 @@ export class LoopController {
       return
     }
     if (event.type === 'turn_end') {
+      if (event.error != null) state.turnError = event.error
       this.onTurnEnd(hostId, state)
     }
   }
@@ -253,6 +260,15 @@ export class LoopController {
   }
 
   private proceedTurnEnd(hostId: string, state: LoopState): void {
+    // Ход закончился ошибкой модели — петля останавливается, сессия остаётся открытой:
+    // юзер чинит ошибку и продолжает вручную.
+    if (state.turnError !== null) {
+      state.turnEndHandled = true
+      state.workTurnOpen = false
+      state.checkingCondition = false
+      if (state.active) this.stopLoop(hostId, state, 'error')
+      return
+    }
     // turnEndHandled ставится только в точках разрешения хода (стоп/спавн/отправка check) —
     // грейс-пауза и дефер по субагентам ход ещё не разрешают.
     if (state.checkingCondition) {
