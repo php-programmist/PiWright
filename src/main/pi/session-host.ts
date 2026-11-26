@@ -474,8 +474,13 @@ export class SessionHost {
       await this.syncPromptSlot(conn)
       // Аттач к ребёнку демона посреди хода: ход продолжается — статус streaming (turnEndHandled
       // гасит гонку «ход кончился во время хендшейка/реплея» — тогда останется ready).
-      if (resume && conn.attachedStreaming && !this.turnEndHandled) this.status('streaming')
-      else if (this.lastState === 'starting') this.status('ready')
+      // Renderer не видел agent_start хода (начался до аттача) — синтетический turn_start
+      // включает streaming-UI («Подсказать», followUp-отправка); external=true — LoopController
+      // при pendingAttach возобновляет рабочий ход, а не глотает его как чужой.
+      if (resume && conn.attachedStreaming && !this.turnEndHandled) {
+        this.emit({ type: 'turn_start', external: true })
+        this.status('streaming')
+      } else if (this.lastState === 'starting') this.status('ready')
     } catch (err) {
       conn.close()
       throw err instanceof Error ? err : new Error(String(err))

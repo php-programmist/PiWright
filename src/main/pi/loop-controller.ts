@@ -295,8 +295,18 @@ export class LoopController {
       return
     }
     if (event.type === 'turn_start') {
+      const attachResume = state.pendingAttach
       state.pendingAttach = false
       if (event.external === true) {
+        if (attachResume) {
+          // Реаттач посреди рабочего хода: синтетический external turn_start от SessionHost —
+          // ход начался до аттача; возобновляем его как рабочий (как onStatus streaming).
+          if (state.active) {
+            state.workTurnOpen = true
+            state.toolSeenThisTurn = true
+          }
+          return
+        }
         // Внешний ход (nudge субагента) поверх петли: флаги рабочего хода и запланированный
         // check не трогаем, ход целиком игнорируем вплоть до его turn_end.
         state.externalTurn = true

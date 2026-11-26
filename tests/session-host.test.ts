@@ -224,15 +224,18 @@ describe('SessionHost', () => {
   })
   ;(child as unknown as { attachedStreaming: boolean }).attachedStreaming = true
   currentChild = child
-  const { host, statuses } = makeHost([child], SETTINGS, { sessionFile: 'C:\\proj\\.pi\\sessions\\a.jsonl' })
+  const { host, statuses, events } = makeHost([child], SETTINGS, { sessionFile: 'C:\\proj\\.pi\\sessions\\a.jsonl' })
   await host.ensureStarted()
   expect(statuses[statuses.length - 1].state).toBe('streaming')
   expect(host.inFlight).toBe(true)
+  // Renderer не видел agent_start — синтетический turn_start включает streaming-UI («Подсказать», followUp).
+  expect(events.some((e) => e.type === 'turn_start' && e.external === true)).toBe(true)
 
   child.emitData('{"type":"agent_settled","aborted":false}\n')
   await vi.waitFor(() => {
     expect(statuses[statuses.length - 1].state).toBe('ready')
   })
+  expect(events.some((e) => e.type === 'turn_end')).toBe(true)
   expect(host.inFlight).toBe(false)
   host.dispose()
 })

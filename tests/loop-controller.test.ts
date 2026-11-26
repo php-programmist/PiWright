@@ -706,6 +706,23 @@ describe('LoopController worktree sessions (branch sync + prompt notice)', () =>
     expect(loopState(controller, 'host-9')).toMatchObject({ active: true })
   })
 
+  it('synthetic external turn_start on reattach resumes the working turn, not an external one', async () => {
+    const { piHost, checks } = fakePiHost([], 'streaming', undefined, LOOP_FILE)
+    const { emit } = collector()
+    const controller = new LoopController(piHost, emit, undefined, GRACE_MS)
+    controller.start('host-1', 'p', 5, EXIT)
+    controller.detach('host-1')
+    controller.reattach(LOOP_FILE, 'host-9')
+    // Новый порядок SessionHost: синтетический turn_start external ДО статуса streaming.
+    controller.onEvent(ev('host-9', { type: 'turn_start', external: true }))
+    controller.onStatus(st('host-9', 'streaming'))
+    controller.onEvent(ev('host-9', { type: 'turn_end' }))
+    await flush()
+    expect(checks).toHaveLength(1)
+    expect(checks[0]).toContain(EXIT)
+    expect(loopState(controller, 'host-9')).toMatchObject({ active: true })
+  })
+
   it('reattach onto a ready session continues the cycle with a check prompt', async () => {
     const { piHost, checks } = fakePiHost([], 'idle', undefined, LOOP_FILE)
     const { emit } = collector()
