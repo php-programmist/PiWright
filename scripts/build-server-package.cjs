@@ -5,7 +5,8 @@
  *  node-pty берёт prebuild или собирает node-gyp). electron/electron-updater — стабы в
  *  bundleDependencies: общий чанк бандла делает top-level require('electron')/('electron-updater')
  *  (все использования зафейжены в рантайме), без стабов в чистом node пакет не стартует,
- *  а реальные пакеты тянут бинарник Electron. Публикация: npm publish dist-server (CI release.yml). */
+ *  а реальные пакеты тянут бинарник Electron. Публикация: npm publish ./dist-server (CI release.yml;
+ *  обязательно "./" — без него npm парсит аргумент как имя пакета с registry, не как папку). */
 const fs = require('node:fs')
 const path = require('node:path')
 const { releaseNotes } = require('./release-notes.cjs')
