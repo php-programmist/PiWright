@@ -9,7 +9,7 @@ import { parentTabKey, tabId, useCenterProject, useTabsStore, type ProjectTab, t
 import { useFilesStore } from '../stores/files'
 import { useGitStore } from '../stores/git'
 import { useT } from '../lib/i18n'
-import { closeSessionAndSweepWorktree } from '../lib/worktree-cleanup'
+import { closeSessionAndSweepWorktree, makeSessionBackground } from '../lib/worktree-cleanup'
 import { splitWorktreeHostDir } from '../../../shared/worktree'
 import { WORKTREE_ICON } from './SessionsPanel'
 import { renameDialog } from './RenameDialog'
@@ -125,6 +125,7 @@ export function TabBar(): React.JSX.Element | null {
   const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const activeAll = useSessionsStore((s) => s.active)
+  const backgroundSessions = useSessionsStore((s) => s.settings?.backgroundSessions ?? false)
   const chatHosts = useChatStore((s) => s.hosts)
   const entry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -313,16 +314,32 @@ export function TabBar(): React.JSX.Element | null {
           >
             <span className={`dot ${cls}${off ? ' dot-off' : ''}`} />
             <span className="tab-name">{r.title}</span>
-            <button
-              className="icon tab-close"
-              title={t('Close session')}
-              onClick={(e) => {
-                e.stopPropagation()
-                void closeSession(r.hostId)
-              }}
-            >
-              ×
-            </button>
+            {backgroundSessions && r.dot !== 'idle' ? (
+              <button
+                className="icon tab-close eject"
+                title={t('Make background')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void makeSessionBackground(r.hostId)
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 4.5l8 8.5H4z" fill="currentColor" />
+                  <rect x="4" y="16.5" width="16" height="3" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className="icon tab-close"
+                title={t('Close session')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void closeSession(r.hostId)
+                }}
+              >
+                ×
+              </button>
+            )}
           </div>
         )
   }

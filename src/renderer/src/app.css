@@ -307,7 +307,8 @@ body {
 }
 
 /* Eject-иконка «сделать фоновой» — как play, без своей окраски. */
-.session-row .icon.eject {
+.session-row .icon.eject,
+.tab .icon.eject {
   display: inline-flex;
   align-items: center;
 }
