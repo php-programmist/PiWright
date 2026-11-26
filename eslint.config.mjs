@@ -10,7 +10,7 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules
   },
   {
-    files: ['tests/manual/**/*.cjs', 'scripts/**/*.cjs', 'server/**/*.js'],
+    files: ['tests/manual/**/*.{cjs,js}', 'scripts/**/*.cjs', 'server/**/*.js'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       '@typescript-eslint/no-unused-vars': 'off'
