@@ -28,6 +28,21 @@ export class DaemonUnavailableError extends Error {
   }
 }
 
+/** Команда запуска демона через PowerShell Start-Process (Windows). Элементы -ArgumentList
+ *  PS 5.1 не квотит: путь с пробелами распадается на argv («D:\Program» + «Files\…») и node
+ *  падает с «Cannot find module 'D:\Program'» ещё до main() — без daemon.log. Каждый элемент
+ *  несёт свои двойные кавычки внутри одинарных; -FilePath квотить не нужно (это параметр). */
+export function daemonLaunchCommand(execPath: string, daemonJs: string, userDataDir: string, appVersion: string): string {
+  const psq = (value: string): string => `'${value.replace(/'/g, "''")}'`
+  const psqa = (value: string): string => `'"${value.replace(/'/g, "''")}"'`
+  return [
+    'Start-Process', '-FilePath', psq(execPath),
+    '-ArgumentList', psqa(daemonJs), ',', psqa('--user-data'), ',', psqa(userDataDir),
+    ',', psqa('--app-version'), ',', psqa(appVersion),
+    '-WindowStyle', 'Hidden'
+  ].join(' ')
+}
+
 export interface DaemonClientOptions {
   userDataDir: string
   appVersion: string
@@ -322,13 +337,7 @@ export class DaemonClient implements DaemonChildTransport {
     const daemonJs = this.options.daemonJsPath ?? join(__dirname, '..', 'daemon', 'index.js')
     if (!existsSync(daemonJs)) return
     if (process.platform === 'win32') {
-      const psq = (value: string): string => `'${value.replace(/'/g, "''")}'`
-      const command = [
-        'Start-Process', '-FilePath', psq(process.execPath),
-        '-ArgumentList', psq(daemonJs), ',', psq('--user-data'), ',', psq(this.options.userDataDir),
-        ',', psq('--app-version'), ',', psq(this.options.appVersion),
-        '-WindowStyle', 'Hidden'
-      ].join(' ')
+      const command = daemonLaunchCommand(process.execPath, daemonJs, this.options.userDataDir, this.options.appVersion)
       const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
         stdio: 'ignore',
         windowsHide: true,

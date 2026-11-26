@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { DaemonServer } from '../src/main/daemon/server'
+import { daemonLaunchCommand } from '../src/main/daemon/client'
 import { daemonChannelPath, DAEMON_PROTO_VERSION, parseDaemonMessage } from '../src/main/daemon/protocol'
 import { readDaemonToken } from '../src/main/daemon/token'
 import type { PiChildProcess, PiSpawnSpec } from '../src/main/pi/backends/types'
@@ -424,6 +425,23 @@ describe('daemon protocol parsing', () => {
     const path = daemonChannelPath('C:\\Users\\x\\AppData\\PiWright')
     if (process.platform === 'win32') expect(path).toMatch(/^\\\\\.\\pipe\\piwright-daemon-[0-9a-f]{32}$/)
     else expect(path).toContain('daemon.sock')
+  })
+
+  it('quotes -ArgumentList elements so paths with spaces survive PS 5.1', () => {
+    const command = daemonLaunchCommand(
+      'D:\\Program Files\\PiWright\\PiWright.exe',
+      'D:\\Program Files\\PiWright\\resources\\app.asar\\out\\daemon\\index.js',
+      'C:\\Users\\John Smith\\AppData\\Roaming\\piwright',
+      '0.5.1'
+    )
+    expect(command).toContain("-FilePath 'D:\\Program Files\\PiWright\\PiWright.exe'")
+    expect(command).toContain('"D:\\Program Files\\PiWright\\resources\\app.asar\\out\\daemon\\index.js"')
+    expect(command).toContain('"C:\\Users\\John Smith\\AppData\\Roaming\\piwright"')
+    expect(command).toContain('"--user-data"')
+    expect(command).toContain('"0.5.1"')
+    // одинарная кавычка в значении удваивается (экранирование PS), двойные остаются на месте
+    const quoted = daemonLaunchCommand('x', "o'brien.js", 'dir', '1.0')
+    expect(quoted).toContain("\"o''brien.js\"")
   })
 })
 
