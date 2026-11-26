@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GitBranchSync, GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
+import type { GitBranchSync, GitSequencerState, GitStatus, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
 
 /** Состояние git-панели для активного проекта; смена проекта сбрасывает всё, кроме open/width. */
@@ -18,6 +18,8 @@ type GitData = Pick<
   | 'busy'
   | 'branches'
   | 'branchSync'
+  | 'conflict'
+  | 'conflictOpen'
 >
 
 interface GitState {
@@ -40,6 +42,10 @@ interface GitState {
   branches: string[]
   /** Ahead/behind по локальным веткам (для стрелок в селекторе); обновляется после fetch/push/pull. */
   branchSync: GitBranchSync[]
+  /** Sequencer в процессе (rebase/merge с конфликтами); null — конфликтов нет. */
+  conflict: { state: GitSequencerState; repoRoot: string | null } | null
+  /** Открыт диалог Resolve Conflicts. */
+  conflictOpen: boolean
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Только статус; silent — не трогать error/status при сбое (поллинг, конец хода). */
@@ -58,6 +64,20 @@ interface GitState {
   pushBranch: (project: ProjectEntry, branch: string, forceWithLease: boolean) => Promise<void>
   /** Pull ветки: rebase/merge — текущая, ff — не текущая. */
   pullBranch: (project: ProjectEntry, branch: string, mode: 'rebase' | 'merge' | 'ff') => Promise<void>
+  /** Перебазировать текущую ветку на onto (пункт подменю ветки). */
+  rebase: (project: ProjectEntry, onto: string) => Promise<void>
+  /** Чекаут branch и перебазировать её на onto (пункт подменю ветки). */
+  checkoutRebase: (project: ProjectEntry, branch: string, onto: string) => Promise<void>
+  /** Состояние sequencer'а (rebase/merge в процессе); при конфликте — открыть диалог. */
+  refreshConflict: (project: ProjectEntry) => Promise<void>
+  openConflicts: () => void
+  closeConflicts: () => void
+  /** Разрешить конфликт одной стороной (Yours/Theirs) — checkout + add. */
+  resolveConflictSide: (project: ProjectEntry, path: string, side: 'ours' | 'theirs') => Promise<void>
+  /** Завершить rebase/merge после разрешения конфликтов. */
+  continueConflict: (project: ProjectEntry) => Promise<void>
+  /** Отменить rebase/merge. */
+  abortConflict: (project: ProjectEntry) => Promise<void>
   checkout: (project: ProjectEntry, name: string, create: boolean, startPoint?: string) => Promise<void>
   renameBranch: (project: ProjectEntry, oldName: string, newName: string) => Promise<void>
   deleteBranch: (project: ProjectEntry, name: string) => Promise<void>
@@ -82,11 +102,21 @@ function resetState(): GitData {
     generating: false,
     busy: false,
     branches: [],
-    branchSync: []
+    branchSync: [],
+    conflict: null,
+    conflictOpen: false
   }
 }
 
-export const useGitStore = create<GitState>((set, get) => ({
+export const useGitStore = create<GitState>((set, get) => {
+  /** После неудачной операции: обновить статус (конфликтные файлы) + sequencer-состояние,
+   *  открыть диалог, если rebase/merge в процессе. */
+  const afterOpFailure = async (project: ProjectEntry): Promise<void> => {
+    await Promise.all([get().refreshStatus(project, true), get().refreshConflict(project)])
+    if (get().conflict !== null) set({ conflictOpen: true })
+  }
+
+  return {
   open: true,
   width: 340,
   ...resetState(),
@@ -101,17 +131,22 @@ export const useGitStore = create<GitState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const [statusResult, branchesResult, syncResult] = await Promise.all([
+    const [statusResult, branchesResult, syncResult, conflictResult] = await Promise.all([
       window.piwright.gitStatus(project),
       window.piwright.gitBranches(project),
-      window.piwright.gitBranchSync(project)
+      window.piwright.gitBranchSync(project),
+      window.piwright.gitConflictState(project)
     ])
     set((state) => ({
       loading: false,
       status: statusResult.ok ? statusResult.status : state.status,
       error: statusResult.ok ? state.error : statusResult.error,
       branches: branchesResult.branches,
-      branchSync: syncResult.ok ? syncResult.branches : state.branchSync
+      branchSync: syncResult.ok ? syncResult.branches : state.branchSync,
+      conflict:
+        conflictResult.ok && conflictResult.state !== 'none'
+          ? { state: conflictResult.state, repoRoot: conflictResult.repoRoot }
+          : null
     }))
   },
 
@@ -200,6 +235,61 @@ export const useGitStore = create<GitState>((set, get) => ({
     const result = await window.piwright.gitPullBranch(project, branch, mode)
     set({ busy: false, error: result.ok ? null : result.error })
     if (result.ok) await get().refresh(project)
+    else await afterOpFailure(project)
+  },
+
+  rebase: async (project, onto) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitRebase(project, onto)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refresh(project)
+    else await afterOpFailure(project)
+  },
+
+  checkoutRebase: async (project, branch, onto) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitCheckoutRebase(project, branch, onto)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) {
+      get().closeFile()
+      await get().refresh(project)
+    } else await afterOpFailure(project)
+  },
+
+  refreshConflict: async (project) => {
+    if (projectKey(project) !== get().projectKey) return
+    const result = await window.piwright.gitConflictState(project)
+    if (!result.ok) return
+    set({ conflict: result.state === 'none' ? null : { state: result.state, repoRoot: result.repoRoot } })
+  },
+
+  openConflicts: () => set({ conflictOpen: true }),
+
+  closeConflicts: () => set({ conflictOpen: false }),
+
+  resolveConflictSide: async (project, path, side) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitConflictResolve(project, path, side)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) await get().refreshStatus(project, true)
+  },
+
+  continueConflict: async (project) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitConflictContinue(project)
+    set({ busy: false, error: result.ok ? null : result.error })
+    await get().refresh(project)
+    if (get().conflict === null) set({ conflictOpen: false })
+  },
+
+  abortConflict: async (project) => {
+    set({ busy: true, error: null })
+    const result = await window.piwright.gitConflictAbort(project)
+    set({ busy: false, error: result.ok ? null : result.error })
+    if (result.ok) {
+      set({ conflictOpen: false })
+      await get().refresh(project)
+    }
   },
 
   checkout: async (project, name, create, startPoint) => {
@@ -242,4 +332,5 @@ export const useGitStore = create<GitState>((set, get) => ({
   setError: (error) => set({ error }),
   toggleOpen: () => set((state) => ({ open: !state.open })),
   setWidth: (width) => set({ width: Math.min(Math.max(width, 280), window.innerWidth - 560) })
-}))
+  }
+})

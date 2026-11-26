@@ -20,6 +20,7 @@ import { SettingsView } from './views/settings/SettingsView'
 import { StatsView } from './views/stats/StatsView'
 import { ConfirmDialogHost, confirmDialog } from './components/ConfirmDialog'
 import { RenameDialogHost } from './components/RenameDialog'
+import { ResolveConflictsDialog } from './components/ResolveConflictsDialog'
 import { TabSwitcherHost } from './components/TabSwitcher'
 import { SearchEverywhereHost } from './components/SearchEverywhere'
 import { useChatStore, atBottomMap } from './stores/chat'
@@ -288,6 +289,7 @@ export function App(): React.JSX.Element {
     <div className="app">
       <AppHeader />
       <ConfirmDialogHost />
+      <ResolveConflictsDialog />
       <RenameDialogHost />
       <TabSwitcherHost />
       <SearchEverywhereHost />

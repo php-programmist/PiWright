@@ -19,6 +19,8 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
   const branchSync = useGitStore((s) => s.branchSync)
   const pushBranch = useGitStore((s) => s.pushBranch)
   const pullBranch = useGitStore((s) => s.pullBranch)
+  const rebase = useGitStore((s) => s.rebase)
+  const checkoutRebase = useGitStore((s) => s.checkoutRebase)
   const t = useT()
   const settings = useSessionsStore((s) => s.settings)
   const pKey = projectKey(project)
@@ -268,6 +270,32 @@ export function BranchSelect({ project, branch, detached }: { project: ProjectEn
             <span className="branch-glyph" />
             <span>{t('New Branch from {name}...', { name: target })}</span>
           </button>
+          {target !== branch && (
+            <>
+              <button
+                className="branch-item"
+                title={t('Rebase the current branch onto {target}', { target })}
+                onClick={() => {
+                  void rebase(project, target)
+                  close()
+                }}
+              >
+                <span className="branch-glyph" />
+                <span>{t("Rebase '{current}' on '{target}'", { current: branch, target })}</span>
+              </button>
+              <button
+                className="branch-item"
+                title={t('Checkout {target} and rebase it onto the current branch', { target })}
+                onClick={() => {
+                  void checkoutRebase(project, target, branch)
+                  close()
+                }}
+              >
+                <span className="branch-glyph" />
+                <span>{t("Checkout '{target}' and Rebase onto '{current}'", { target, current: branch })}</span>
+              </button>
+            </>
+          )}
           <button
             className="branch-item"
             onClick={() => {

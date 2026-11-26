@@ -452,6 +452,15 @@ export interface GitBranchesResult extends GitOpResult {
   branches: string[]
 }
 
+/** Состояние sequencer'а git: rebase (REBASE_HEAD) или merge (MERGE_HEAD) в процессе. */
+export type GitSequencerState = 'none' | 'rebase' | 'merge'
+
+export interface GitConflictStateResult extends GitOpResult {
+  state: GitSequencerState
+  /** Корень репозитория в состоянии конфликта (вложенный репо); null — каталог проекта. */
+  repoRoot: string | null
+}
+
 /** Запись каталога в дереве файлов проекта (`.git` скрыт). */
 export interface FileEntry {
   name: string
@@ -990,6 +999,18 @@ export interface PiWrightApi {
   gitEditCommitMessage(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
   /** Уплотнить коммит в родительский с новым сообщением (rebase -i squash). */
   gitSquashInto(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
+  /** Состояние sequencer'а (rebase/merge в процессе) — для диалога Resolve Conflicts. */
+  gitConflictState(project: ProjectEntry): Promise<GitConflictStateResult>
+  /** Разрешить конфликт одной стороной: `checkout --ours|--theirs -- <path>` + `add`. */
+  gitConflictResolve(project: ProjectEntry, path: string, side: 'ours' | 'theirs'): Promise<GitOpResult>
+  /** Завершить rebase/merge после разрешения конфликтов (`rebase|merge --continue`). */
+  gitConflictContinue(project: ProjectEntry): Promise<GitOpResult>
+  /** Отменить rebase/merge (`--abort`). */
+  gitConflictAbort(project: ProjectEntry): Promise<GitOpResult>
+  /** `git rebase <onto>` — перебазировать текущую ветку на onto. */
+  gitRebase(project: ProjectEntry, onto: string): Promise<GitOpResult>
+  /** `git checkout <branch>`, затем `git rebase <onto>`. */
+  gitCheckoutRebase(project: ProjectEntry, branch: string, onto: string): Promise<GitOpResult>
   gitGenerateMessage(project: ProjectEntry): Promise<GitMessageResult>
   /** `git worktree add` (существующий worktree/ветка переиспользуются); dir — для новой сессии. */
   worktreeCreate(project: ProjectEntry, name: string): Promise<WorktreeCreateResult>
@@ -1159,6 +1180,12 @@ export const GIT_TAG_CREATE_CHANNEL = 'git:tag-create'
 export const GIT_DROP_COMMIT_CHANNEL = 'git:drop-commit'
 export const GIT_EDIT_MESSAGE_CHANNEL = 'git:edit-message'
 export const GIT_SQUASH_INTO_CHANNEL = 'git:squash-into'
+export const GIT_CONFLICT_STATE_CHANNEL = 'git:conflict-state'
+export const GIT_CONFLICT_RESOLVE_CHANNEL = 'git:conflict-resolve'
+export const GIT_CONFLICT_CONTINUE_CHANNEL = 'git:conflict-continue'
+export const GIT_CONFLICT_ABORT_CHANNEL = 'git:conflict-abort'
+export const GIT_REBASE_CHANNEL = 'git:rebase'
+export const GIT_CHECKOUT_REBASE_CHANNEL = 'git:checkout-rebase'
 export const GIT_GENERATE_MESSAGE_CHANNEL = 'git:generate-message'
 export const WORKTREE_CREATE_CHANNEL = 'worktree:create'
 export const WORKTREE_REMOVE_CHANNEL = 'worktree:remove'

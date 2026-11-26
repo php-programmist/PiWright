@@ -629,7 +629,28 @@ const RU: Record<string, string> = {
   'Background sessions from version {version} are running. Stop them (agents will be interrupted) or continue as is?': 'В фоне работают сессии из версии {version}. Остановить их (агенты будут прерваны) или продолжить как есть?',
   'Background sessions': 'Фоновые сессии',
   'Grace before stopping a background session, min': 'Пауза перед остановкой фоновой сессии, мин',
-  'After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.': 'После фонового хода или диалога агент ждёт столько, затем его процесс останавливается. 0 — остановить сразу после уведомления.'
+  'After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.': 'После фонового хода или диалога агент ждёт столько, затем его процесс останавливается. 0 — остановить сразу после уведомления.',
+  'Resolve Conflicts': 'Разрешить конфликты',
+  'Rebase in progress': 'Идёт rebase',
+  'Merge in progress': 'Идёт merge',
+  'No conflicting files': 'Нет конфликтующих файлов',
+  'Yours': 'Свой',
+  'Theirs': 'Чужой',
+  'Keep our version and mark resolved': 'Взять свою версию и пометить разрешённым',
+  'Keep their version and mark resolved': 'Взять чужую версию и пометить разрешённым',
+  'Edit the file with conflict markers manually': 'Править файл с маркерами конфликта вручную',
+  'Resolve with AI': 'Разрешить с AI',
+  'Resolve with AI in a new session': 'Разрешить с AI в новой сессии',
+  'Mark resolved (git add)': 'Пометить разрешённым (git add)',
+  'Continue': 'Продолжить',
+  'Abort': 'Прервать',
+  'Abort the {op}? Resolved files stay staged, the operation is cancelled.': 'Прервать {op}? Разрешённые файлы останутся в индексе, операция будет отменена.',
+  'Resolve the git {op} conflict in {path}: edit the file to remove the conflict markers (<<<<<<<, =======, >>>>>>>) keeping the correct code, then stage it with `git add`.': 'Разреши конфликт git {op} в файле {path}: отредактируй файл, убрав маркеры конфликта (<<<<<<<, =======, >>>>>>>) и оставив правильный код, затем добавь файл в индекс через `git add`.',
+  'Resolve the git {op} conflicts in the project. For each file below: edit it to remove the conflict markers (<<<<<<<, =======, >>>>>>>) keeping the correct code, then stage it with `git add`. Files:\n{files}': 'Разреши конфликты git {op} в проекте. Для каждого файла ниже: отредактируй его, убрав маркеры конфликта (<<<<<<<, =======, >>>>>>>) и оставив правильный код, затем добавь файл в индекс через `git add`. Файлы:\n{files}',
+  "Rebase '{current}' on '{target}'": "Rebase '{current}' on '{target}'",
+  "Checkout '{target}' and Rebase onto '{current}'": "Checkout '{target}' и Rebase onto '{current}'",
+  'Rebase the current branch onto {target}': 'Перебазировать текущую ветку на {target}',
+  'Checkout {target} and rebase it onto the current branch': 'Переключиться на {target} и перебазировать её на текущую ветку'
 }
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string

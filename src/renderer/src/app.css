@@ -4161,6 +4161,112 @@ pre.code-block {
   font-weight: 500;
 }
 
+.conflict-box {
+  width: 620px;
+  max-width: 92vw;
+}
+
+.conflict-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.conflict-op {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.65;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.conflict-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.conflict-row:hover {
+  background: var(--hover);
+}
+
+.conflict-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.conflict-row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.conflict-row-actions button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 1px 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conflict-row-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.conflict-row-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.conflict-actions button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.conflict-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.conflict-actions button.danger {
+  color: var(--red);
+}
+
+.conflict-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.git-conflict-btn {
+  color: var(--red);
+}
+
 .files-rename-actions button.primary.danger {
   background: var(--red);
   border-color: var(--red);

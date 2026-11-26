@@ -214,6 +214,7 @@ export function GitPanel(): React.JSX.Element {
   const message = useGitStore((s) => s.message)
   const generating = useGitStore((s) => s.generating)
   const busy = useGitStore((s) => s.busy)
+  const conflict = useGitStore((s) => s.conflict)
   const refresh = useGitStore((s) => s.refresh)
   const stage = useGitStore((s) => s.stage)
   const unstage = useGitStore((s) => s.unstage)
@@ -254,6 +255,15 @@ export function GitPanel(): React.JSX.Element {
     <aside className="git-panel" style={{ width }}>
       <div className="git-resizer" onMouseDown={startResize} />
       <div className="git-head">
+        {conflict !== null && (
+          <button
+            className="icon git-conflict-btn"
+            title={t('Resolve Conflicts')}
+            onClick={() => useGitStore.getState().openConflicts()}
+          >
+            ⚠
+          </button>
+        )}
         {(status?.ahead ?? 0) > 0 && <span className="git-ab">↑{status?.ahead}</span>}
         {(status?.behind ?? 0) > 0 && <span className="git-ab">↓{status?.behind}</span>}
         <span className="spacer" />

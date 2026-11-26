@@ -38,6 +38,21 @@ describe('parseStatusOutput', () => {
     ])
   })
 
+  it('parses unmerged (conflict) entries with spaces in paths', () => {
+    const status = parseStatusOutput(
+      [
+        '# branch.head main',
+        'u UU N... 100644 100644 100644 100644 aaa bbb ccc src/a b.txt',
+        'u AA N... 100644 100644 100644 100644 aaa bbb ccc both-new.txt',
+        ''
+      ].join('\n')
+    )
+    expect(status.entries).toEqual([
+      { path: 'src/a b.txt', origPath: null, index: 'U', worktree: 'U', untracked: false },
+      { path: 'both-new.txt', origPath: null, index: 'A', worktree: 'A', untracked: false }
+    ])
+  })
+
   it('parses staged-only and both-side entries', () => {
     const status = parseStatusOutput(
       ['# branch.head main', '1 M. N... 100644 100644 100644 abc def staged.ts', '1 MM N... 100644 100644 100644 abc def both.ts', ''].join('\n')

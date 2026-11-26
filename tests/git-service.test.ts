@@ -1,6 +1,6 @@
 /** GitService против реального временного репозитория (native-бэкенд, настоящий git CLI). */
 import { execSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -16,6 +16,15 @@ let git: GitService
 
 function run(command: string): void {
   execSync(command, { cwd: dir, stdio: 'pipe' })
+}
+
+/** Команда, которая ДОЛЖНА упасть (создание конфликта) — код выхода не проверяем. */
+function runAllowFail(command: string): void {
+  try {
+    execSync(command, { cwd: dir, stdio: 'pipe' })
+  } catch {
+    // ожидаемый конфликт
+  }
 }
 
 beforeAll(() => {
@@ -638,5 +647,114 @@ describe('GitService log filters and commit actions', () => {
       run('git checkout -q main')
       run('git branch -D rb')
     }
+  })
+
+  it('conflictState is none on a clean repository', async () => {
+    run('git checkout -q main')
+    run('git reset -q --hard')
+    run('git clean -qfd')
+    expect(await git.conflictState(project)).toMatchObject({ ok: true, state: 'none', repoRoot: null })
+  })
+
+  it('merge conflict: detect, resolve ours, continue', async () => {
+    run('git checkout -q main')
+    run('git reset -q --hard origin/main')
+    run('git clean -qfd')
+    run('git checkout -q -b mc-side')
+    writeFileSync(join(dir, 'a.txt'), 'side')
+    run('git add .')
+    run('git commit -q -m mc-side')
+    run('git checkout -q main')
+    writeFileSync(join(dir, 'a.txt'), 'main')
+    run('git add .')
+    run('git commit -q -m mc-main')
+    runAllowFail('git merge --no-edit mc-side')
+    expect((await git.conflictState(project)).state).toBe('merge')
+    const status = await git.status(project)
+    expect(status.status?.entries.find((e) => e.path === 'a.txt')).toMatchObject({ index: 'U', worktree: 'U' })
+    expect((await git.conflictResolve(project, 'a.txt', 'ours')).ok).toBe(true)
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('main')
+    // ours при merge совпадает с HEAD — запись исчезает из статуса; разрешённость — отсутствие unmerged-стадий
+    const staged = await git.status(project)
+    expect(staged.status?.entries.find((e) => e.path === 'a.txt')).toBeUndefined()
+    expect(execSync('git ls-files -u', { cwd: dir, encoding: 'utf8' }).trim()).toBe('')
+    expect((await git.conflictContinue(project)).ok).toBe(true)
+    expect((await git.conflictState(project)).state).toBe('none')
+    run('git reset -q --hard origin/main')
+    run('git branch -D mc-side')
+  })
+
+  it('rebase conflict: detect, resolve theirs, continue; abort rolls back', async () => {
+    runAllowFail('git rebase --abort')
+    runAllowFail('git merge --abort')
+    run('git checkout -q main')
+    run('git reset -q --hard')
+    run('git clean -qfd')
+    run('git checkout -q -b rb-base')
+    writeFileSync(join(dir, 'rb.txt'), 'base')
+    run('git add .')
+    run('git commit -q -m rb-base')
+    run('git checkout -q -b rb-topic')
+    writeFileSync(join(dir, 'rb.txt'), 'topic')
+    run('git add .')
+    run('git commit -q -m rb-topic')
+    run('git checkout -q rb-base')
+    writeFileSync(join(dir, 'rb.txt'), 'base2')
+    run('git add .')
+    run('git commit -q -m rb-base2')
+    run('git checkout -q rb-topic')
+    expect((await git.rebaseBranch(project, 'rb-base')).ok).toBe(false)
+    expect((await git.conflictState(project)).state).toBe('rebase')
+    // во время rebase theirs — replayed-коммит ветки (rb-topic), ours — upstream (rb-base)
+    expect((await git.conflictResolve(project, 'rb.txt', 'theirs')).ok).toBe(true)
+    expect(readFileSync(join(dir, 'rb.txt'), 'utf8')).toBe('topic')
+    expect((await git.conflictContinue(project)).ok).toBe(true)
+    expect((await git.conflictState(project)).state).toBe('none')
+    const log = await git.log(project, 0, { branch: 'rb-topic' })
+    expect(log.entries.some((e) => e.subject === 'rb-base2')).toBe(true)
+
+    // abort: новый конфликт откатывает rebase целиком
+    writeFileSync(join(dir, 'rb.txt'), 'topic3')
+    run('git add .')
+    run('git commit -q -m rb-topic3')
+    run('git checkout -q rb-base')
+    writeFileSync(join(dir, 'rb.txt'), 'base3')
+    run('git add .')
+    run('git commit -q -m rb-base3')
+    run('git checkout -q rb-topic')
+    runAllowFail('git rebase rb-base')
+    expect((await git.conflictState(project)).state).toBe('rebase')
+    expect((await git.conflictAbort(project)).ok).toBe(true)
+    expect((await git.conflictState(project)).state).toBe('none')
+    expect(readFileSync(join(dir, 'rb.txt'), 'utf8')).toBe('topic3')
+    run('git checkout -q main')
+    run('git branch -D rb-base rb-topic')
+  })
+
+  it('checkoutAndRebase checks out the branch and rebases it onto the target', async () => {
+    runAllowFail('git rebase --abort')
+    runAllowFail('git merge --abort')
+    run('git checkout -q main')
+    run('git reset -q --hard')
+    run('git clean -qfd')
+    run('git checkout -q -b cr-topic')
+    writeFileSync(join(dir, 'cr.txt'), 'topic')
+    run('git add .')
+    run('git commit -q -m cr-topic')
+    run('git checkout -q main')
+    writeFileSync(join(dir, 'cr-main.txt'), 'main')
+    run('git add .')
+    run('git commit -q -m cr-main')
+    expect((await git.checkoutAndRebase(project, 'cr-topic', 'main')).ok).toBe(true)
+    expect(execSync('git rev-parse --abbrev-ref HEAD', { cwd: dir, encoding: 'utf8' }).trim()).toBe('cr-topic')
+    const log = await git.log(project, 0, { branch: 'cr-topic' })
+    expect(log.entries.some((e) => e.subject === 'cr-main')).toBe(true)
+    run('git checkout -q main')
+    run('git branch -D cr-topic')
+  })
+
+  it('rebaseBranch rejects invalid branch names', async () => {
+    expect((await git.rebaseBranch(project, '')).ok).toBe(false)
+    expect((await git.rebaseBranch(project, 'a b')).ok).toBe(false)
   })
 })

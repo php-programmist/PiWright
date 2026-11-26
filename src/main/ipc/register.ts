@@ -26,6 +26,12 @@ import {
   GIT_DROP_COMMIT_CHANNEL,
   GIT_EDIT_MESSAGE_CHANNEL,
   GIT_SQUASH_INTO_CHANNEL,
+  GIT_CONFLICT_STATE_CHANNEL,
+  GIT_CONFLICT_RESOLVE_CHANNEL,
+  GIT_CONFLICT_CONTINUE_CHANNEL,
+  GIT_CONFLICT_ABORT_CHANNEL,
+  GIT_REBASE_CHANNEL,
+  GIT_CHECKOUT_REBASE_CHANNEL,
   GIT_BRANCH_RENAME_CHANNEL,
   GIT_CHECKOUT_CHANNEL,
   GIT_COMMIT_CHANNEL,
@@ -1030,6 +1036,40 @@ export function registerIpc(
       return { ok: false, error: 'Invalid request' }
     }
     return git.squashInto(project, hash, message)
+  })
+
+  ipcMain.handle(GIT_CONFLICT_STATE_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', state: 'none', repoRoot: null }
+    return git.conflictState(project)
+  })
+
+  ipcMain.handle(GIT_CONFLICT_RESOLVE_CHANNEL, async (_event, project: unknown, path: unknown, side: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string' || path.length === 0 || (side !== 'ours' && side !== 'theirs')) {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.conflictResolve(project, path, side)
+  })
+
+  ipcMain.handle(GIT_CONFLICT_CONTINUE_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    return git.conflictContinue(project)
+  })
+
+  ipcMain.handle(GIT_CONFLICT_ABORT_CHANNEL, async (_event, project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project' }
+    return git.conflictAbort(project)
+  })
+
+  ipcMain.handle(GIT_REBASE_CHANNEL, async (_event, project: unknown, onto: unknown) => {
+    if (!isProjectEntry(project) || typeof onto !== 'string') return { ok: false, error: 'Invalid request' }
+    return git.rebaseBranch(project, onto)
+  })
+
+  ipcMain.handle(GIT_CHECKOUT_REBASE_CHANNEL, async (_event, project: unknown, branch: unknown, onto: unknown) => {
+    if (!isProjectEntry(project) || typeof branch !== 'string' || typeof onto !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    return git.checkoutAndRebase(project, branch, onto)
   })
 
   ipcMain.handle(FILES_LIST_CHANNEL, async (_event, project: unknown, dir: unknown) => {

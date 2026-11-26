@@ -7,13 +7,14 @@ import { readdir, stat, writeFile, unlink } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type {
   GitBranchSync,
   GitBranchSyncResult,
   GitBranchesResult,
   GitCommitFileDiffResult,
   GitCommitFilesResult,
+  GitConflictStateResult,
   GitFileDiffResult,
   GitLogFilter,
   GitLogResult,
@@ -29,7 +30,7 @@ import type {
 import { PiConnection } from '../pi/connection'
 import { obj, str } from '../pi/event-translator'
 import { createPiBackend } from '../pi/backends/factory'
-import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath, shellQuote } from '../pi/backends/shell'
+import { buildBashCommand, buildWslSpawnArgs, buildWslUncPath, shellQuote, stripWslUncPrefix } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 import { getSshService } from '../ssh/ssh-service'
 import { getProjectFs } from '../fs/project-fs'
@@ -367,6 +368,111 @@ export class GitService {
     }
     const result = await this.run(project, args, mode === 'rebase' || mode === 'merge' ? FETCH_TIMEOUT_MS : GIT_TIMEOUT_MS)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Существует ли путь внутри репозитория (sequencer-каталоги rebase-merge/rebase-apply).
+   *  native — node fs; wsl — node fs по UNC (git отдаёт POSIX-путь); ssh — `test -e` на сервере. */
+  private async repoPathExists(project: ProjectEntry, dir: string, gitPath: string): Promise<boolean> {
+    const settings = this.getSettings()
+    if (project.kind === 'ssh') {
+      const server = settings.sshServers.find((s) => s.id === project.serverId)
+      if (server === undefined) return false
+      const result = await getSshService().exec(server, buildBashCommand('test', ['-e', gitPath]), {
+        cwd: dir,
+        env: null,
+        timeoutMs: GIT_TIMEOUT_MS
+      })
+      return result.code === 0
+    }
+    let hostPath: string
+    if (project.kind === 'wsl') {
+      const distro = settings.wslDistro.trim() || (await listWslDistros())[0]
+      const posixDir = stripWslUncPrefix(dir)
+      if (distro === undefined || posixDir === null) return false
+      const base = posixDir.endsWith('/') ? posixDir : `${posixDir}/`
+      const abs = gitPath.startsWith('/') ? gitPath : `${base}${gitPath}`
+      hostPath = buildWslUncPath(distro, abs)
+    } else {
+      hostPath = isAbsolute(gitPath) ? gitPath : join(dir, gitPath)
+    }
+    try {
+      return (await stat(hostPath)).isDirectory()
+    } catch {
+      return false
+    }
+  }
+
+  /** Состояние sequencer'а (rebase/merge в процессе) для диалога Resolve Conflicts.
+   *  rebase — существование каталога rebase-merge/rebase-apply (REBASE_HEAD не годится:
+   *  git оставляет его и после успешного rebase), merge — ref MERGE_HEAD (удаляется по
+   *  завершении). Репо — корень проекта и вложенные (баг 8). */
+  async conflictState(project: ProjectEntry): Promise<GitConflictStateResult> {
+    const dirs: Array<{ dir: string; repoRoot: string | null }> = [
+      { dir: project.dir, repoRoot: null },
+      ...(await this.nestedRepos(project)).map((name) => ({ dir: join(project.dir, name), repoRoot: join(project.dir, name) }))
+    ]
+    for (const { dir, repoRoot } of dirs) {
+      const gitDir = await this.run(project, ['rev-parse', '--git-dir'], GIT_TIMEOUT_MS, dir)
+      if (gitDir.code !== 0) continue
+      const gitDirPath = gitDir.stdout.trim().replace(/\/+$/, '')
+      if (gitDirPath.length > 0) {
+        if (await this.repoPathExists(project, dir, `${gitDirPath}/rebase-merge`)) {
+          return { ok: true, error: null, state: 'rebase', repoRoot }
+        }
+        if (await this.repoPathExists(project, dir, `${gitDirPath}/rebase-apply`)) {
+          return { ok: true, error: null, state: 'rebase', repoRoot }
+        }
+      }
+      const merge = await this.run(project, ['rev-parse', '-q', '--verify', 'MERGE_HEAD'], GIT_TIMEOUT_MS, dir)
+      if (merge.code === 0) return { ok: true, error: null, state: 'merge', repoRoot }
+    }
+    return { ok: true, error: null, state: 'none', repoRoot: null }
+  }
+
+  /** Разрешить конфликт одной стороной: `checkout --ours|--theirs -- <path>` + `add` (mark resolved). */
+  async conflictResolve(project: ProjectEntry, path: string, side: 'ours' | 'theirs'): Promise<GitOpResult> {
+    if (side !== 'ours' && side !== 'theirs') return { ok: false, error: 'Invalid request' }
+    for (const [dir, rels] of await this.groupByRepo(project, [path])) {
+      const result = await this.run(project, ['checkout', `--${side}`, '--', ...rels], GIT_TIMEOUT_MS, dir)
+      if (result.code !== 0) return { ok: false, error: errorOf(result, ['checkout']) }
+    }
+    return this.stage(project, [path])
+  }
+
+  /** Завершить rebase/merge после разрешения конфликтов; GIT_EDITOR=true — редактор не открывать. */
+  async conflictContinue(project: ProjectEntry): Promise<GitOpResult> {
+    const state = await this.conflictState(project)
+    if (state.state === 'none') return { ok: false, error: 'No rebase or merge in progress' }
+    const args = state.state === 'rebase' ? ['rebase', '--continue'] : ['merge', '--continue']
+    const result = await this.run(project, args, FETCH_TIMEOUT_MS, state.repoRoot ?? undefined, {
+      GIT_EDITOR: 'true',
+      GIT_SEQUENCE_EDITOR: 'true'
+    })
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Отменить rebase/merge: `rebase|merge --abort` — рабочее дерево возвращается к состоянию до операции. */
+  async conflictAbort(project: ProjectEntry): Promise<GitOpResult> {
+    const state = await this.conflictState(project)
+    if (state.state === 'none') return { ok: false, error: 'No rebase or merge in progress' }
+    const args = state.state === 'rebase' ? ['rebase', '--abort'] : ['merge', '--abort']
+    const result = await this.run(project, args, FETCH_TIMEOUT_MS, state.repoRoot ?? undefined)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
+  }
+
+  /** Перебазировать текущую ветку на onto (`git rebase <onto>`); конфликты — ошибка в UI. */
+  async rebaseBranch(project: ProjectEntry, onto: string): Promise<GitOpResult> {
+    const target = onto.trim()
+    if (target.length === 0 || /\s/.test(target)) return { ok: false, error: 'Invalid branch name' }
+    const result = await this.run(project, ['rebase', target], FETCH_TIMEOUT_MS)
+    return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['rebase']) }
+  }
+
+  /** Чекаут branch, затем перебазировать её на onto. */
+  async checkoutAndRebase(project: ProjectEntry, branch: string, onto: string): Promise<GitOpResult> {
+    const switched = await this.checkout(project, branch, false)
+    if (!switched.ok) return switched
+    return this.rebaseBranch(project, onto)
   }
 
   /** Ahead/behind всех локальных веток одним for-each-ref (данные с последнего fetch). */

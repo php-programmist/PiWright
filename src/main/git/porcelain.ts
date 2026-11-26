@@ -1,6 +1,6 @@
 /** Парсер `git status --porcelain=v2 --branch`. Формат: строки `# branch.*` — заголовок,
- *  `1` — обычные записи, `2` — переименования (`path<TAB>origPath`), `?` — untracked,
- *  `!` — ignored (пропускаем). Путь — последний столбец (может содержать пробелы),
+ *  `1` — обычные записи, `2` — переименования (`path<TAB>origPath`), `u` — unmerged/конфликтные,
+ *  `?` — untracked, `!` — ignored (пропускаем). Путь — последний столбец (может содержать пробелы),
  *  спецсимволы — в C-кавычках. */
 import type { GitFileEntry, GitStatus } from '../../shared/ipc-contracts'
 
@@ -81,6 +81,19 @@ export function parseStatusOutput(output: string): GitStatus {
         untracked: true
       }
       status.entries.push(entry)
+      continue
+    }
+    if (line.startsWith('u ')) {
+      const fields = line.split(' ')
+      // u XY sub m1 m2 m3 mW h1 h2 h3 <path с пробелами> — unmerged (конфликт)
+      const path = unquoteGitPath(fields.slice(10).join(' '))
+      status.entries.push({
+        path,
+        origPath: null,
+        index: statusChar(fields[1]?.[0]),
+        worktree: statusChar(fields[1]?.[1]),
+        untracked: false
+      })
       continue
     }
     if (line.startsWith('1 ')) {
