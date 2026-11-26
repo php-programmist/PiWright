@@ -1,7 +1,6 @@
 /** Закрытие worktree-сессии: если закрылась последняя — предложить удалить worktree (ветку храним).
  *  Порт логики удаления ChatView: обычный remove → при uncommitted переспрос → force. */
 import { confirmDialog } from '../components/ConfirmDialog'
-import { useChatStore } from '../stores/chat'
 import { useSessionsStore } from '../stores/sessions'
 import { tFor, type TFunc } from './i18n'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
@@ -25,10 +24,7 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
     return
   }
   const wt = row !== undefined ? splitWorktreeHostDir(row.project.dir) : null
-  await window.piwright.closeSession(hostId, wt === null)
-  useChatStore.getState().removeHost(hostId)
-  useSessionsStore.getState().forgetHost(hostId)
-  if (row !== undefined) void useSessionsStore.getState().refreshHistory(row.project)
+  await sessions.closeSessionRow(hostId, wt === null)
   if (row === undefined || wt === null || !askCleanup) return
   const stillOpen = useSessionsStore.getState().active.some((r) => {
     const w = splitWorktreeHostDir(r.project.dir)
@@ -47,9 +43,5 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
 /** «Остановить сессию» — явная остановка: убить процесс агента (в отличие от крестика —
  *  отключиться и оставить агента работать в фоне). */
 export async function stopSession(hostId: string): Promise<void> {
-  const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
-  await window.piwright.closeSession(hostId, false)
-  useChatStore.getState().removeHost(hostId)
-  useSessionsStore.getState().forgetHost(hostId)
-  if (row !== undefined) void useSessionsStore.getState().refreshHistory(row.project)
+  await useSessionsStore.getState().closeSessionRow(hostId, false)
 }

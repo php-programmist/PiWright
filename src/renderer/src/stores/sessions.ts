@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ProjectEntry, SessionSummary, SessionDot, Settings } from '../../../shared/ipc-contracts'
 import { normalizeDir } from '../../../shared/worktree'
+import { useChatStore } from './chat'
 import { mruAlive, parentTabKey, tabId, useTabsStore } from './tabs'
 
 /** Активная сессия панели: статус с main + флаг открытой вкладки. */
@@ -50,6 +51,9 @@ interface SessionsState {
   forgetHost: (hostId: string) => void
   /** Сессия уходит в фон/возвращается (play-иконка, клик по строке): флаг + переключение активной вкладки. */
   setBackground: (hostId: string, background: boolean) => void
+  /** Закрыть строку сессии: остановить процесс (keepAlive — отключиться, если есть чему жить),
+   *  убрать чат и строку, обновить историю проекта. */
+  closeSessionRow: (hostId: string, keepAlive: boolean) => Promise<void>
   setActive: (hostId: string | null) => void
   /** Тоггл telegram-уведомлений сессии (оптимистично, флаг живёт в main). */
   toggleTelegram: (hostId: string) => void
@@ -177,6 +181,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
     if (get().activeHostId !== hostId) return
     set({ activeHostId: null })
     activateNextAfter(hostId, row.project)
+  },
+
+  closeSessionRow: async (hostId, keepAlive) => {
+    const row = get().active.find((r) => r.hostId === hostId)
+    await window.piwright.closeSession(hostId, keepAlive)
+    useChatStore.getState().removeHost(hostId)
+    get().forgetHost(hostId)
+    if (row !== undefined) void get().refreshHistory(row.project)
   },
 
   setActive: (hostId) => {

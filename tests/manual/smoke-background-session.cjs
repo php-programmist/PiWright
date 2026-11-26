@@ -60,10 +60,14 @@ async function main() {
   await page.waitForSelector('.tab.session', { timeout: 15000 })
   console.log('session tab opened')
 
+  // Снимок истории до хода: проверка «не утекла ли в History» сравнивает списки, не заголовки —
+  // каталог проекта общий между прогонами и модель генерит одинаковые названия.
+  const historyBefore = await page.evaluate(() => [...document.querySelectorAll('.history-item .history-title')].map((el) => el.textContent))
+
   // 3. Запускаем долгий ход и ждём busy.
-  await page.evaluate((id) => {
+  await page.evaluate(({ id }) => {
     void window.piwright.prompt(id, 'Run the shell command "ping -n 25 127.0.0.1" and when it finishes, reply with exactly: PING DONE')
-  }, hostId)
+  }, { id: hostId })
   await waitForDot(page, hostId, 'busy', 90000)
   console.log('turn is busy')
 
@@ -106,7 +110,10 @@ async function main() {
   console.log('after turn:', JSON.stringify(afterTurn))
   if (afterTurn.row !== 1 || afterTurn.play !== 1) throw new Error('background row lost after turn end')
   const sessionTitle = await page.evaluate(async (id) => (await window.piwright.listSessions()).active.find((s) => s.hostId === id)?.title, hostId)
-  if (afterTurn.historyTitles.some((title) => title === sessionTitle)) throw new Error('background session leaked into History')
+  const leaked =
+    afterTurn.historyTitles.length !== historyBefore.length ||
+    afterTurn.historyTitles.some((title, i) => title !== historyBefore[i])
+  if (leaked) throw new Error('background session leaked into History')
 
   // 7. Play возвращает вкладку (аттач), play-иконка исчезает.
   await page.evaluate((el) => el.click(), await page.locator('.session-row .icon.play').elementHandle())
@@ -119,7 +126,14 @@ async function main() {
   await page.locator('.tab.session .tab-close').click()
   await page.waitForSelector('.session-row', { state: 'detached', timeout: 15000 }).catch(() => {})
   const closed = (await page.locator('.session-row').count()) === 0
-  const inHistory = await page.evaluate((title) => [...document.querySelectorAll('.history-item .history-title')].some((el) => el.textContent === title), sessionTitle)
+  // История обновляется асинхронно (refreshHistory после закрытия) — ждём появления сессии в списке.
+  const historyDeadline = Date.now() + 15000
+  let inHistory = false
+  while (Date.now() < historyDeadline) {
+    inHistory = await page.evaluate((title) => [...document.querySelectorAll('.history-item .history-title')].some((el) => el.textContent === title), sessionTitle)
+    if (inHistory) break
+    await sleep(500)
+  }
   console.log(JSON.stringify({ closed, inHistory }))
   if (!closed || !inHistory) throw new Error('full close failed')
 

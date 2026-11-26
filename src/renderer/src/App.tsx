@@ -35,6 +35,7 @@ import { useScheduledStore } from './stores/scheduled'
 import { useStatsStore } from './stores/stats'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
 import { closeSessionAndSweepWorktree } from './lib/worktree-cleanup'
+import { rearmBackgroundWatchdogs } from './lib/background-watchdog'
 import { applyAppearance, applyKanbanTheme } from './lib/appearance'
 import { useKanbanThemeStore } from './stores/kanban-theme'
 import { KANBAN_DEFAULT_THEME_ID, resolveKanbanTheme } from '../../shared/kanban-theme'
@@ -67,6 +68,12 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     applyAppearance(theme, chatFontSize)
   }, [theme, chatFontSize])
+
+  // Вотчдог фоновых сессий: завершённая строка уходит в историю после грейса простоя.
+  useEffect(() => {
+    rearmBackgroundWatchdogs()
+    return useSessionsStore.subscribe(rearmBackgroundWatchdogs)
+  }, [])
 
   // Правка models.json вне приложения: вернулись в окно — перечитать каталог моделей у живых сессий.
   useEffect(() => {
