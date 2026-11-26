@@ -274,6 +274,17 @@ export function FilesPanel(): React.JSX.Element {
               {t('Copy relative path')}
             </button>
           )}
+          {menu.kind !== 'root' && project.kind !== 'ssh' && (
+            <button
+              className="project-menu-item"
+              onClick={() => {
+                void window.piwright.filesReveal(project, menu.path)
+                setMenu(null)
+              }}
+            >
+              {t('Show in folder')}
+            </button>
+          )}
           {menu.kind === 'file' && (
             <button
               className="project-menu-item"

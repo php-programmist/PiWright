@@ -15,6 +15,7 @@ import {
   FILES_DELETE_CHANNEL,
   FILES_MKDIR_CHANNEL,
   FILES_WATCH_CHANNEL,
+  FILES_REVEAL_CHANNEL,
   SHELL_OPEN_EXTERNAL_CHANNEL,
   FILES_WRITE_CHANNEL,
   GIT_BRANCHES_CHANNEL,
@@ -156,6 +157,7 @@ import { fetchChangelog } from '../changelog'
 import { getUpdateStatus, downloadUpdate, dismissUpdate, emitDevUpdate } from '../updater'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
+import { resolveWithinRoot } from '../files/file-service'
 import type { KanbanService } from '../kanban/kanban-service'
 import type { KanbanThemeService } from '../kanban/kanban-theme-service'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
@@ -1129,6 +1131,23 @@ export function registerIpc(
  ipcMain.handle(FILES_WATCH_CHANNEL, (_event, project: unknown, paths: unknown) => {
     if (!isProjectEntry(project) || !isPathList(paths)) return { ok: false, error: 'Invalid request' }
     files.setWatched(project, paths)
+    return { ok: true, error: null }
+  })
+
+  ipcMain.handle(FILES_REVEAL_CHANNEL, async (_event, project: unknown, path: unknown) => {
+    if (!isProjectEntry(project) || typeof path !== 'string') {
+      return { ok: false, error: 'Invalid request' }
+    }
+    if (project.kind === 'ssh') return { ok: false, error: 'Not available for SSH projects' }
+    const abs = resolveWithinRoot(project.dir, path)
+    if (abs === null) return { ok: false, error: 'Path is outside the project' }
+    let target = abs
+    if (project.kind === 'wsl' && stripWslUncPrefix(target) !== null) {
+      const distro = settings.get().wslDistro.trim() || (await listWslDistros())[0]
+      if (distro === undefined) return { ok: false, error: 'WSL distro not found' }
+      target = buildWslUncPath(distro, stripWslUncPrefix(target)!)
+    }
+    shell.showItemInFolder(target)
     return { ok: true, error: null }
   })
 

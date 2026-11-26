@@ -1025,6 +1025,8 @@ export interface PiWrightApi {
   filesDelete(project: ProjectEntry, path: string): Promise<FileWriteResult>
   filesMkdir(project: ProjectEntry, path: string): Promise<FileWriteResult>
   filesWatch(project: ProjectEntry, paths: string[]): Promise<GitOpResult>
+  /** Reveal a project file/folder in the OS file explorer (selects it in the containing folder). */
+  filesReveal(project: ProjectEntry, path: string): Promise<FileWriteResult>
   /** Открыть внешнюю ссылку (http/https/mailto) в системном браузере. */
   shellOpenExternal(url: string): Promise<GitOpResult>
   /** base64 → файл в `.pi/attachments/` (paste); name — желаемое, возвращается фактическое. */
@@ -1198,6 +1200,7 @@ export const FILES_RENAME_CHANNEL = 'files:rename'
 export const FILES_DELETE_CHANNEL = 'files:delete'
 export const FILES_MKDIR_CHANNEL = 'files:mkdir'
 export const FILES_WATCH_CHANNEL = 'files:watch'
+export const FILES_REVEAL_CHANNEL = 'files:reveal'
 export const SHELL_OPEN_EXTERNAL_CHANNEL = 'shell:open-external'
 export const FILES_CHANGED_CHANNEL = 'files:changed'
 export const ATTACHMENTS_PUT_CHANNEL = 'attachments:put'
