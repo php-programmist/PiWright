@@ -327,39 +327,145 @@ describe('PiHost', () => {
     expect(await piHost.closeAndWait('no-such-host')).toBe(false)
   })
 
-  it('close with keepAlive detaches (child stdin stays open), default close kills', async () => {
+  it('close keepAlive: idle session is killed, streaming session detaches', async () => {
+    // Idle (ход завершился) — kill сразу: держать агента в памяти дороже восстановления.
     const child = scriptedChild('C:\\proj\\a.jsonl')
-    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-1'
     currentChild = child
     const { piHost } = makePiHost([child])
     const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
     await host.ensureStarted()
-    expect(piHost.close(host.id, { keepAlive: true })).toEqual({ hostId: host.id })
+    expect(host.streaming).toBe(false)
+    piHost.close(host.id, { keepAlive: true })
     expect(piHost.get(host.id)).toBeNull()
-    expect(child.stdin.writableEnded).toBe(false)
-    expect(child.killed).toBe(false)
+    expect(child.stdin.writableEnded).toBe(true)
 
-    const killChild = scriptedChild('C:\\proj\\b.jsonl')
-    currentChild = killChild
-    const second = makePiHost([killChild])
+    // Streaming (ход идёт) — detach: ребёнок жив, ход дозреет в фоне.
+    const busyChild = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-1',
+          sessionFile: 'C:\\proj\\b.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          busyChild.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    ;(busyChild as unknown as { sessionKey: string }).sessionKey = 'k-2'
+    currentChild = busyChild
+    const second = makePiHost([busyChild])
     const host2 = second.piHost.create(PROJECT, 'C:\\proj\\b.jsonl')
-    await host2.ensureStarted()
-    second.piHost.close(host2.id)
-    expect(killChild.stdin.writableEnded).toBe(true)
+    await host2.prompt('go')
+    await vi.waitFor(() => {
+      expect(host2.streaming).toBe(true)
+    })
+    second.piHost.close(host2.id, { keepAlive: true })
+    expect(second.piHost.get(host2.id)).toBeNull()
+    expect(busyChild.stdin.writableEnded).toBe(false)
+    expect(busyChild.killed).toBe(false)
+
+    // Явный kill — всегда dispose, даже во время хода.
+    const busyChild2 = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-1',
+          sessionFile: 'C:\\proj\\c.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          busyChild2.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    currentChild = busyChild2
+    const third = makePiHost([busyChild2])
+    const host3 = third.piHost.create(PROJECT, 'C:\\proj\\c.jsonl')
+    await host3.prompt('go')
+    await vi.waitFor(() => {
+      expect(host3.streaming).toBe(true)
+    })
+    third.piHost.close(host3.id)
+    expect(busyChild2.stdin.writableEnded).toBe(true)
   })
 
-  it('detached session forgets its restore tab when the watcher reports settled/exit', async () => {
+  it('detached session keeps its restore tab; quiesceForQuit kills idle, detaches streaming', async () => {
+    // Idle-сессия при выходе: процесс убит, вкладка восстановления сохранена (респавн из транскрипта).
     const child = scriptedChild('C:\\proj\\a.jsonl')
-    ;(child as unknown as { sessionKey: string }).sessionKey = 'k-9'
     currentChild = child
-    const { piHost } = makePiHost([child])
+    const persisted: SavedSessionTab[][] = []
+    const backend: PiBackend = {
+      displayName: 'fake',
+      spawner: async () => child as unknown as ChildProcess
+    }
+    const created: CreateBackendResult = { backend, error: null }
+    const piHost = new PiHost(
+      () => SETTINGS,
+      { onStatus: () => {}, onEvent: () => {} },
+      async () => created,
+      async () => [],
+      null,
+      (tabs) => persisted.push([...tabs])
+    )
     const host = piHost.create(PROJECT, 'C:\\proj\\a.jsonl')
     await host.ensureStarted()
-    piHost.close(host.id, { keepAlive: true })
-    piHost.forgetDetached('k-9')
-    // Повторный forget безвреден; вкладка уже забыта — новая не появляется.
-    piHost.forgetDetached('k-9')
+    piHost.quiesceForQuit()
     expect(piHost.get(host.id)).toBeNull()
+    expect(child.stdin.writableEnded).toBe(true)
+    expect(persisted).toHaveLength(1) // вкладка записана при create и не забылась при quit
+
+    // Streaming-сессия при выходе: отвязана, stdin открыт — ход дозреет в фоне.
+    const busyChild = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-1',
+          sessionFile: 'C:\\proj\\b.jsonl',
+          model: { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off'] }
+      if (type === 'prompt') {
+        queueMicrotask(() => {
+          busyChild.emitData('{"type":"agent_start"}\n')
+        })
+        return { disposition: 'started' }
+      }
+      return null
+    })
+    ;(busyChild as unknown as { sessionKey: string }).sessionKey = 'k-2'
+    currentChild = busyChild
+    const second = makePiHost([busyChild])
+    const host2 = second.piHost.create(PROJECT, 'C:\\proj\\b.jsonl')
+    await host2.prompt('go')
+    await vi.waitFor(() => {
+      expect(host2.streaming).toBe(true)
+    })
+    second.piHost.quiesceForQuit()
+    expect(second.piHost.get(host2.id)).toBeNull()
+    expect(busyChild.stdin.writableEnded).toBe(false)
+    expect(busyChild.killed).toBe(false)
   })
 
   it('persists open session tabs on create and removes on close', async () => {

@@ -72,7 +72,6 @@ export class DaemonClient implements DaemonChildTransport {
    *  stdout легковесно парсится: ход завершился (agent_settled) → грейс 10 мин без нового хода →
    *  ребёнок закрывается (держать агента в памяти дороже, чем восстановить из транскрипта). */
   private readonly detached = new Set<string>()
-  private detachedListener: ((sessionKey: string, reason: 'settled' | 'exit') => void) | null = null
   /** Таймеры грейса отвязанных сессий (agent_settled → грейс → close; agent_start → отмена). */
   private readonly detachedTimers = new Map<string, NodeJS.Timeout>()
   private welcomeWaiter: { resolve: (welcome: DaemonWelcome) => void; reject: (error: Error) => void; timer: NodeJS.Timeout | null } | null = null
@@ -338,16 +337,10 @@ export class DaemonClient implements DaemonChildTransport {
     else this.bufferPush(push)
   }
 
-  /** Колбэк «отвязанная сессия завершилась» (ход дописан или процесс умер) — реестр вкладок чистит. */
-  setDetachedListener(listener: (sessionKey: string, reason: 'settled' | 'exit') => void): void {
-    this.detachedListener = listener
-  }
-
   private handleDetachedPush(push: DaemonPush): void {
     if (push.type === 'exit') {
       this.clearDetachedGrace(push.sessionKey)
       this.detached.delete(push.sessionKey)
-      this.detachedListener?.(push.sessionKey, 'exit')
       return
     }
     if (push.type !== 'stdout') return
@@ -368,7 +361,6 @@ export class DaemonClient implements DaemonChildTransport {
       const timer = setTimeout(() => {
         this.detachedTimers.delete(push.sessionKey)
         this.sendClose(push.sessionKey)
-        this.detachedListener?.(push.sessionKey, 'settled')
       }, this.detachedGraceMs)
       timer.unref()
       this.detachedTimers.set(push.sessionKey, timer)

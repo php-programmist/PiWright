@@ -153,31 +153,27 @@ export class PiHost {
     return result
   }
 
-  /** keepAlive=true — отключиться от сессии (крестик вкладки во время хода): ребёнок демона живёт,
-   *  вотчер закроет его после завершения хода. Без ключа демона (локальный спавн) — kill, иначе
-   *  процесс осиротеет. keepAlive=false — остановить процесс сразу («Остановить сессию», worktree,
-   *  завершённая сессия). */
+  /** keepAlive=true — «отключиться, если есть чему жить»: ход идёт (streaming) — ребёнок демона
+   *  отвязывается и дозывает ход в фоне (вотчер закроет его после грейса без нового хода);
+   *  ход не идёт (idle/ready/waiting/error) — процесс останавливается сразу: держать агента в
+   *  памяти дороже, чем восстановить из транскрипта. keepAlive=false — остановить всегда. */
   close(hostId: string, opts?: { keepAlive?: boolean }): HostRef | null {
     const host = this.hosts.get(hostId)
     if (host === undefined) return null
-    const sessionKey = opts?.keepAlive === true ? host.detach() : null
-    if (sessionKey !== null) {
-      this.detachedTabs.set(sessionKey, hostId)
-    } else {
-      // keepAlive без ключа демона уже привёл к dispose внутри detach(); явный kill — тоже dispose.
+    let detached = false
+    if (opts?.keepAlive === true && host.streaming) {
+      const sessionKey = host.detach()
+      if (sessionKey !== null) {
+        this.detachedTabs.set(sessionKey, hostId)
+        detached = true
+      }
+    }
+    if (!detached) {
       host.dispose()
       this.forgetOpenTab(hostId)
     }
     this.hosts.delete(hostId)
     return { hostId }
-  }
-
-  /** Отвязанная сессия завершилась (ход дописан или процесс умер) — забыть вкладку восстановления. */
-  forgetDetached(sessionKey: string): void {
-    const hostId = this.detachedTabs.get(sessionKey)
-    if (hostId === undefined) return
-    this.detachedTabs.delete(sessionKey)
-    this.forgetOpenTab(hostId)
   }
 
   /** То же, что close(), но ждёт выхода процесса — перед удалением worktree-каталога. */
@@ -190,10 +186,21 @@ export class PiHost {
     return true
   }
 
+  /** Подготовка к выходу приложения: ход идёт — отвязать (дозреет в фоне, вотчер демона закроет
+   *  через грейс без нового хода); ход не идёт — остановить процесс (при старте сессия
+   *  восстановится из транскрипта). Вкладки восстановления сохраняются для всех — при старте
+   *  откроются снова: живые аттачатся, остановленные — респавн с --session. */
+  quiesceForQuit(): void {
+    for (const host of this.hosts.values()) {
+      if (host.streaming && host.detach() !== null) continue
+      host.dispose()
+    }
+    this.hosts.clear()
+  }
+
   disposeAll(): void {
     for (const host of this.hosts.values()) host.dispose()
     this.hosts.clear()
-    this.detachedTabs.clear()
     if (this.openTabs.size > 0) {
       this.openTabs.clear()
       this.persistOpenTabs?.([])

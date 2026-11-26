@@ -259,8 +259,6 @@ app.whenReady().then(async () => {
   for (const tab of settings.get().openSessionTabs) {
     piHost.create(tab.project, tab.sessionFile)
   }
-  // Отвязанная сессия (крестик во время хода) завершилась в фоне — забыть вкладку восстановления.
-  getDaemonClient()?.setDetachedListener((sessionKey) => piHost?.forgetDetached(sessionKey))
   const bg = settings.get().theme === 'light' ? '#f5f6f8' : '#14161a'
   createWindow(bg, () => settings.get().language)
   app.on('activate', () => {
@@ -277,9 +275,12 @@ app.on('will-quit', (event) => {
   if (!quitDisposalStarted) {
     quitDisposalStarted = true
     event.preventDefault()
-    // Дети демона живут: закрытие приложения — не остановка сессий (эффект Herdr), при следующем
-    // старте вкладки восстановятся и аттачатся. Явная остановка — «Остановить сессию» в UI
-    // (sessions:close keepAlive=false) и «Остановить все фоновые сессии» (piHost.disposeAll, задача 3).
+    // Ход идёт — сессия отвязывается и дозает ход в фоне (вотчер демона закроет её через грейс
+    // без нового хода); ход не идёт — процесс останавливается сразу (память дороже транскрипта).
+    // Вкладки восстановления сохраняются: при старте откроются снова — живые аттачатся,
+    // остановленные восстановятся из транскрипта. Явная остановка — «Остановить сессию» в UI
+    // и «Остановить все фоновые сессии» (piHost.disposeAll, задача 3).
+    piHost?.quiesceForQuit()
     scheduledService?.dispose()
     fileService?.dispose()
     terminalService?.disposeAll()

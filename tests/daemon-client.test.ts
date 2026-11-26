@@ -61,18 +61,15 @@ describe('DaemonClient', () => {
     startServer({ killAfterCloseMs: 20 })
     await server.start()
     const client = makeClient({ detachedGraceMs: 60 })
-    const { child, sessionKey } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
+    const { child } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
     child.on('error', () => {})
     child.on('close', () => {})
     child.detach()
     children[0].emitData('{"type":"agent_settled"}\n')
     await new Promise((resolve) => setTimeout(resolve, 40))
     expect(children[0].killed).toBe(false)
-    const events: string[] = []
-    client.setDetachedListener((key, reason) => events.push(`${key}:${reason}`))
     await new Promise((resolve) => setTimeout(resolve, 120))
     expect(children[0].killed).toBe(true)
-    expect(events).toEqual([`${sessionKey}:settled`])
   })
 
   it('a new turn during the grace cancels the kill', async () => {

@@ -10,9 +10,11 @@ function translator(): TFunc {
   return tFor(useSessionsStore.getState().settings?.language ?? 'en')
 }
 
-/** Закрыть вкладку сессии. Обычная сессия — отключиться (keepAlive): агент продолжает работать
- *  в фоне, повторное открытие аттачится. Worktree-сессия — остановить процесс: иначе живой
- *  агент держит каталог и `git worktree remove` упадёт. askCleanup=false — не дергать диалог. */
+/** Закрыть вкладку сессии. Решение «detach или kill» принимает main (sessions:close keepAlive):
+ *  ход идёт — агент дозреет в фоне и закроется по грейсу; ход не идёт — процесс остановится
+ *  сразу (держать его в памяти дороже, чем восстановить из транскрипта). Worktree-сессия —
+ *  всегда kill (живой агент держит каталог и `git worktree remove` упадёт). askCleanup=false —
+ *  не дергать диалог. */
 export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = true): Promise<void> {
   const row = useSessionsStore.getState().active.find((r) => r.hostId === hostId)
   const wt = row !== undefined ? splitWorktreeHostDir(row.project.dir) : null
