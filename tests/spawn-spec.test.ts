@@ -10,11 +10,14 @@ import type { SshServerEntry } from '../src/shared/ipc-contracts'
 const REQ: PiSpawnRequest = { cwd: 'C:\\proj', args: ['--mode', 'rpc'] }
 
 describe('spawn specs', () => {
-  it('native spec prepends the pi directory to PATH', () => {
+  it('native spec keeps a single PATH key with the pi directory prepended', () => {
     const spec = buildNativeSpec('C:\\tools\\pi.cmd', REQ)
     expect(spec).toMatchObject({ mode: 'native', piPath: 'C:\\tools\\pi.cmd', args: ['--mode', 'rpc'], cwd: 'C:\\proj' })
+    const pathKeys = Object.keys(spec.env ?? {}).filter((k) => k.toLowerCase() === 'path')
+    expect(pathKeys).toEqual(['PATH'])
     expect(spec.env?.['PATH']?.indexOf('C:\\tools;')).toBe(0)
-    expect(spec.env?.['PATH']).toContain(process.env['PATH'] ?? '')
+    const original = process.env['PATH'] ?? process.env['Path'] ?? ''
+    if (original.length > 0) expect(spec.env?.['PATH']).toContain(original)
   })
 
   it('wsl spec converts a UNC cwd without probes and keeps the original cwd', async () => {

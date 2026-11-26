@@ -52,14 +52,24 @@ export function resolveNativePi(settingsPath: string | null, home: string): stri
 }
 
 /** env для спавна: окружение процесса + каталог pi в начале PATH (так делал спайк).
- *  env в спеке уже собран — демон спавнит без доступа к окружению main. */
+ *  env в спеке уже собран — демон спавнит без доступа к окружению main.
+ *  На Windows ключ окружения лежит как 'Path' (process.env — proxy без регистра, копия через
+ *  Object.entries регистр сохраняет): оставляем ровно один ключ 'PATH' — дубль другого регистра
+ *  уводит поиск исполняемого в libuv на пустой PATH (spawn cmd.exe ENOENT). */
 export function buildNativeSpec(piPath: string, req: PiSpawnRequest): PiSpawnSpec {
   const binDir = dirname(piPath)
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value
   }
-  env['PATH'] = `${binDir};${env['PATH'] ?? ''}`
+  let originalPath = ''
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === 'path') {
+      originalPath = env[key]
+      delete env[key]
+    }
+  }
+  env['PATH'] = `${binDir};${originalPath}`
   return { mode: 'native', piPath, args: req.args, cwd: req.cwd, env }
 }
 

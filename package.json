@@ -72,6 +72,9 @@
       }
     ],
     "npmRebuild": false,
+    "electronFuses": {
+      "runAsNode": true
+    },
     "asarUnpack": [
       "**/node_modules/node-pty/**"
     ],
