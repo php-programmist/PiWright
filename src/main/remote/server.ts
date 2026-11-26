@@ -319,7 +319,8 @@ export class RemoteWebServer {
       writeHttp(res, 404, 'text/plain', 'Not found')
       return
     }
-    writeHttp(res, 200, mimeTypeFor(path), resource)
+    // '/' не матчится по расширению и падал в application/octet-stream — браузер скачивал страницу вместо рендера.
+    writeHttp(res, 200, mimeTypeFor(path === '/' ? '/index.html' : path), resource)
   }
 
   /** Статика SPA (веб-режим): защита от выхода за корень, index.html для '/' и без расширения. */

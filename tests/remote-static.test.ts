@@ -25,8 +25,8 @@ afterEach(() => {
   running.length = 0
 })
 
-/** Поднимает сервер со статикой и логинится по PIN — возвращает порт и cookie. */
-async function startWithAuth(staticRoot: string): Promise<{ port: number; cookie: string; server: RemoteWebServer }> {
+/** Поднимает сервер (staticRoot не задан — режим телефонного моста) и логинится по PIN — возвращает порт и cookie. */
+async function startWithAuth(staticRoot?: string): Promise<{ port: number; cookie: string; server: RemoteWebServer }> {
   const rpc = attachRpcWs({ router: new RpcRouter(), events: new EventBroadcaster(), platform: 'linux', appVersion: 'test' })
   const server = new RemoteWebServer(0, new RemoteAuth('123456'), listener, () => 'en', rpc.upgrade, staticRoot)
   const started = await server.start()
@@ -165,6 +165,22 @@ describe('RemoteWebServer static mode (headless web UI)', () => {
       socket.on('close', () => resolvePromise(data))
     })
     expect(other).not.toContain('101')
+    server.stop()
+  })
+})
+
+describe('RemoteWebServer phone mode (inlined UI)', () => {
+  it('serves / as text/html — octet-stream made Chrome download the page after PIN login', async () => {
+    const { port, cookie, server } = await startWithAuth()
+    const index = await get(port, '/', cookie)
+    expect(index.status).toBe(200)
+    expect(index.type).toBe('text/html; charset=utf-8')
+    expect(index.cache).toBe('no-store')
+    expect(index.body).toContain('<html lang="en">')
+    const appJs = await get(port, '/app.js', cookie)
+    expect(appJs.type).toBe('text/javascript; charset=utf-8')
+    const style = await get(port, '/style.css', cookie)
+    expect(style.type).toBe('text/css; charset=utf-8')
     server.stop()
   })
 })
