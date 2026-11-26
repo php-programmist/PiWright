@@ -29,10 +29,13 @@ export function telegramMessage(project: string, title: string, kind: RemoteNoti
 
 const REQUEST_TIMEOUT_MS = 10000
 
+/** База API: переопределяется env для смоуков (захват запросов локальным сервером). */
+const TELEGRAM_API_BASE = process.env['PIWRIGHT_TELEGRAM_API']?.trim() || 'https://api.telegram.org'
+
 async function send(chatId: string, token: string, text: string): Promise<string | null> {
   let url: URL
   try {
-    url = new URL(`https://api.telegram.org/bot${token}/sendMessage`)
+    url = new URL(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`)
   } catch {
     return 'invalid request'
   }

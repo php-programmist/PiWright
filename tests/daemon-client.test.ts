@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createServer } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { DaemonClient, setDaemonClientForTests } from '../src/main/daemon/client'
+import { DaemonClient, DaemonUnavailableError, setDaemonClientForTests } from '../src/main/daemon/client'
 import type { DaemonChildProcess } from '../src/main/daemon/child-process'
+import type { DaemonSkewInfo } from '../src/main/daemon/client'
+import { DAEMON_PROTO_VERSION } from '../src/main/daemon/protocol'
+import { ensureDaemonToken } from '../src/main/daemon/token'
 import { createDaemonSpawner } from '../src/main/daemon/spawner'
 import { DaemonServer } from '../src/main/daemon/server'
 import type { PiChildProcess, PiSpawnSpec } from '../src/main/pi/backends/types'
@@ -58,13 +62,17 @@ describe('DaemonClient', () => {
   }
 
   it('kills a detached child after the grace when no new turn starts', async () => {
-    startServer({ killAfterCloseMs: 20 })
+    // Грейс и kill — на стороне демона (работает и при закрытом приложении): detachChild
+    // делает ребёнка фоновым, agent_settled запускает грейс, по истечении — close.
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 60 })
     await server.start()
-    const client = makeClient({ detachedGraceMs: 60 })
+    const client = makeClient()
     const { child } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
     child.on('error', () => {})
     child.on('close', () => {})
     child.detach()
+    // detachChild уходит по каналу асинхронно — даём дойти до демона до agent_settled.
+    await new Promise((resolve) => setTimeout(resolve, 60))
     children[0].emitData('{"type":"agent_settled"}\n')
     await new Promise((resolve) => setTimeout(resolve, 40))
     expect(children[0].killed).toBe(false)
@@ -73,9 +81,9 @@ describe('DaemonClient', () => {
   })
 
   it('a new turn during the grace cancels the kill', async () => {
-    startServer({ killAfterCloseMs: 20 })
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 60 })
     await server.start()
-    const client = makeClient({ detachedGraceMs: 60 })
+    const client = makeClient()
     const { child } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
     child.on('error', () => {})
     child.on('close', () => {})
@@ -218,6 +226,47 @@ describe('DaemonClient', () => {
     children[0].emitData('fresh\n')
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(lines.join('')).toBe('fresh\n')
+  })
+
+  it('killBackground closes only children without clients', async () => {
+    startServer({ killAfterCloseMs: 20 })
+    await server.start()
+    const client = makeClient()
+    const { child } = await client.spawn(SPEC, 'C:\\proj\\.pi\\s.json')
+    child.on('error', () => {})
+    child.on('close', () => {})
+    // Ребёнок аттачен к клиенту — не фоновый.
+    expect(await client.killBackground()).toBe(0)
+    // detach (крестик во время хода) → detachChild → фоновый.
+    child.detach()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(await client.killBackground()).toBe(1)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(children[0].killed).toBe(true)
+  })
+
+  it('version skew: callback fires, client disabled until cleared', async () => {
+    // Фейковый «старый демон»: отвечает welcome с чужой версией протокола.
+    const fake = createServer((socket) => {
+      socket.setEncoding('utf8')
+      socket.on('data', () => {
+        socket.write(`${JSON.stringify({ type: 'welcome', protoVersion: 999, appVersion: '0.4.0', sessions: [] })}\n`)
+      })
+    })
+    await new Promise<void>((resolve) => fake.listen(channel, () => resolve()))
+    try {
+      const skews: DaemonSkewInfo[] = []
+      ensureDaemonToken(userDataDir)
+      const client = makeClient({ onVersionSkew: (info) => skews.push(info) })
+      await expect(client.connect()).rejects.toBeInstanceOf(DaemonUnavailableError)
+      expect(skews).toEqual([{ daemonProto: 999, appProto: DAEMON_PROTO_VERSION, daemonAppVersion: '0.4.0' }])
+      expect(client.versionSkew).toBe(true)
+      // После решения пользователя блокировка снимается.
+      client.clearDisabled()
+      expect(client.versionSkew).toBe(false)
+    } finally {
+      await new Promise<void>((resolve) => fake.close(() => resolve()))
+    }
   })
 })
 

@@ -1,13 +1,19 @@
 /** Демон-держатель процессов pi: слушает канал, спавнит детей по спекам, пересылает
  *  stdin/stdout/stderr, переживает отключение клиента. Тонкий: без хендшейка, реплея и
  *  перевода событий — всё это остаётся в Electron main. stdout детей читается всегда
- *  (иначе pi встаёт по backpressure), без клиента — только счётчики и хвост stderr. */
+ *  (иначе pi встаёт по backpressure), без клиента — только счётчики и хвост stderr.
+ *  Фоновые дети (без клиентов): легковесный парсинг stdout — конец хода/диалог без клиента
+ *  дают звук + telegram, затем grace-период и kill; idle-дети умирают вместе с клиентом
+ *  (иначе процессы копятся — утечка). */
 import { createServer, connect, type Server, type Socket } from 'node:net'
 import { randomBytes } from 'node:crypto'
 import { unlinkSync } from 'node:fs'
 import type { BackendMode } from '../../shared/ipc-contracts'
 import type { PiChildProcess, PiSpawnSpec } from '../pi/backends/types'
 import { NdjsonAccumulator } from '../pi/ndjson'
+import { decodeExtensionDialog } from '../pi/extension-ui'
+import { sendTelegramNotification } from '../notifications/telegram'
+import type { RemoteNotifyKind } from '../notifications/telegram'
 import {
   DAEMON_PROTO_VERSION,
   daemonChannelPath,
@@ -18,6 +24,7 @@ import {
   type DaemonSessionInfo
 } from './protocol'
 import { ensureDaemonToken } from './token'
+import { playSoundFile, projectLabel, readDaemonSettings } from './notify'
 
 export interface DaemonServerOptions {
   userDataDir: string
@@ -27,6 +34,12 @@ export interface DaemonServerOptions {
   channelPath?: string
   /** Версия приложения для welcome (демон сам не знает — передаётся в argv). */
   appVersion?: string
+  /** Путь settings.json: фоновые уведомления (chatId, события, звуки, grace). Нет — уведомлений нет. */
+  settingsPath?: string
+  /** Переопределение проигрывания звука — тесты. */
+  playSound?: (path: string) => void
+  /** Grace-период поверх настроек, мс — тесты. */
+  backgroundGraceMs?: number
   idleExitMs?: number
   helloTimeoutMs?: number
   killAfterCloseMs?: number
@@ -54,6 +67,12 @@ interface ChildRecord {
   stderrTail: string[]
   killTimer: NodeJS.Timeout | null
   accumulator: NdjsonAccumulator
+  /** Легковесный парсинг stdout: состояние хода и уведомлений. */
+  projectDir: string
+  title: string | null
+  streaming: boolean
+  turnError: string | null
+  graceTimer: NodeJS.Timeout | null
 }
 
 const STDERR_TAIL_LINES = 20
@@ -72,6 +91,7 @@ export class DaemonServer {
   private readonly pendingSpawns = new Map<string, Promise<ChildRecord>>()
   private server: Server | null = null
   private token = ''
+  private telegramToken: string | null = null
   private nextId = 1
   private nextKey = 1
   private idleTimer: NodeJS.Timeout | null = null
@@ -133,6 +153,7 @@ export class DaemonServer {
     }
     for (const record of this.children.values()) {
       if (record.killTimer !== null) clearTimeout(record.killTimer)
+      if (record.graceTimer !== null) clearTimeout(record.graceTimer)
       try {
         record.child.kill()
       } catch {
@@ -180,7 +201,16 @@ export class DaemonServer {
     }
     if (!this.connections.delete(conn.id)) return
     for (const record of this.children.values()) record.clients.delete(conn.id)
+    this.killIdleChildren()
     this.scheduleIdleCheck()
+  }
+
+  /** Клиент ушёл (приложение закрылось/упало): idle-дети умирают сразу — иначе процессы
+   *  копятся (утечка). Занятые (ход идёт) дорабатывают: уведомление + grace + kill. */
+  private killIdleChildren(): void {
+    for (const record of this.children.values()) {
+      if (record.clients.size === 0 && !record.exited && !record.streaming) this.handleClose(record.key)
+    }
   }
 
   private onClientLine(conn: ConnState, line: string): void {
@@ -201,6 +231,9 @@ export class DaemonServer {
         clearTimeout(conn.helloTimer)
         conn.helloTimer = null
       }
+      if (typeof message['telegramToken'] === 'string' && (message['telegramToken'] as string).length > 0) {
+        this.telegramToken = message['telegramToken'] as string
+      }
       this.send(conn, {
         type: 'welcome',
         protoVersion: DAEMON_PROTO_VERSION,
@@ -215,7 +248,7 @@ export class DaemonServer {
   private sessionInfos(): DaemonSessionInfo[] {
     return [...this.children.values()]
       .filter((record) => !record.exited)
-      .map((record) => ({ sessionKey: record.key, sessionFile: record.sessionFile, mode: record.mode }))
+      .map((record) => ({ sessionKey: record.key, sessionFile: record.sessionFile, mode: record.mode, clients: record.clients.size }))
   }
 
   private async onRequest(conn: ConnState, message: DaemonClientMessage): Promise<void> {
@@ -258,6 +291,21 @@ export class DaemonServer {
       this.respond(conn, message.id, { sessions: this.sessionInfos() })
       return
     }
+    if (message.type === 'detachChild') {
+      const record = this.children.get(message.sessionKey)
+      if (record !== undefined) record.clients.delete(conn.id)
+      return
+    }
+    if (message.type === 'killBackground') {
+      let stopped = 0
+      for (const record of this.children.values()) {
+        if (record.clients.size > 0 || record.exited) continue
+        this.handleClose(record.key)
+        stopped++
+      }
+      this.respond(conn, message.id, { stopped })
+      return
+    }
     if (message.type === 'shutdown') {
       this.respond(conn, message.id, {})
       this.log('shutdown requested')
@@ -271,6 +319,7 @@ export class DaemonServer {
       const existing = existingKey !== undefined ? this.children.get(existingKey) : undefined
       if (existing !== undefined && !existing.exited) {
         existing.clients.add(conn.id)
+        this.cancelGrace(existing)
         this.respond(conn, id, { sessionKey: existing.key, attached: true })
         return
       }
@@ -279,6 +328,7 @@ export class DaemonServer {
         try {
           const record = await pending
           record.clients.add(conn.id)
+          this.cancelGrace(record)
           this.respond(conn, id, { sessionKey: record.key, attached: true })
         } catch (err) {
           this.respondError(conn, id, err instanceof Error ? err.message : String(err))
@@ -300,7 +350,12 @@ export class DaemonServer {
         lastStdout: null,
         stderrTail: [],
         killTimer: null,
-        accumulator: new NdjsonAccumulator((line) => this.onChildStdoutLine(record, line))
+        accumulator: new NdjsonAccumulator((line) => this.onChildStdoutLine(record, line)),
+        projectDir: spec.cwd,
+        title: null,
+        streaming: false,
+        turnError: null,
+        graceTimer: null
       }
       this.registerChild(record)
       return record
@@ -332,11 +387,114 @@ export class DaemonServer {
     this.scheduleIdleCheck()
   }
 
-  /** stdout ребёнка: читается всегда; клиентам уходит построчно, без них — только счётчики. */
+  /** stdout ребёнка: читается всегда; клиентам уходит построчно, без них — только счётчики
+   *  и легковесный парсинг типов для фоновых уведомлений. */
   private onChildStdoutLine(record: ChildRecord, line: string): void {
     record.stdoutLines++
     record.lastStdout = line
+    this.parseChildLine(record, line)
     this.broadcast(record, { type: 'stdout', sessionKey: record.key, line })
+  }
+
+  /** Типы строк stdout pi, важные для фона: ход, конец хода, ошибка, диалог, имя сессии.
+   *  Битые/чужие строки молча пропускаются. */
+  private parseChildLine(record: ChildRecord, line: string): void {
+    let frame: Record<string, unknown>
+    try {
+      const parsed: unknown = JSON.parse(line)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return
+      frame = parsed as Record<string, unknown>
+    } catch {
+      return
+    }
+    const type = frame['type']
+    if (type === 'agent_start') {
+      record.streaming = true
+      record.turnError = null
+      this.cancelGrace(record)
+      return
+    }
+    if (type === 'session_info_changed') {
+      const name = frame['name']
+      if (typeof name === 'string' && name.trim().length > 0) record.title = name.trim()
+      return
+    }
+    if (type === 'message_end') {
+      const message = frame['message']
+      if (message !== null && typeof message === 'object' && !Array.isArray(message)) {
+        const msg = message as Record<string, unknown>
+        if (msg['stopReason'] === 'error') {
+          record.turnError = typeof msg['errorMessage'] === 'string' ? msg['errorMessage'] : 'Model request failed.'
+        }
+      }
+      return
+    }
+    if (type === 'agent_end' || type === 'agent_settled') {
+      record.streaming = false
+      if (record.clients.size === 0 && record.sessionFile !== null) {
+        this.onBackgroundTurnEnd(record)
+      }
+      return
+    }
+    if (type === 'extension_ui_request' && record.clients.size === 0 && record.sessionFile !== null) {
+      this.onBackgroundDialog(record, frame)
+    }
+  }
+
+  /** Ход завершился без клиента: уведомить (звук + telegram) и запустить grace-период. */
+  private onBackgroundTurnEnd(record: ChildRecord): void {
+    const error = record.turnError
+    this.notifyBackground(record, error !== null ? 'error' : 'turnEnd', error ?? undefined)
+    this.startGrace(record)
+  }
+
+  /** Диалог расширения без клиента: уведомить и запустить grace — время открыть приложение и ответить. */
+  private onBackgroundDialog(record: ChildRecord, frame: Record<string, unknown>): void {
+    const method = typeof frame['method'] === 'string' ? frame['method'] : ''
+    const dialog = decodeExtensionDialog(method, frame as never)
+    this.notifyBackground(record, dialog?.kind === 'confirm' ? 'permission' : 'question')
+    this.startGrace(record)
+  }
+
+  /** Звук + telegram по настройкам; ошибки глотаются. Пока есть клиент — тишина (шлёт main). */
+  private notifyBackground(record: ChildRecord, kind: RemoteNotifyKind, detail?: string): void {
+    if (this.options.settingsPath === undefined) return
+    const settings = readDaemonSettings(this.options.settingsPath)
+    if (settings === null) return
+    const soundPath = kind === 'turnEnd' ? settings.notifications.sounds.completion : kind === 'error' ? settings.notifications.sounds.error : settings.notifications.sounds.await
+    ;(this.options.playSound ?? playSoundFile)(soundPath)
+    const telegram = settings.notifications.telegram
+    if (telegram.chatId.trim().length === 0) return
+    if (!telegram.events[kind]) return
+    if (settings.sessionToggles[record.sessionFile ?? '']?.telegram !== true) return
+    if (this.telegramToken === null) return
+    sendTelegramNotification(telegram.chatId, this.telegramToken, projectLabel(record.projectDir), record.title ?? 'session', kind, detail)
+    this.log(`background notify ${kind} for ${record.key}`)
+  }
+
+  private get backgroundGraceMs(): number {
+    if (this.options.backgroundGraceMs !== undefined) return this.options.backgroundGraceMs
+    const settings = this.options.settingsPath !== undefined ? readDaemonSettings(this.options.settingsPath) : null
+    return (settings?.notifications.backgroundGraceMinutes ?? 10) * 60_000
+  }
+
+  /** Grace-период: процесс живёт, пока пользователь не откроет приложение; затем kill. */
+  private startGrace(record: ChildRecord): void {
+    if (record.graceTimer !== null) return
+    const ms = this.backgroundGraceMs
+    this.log(`background grace ${Math.round(ms / 1000)}s for ${record.key}`)
+    record.graceTimer = setTimeout(() => {
+      record.graceTimer = null
+      if (record.exited || record.clients.size > 0) return
+      this.log(`background grace expired, closing ${record.key}`)
+      this.handleClose(record.key)
+    }, ms)
+  }
+
+  private cancelGrace(record: ChildRecord): void {
+    if (record.graceTimer === null) return
+    clearTimeout(record.graceTimer)
+    record.graceTimer = null
   }
 
   private onChildStderr(record: ChildRecord, chunk: string): void {
@@ -353,6 +511,7 @@ export class DaemonServer {
   private onChildExit(record: ChildRecord, code: number | null): void {
     if (record.exited) return
     record.exited = true
+    this.cancelGrace(record)
     if (record.killTimer !== null) {
       clearTimeout(record.killTimer)
       record.killTimer = null
@@ -424,6 +583,7 @@ export class DaemonServer {
     }
     for (const record of this.children.values()) {
       if (record.killTimer !== null) clearTimeout(record.killTimer)
+      if (record.graceTimer !== null) clearTimeout(record.graceTimer)
       try {
         record.child.kill()
       } catch {

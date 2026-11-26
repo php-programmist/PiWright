@@ -126,6 +126,8 @@ export interface NotificationSettings {
     events: { turnEnd: boolean; permission: boolean; question: boolean; error: boolean; loopEnd: boolean }
   }
   remote: { enabled: boolean; port: number; staticPin: string }
+  /** Минуты grace-периода фоновой сессии после уведомления, до kill процесса (0 — сразу). */
+  backgroundGraceMinutes: number
 }
 
 export interface PanelPrefs {
@@ -699,6 +701,30 @@ export interface ModelsOpResult {
   error: string | null
 }
 
+/** Расхождение версии протокола демона (пережил обновление): решить — остановить или продолжить. */
+export interface DaemonSkewInfo {
+  daemonProto: number
+  appProto: number
+  daemonAppVersion: string
+}
+
+/** Состояние демона фоновых сессий (индикатор в футере панели проектов). */
+export interface DaemonStatus {
+  /** Живой канал к демону (подключён прямо сейчас). */
+  alive: boolean
+  /** Дети демона без клиентов — фоновые сессии. */
+  background: number
+  /** Нерешённое расхождение версии протокола. */
+  skew: DaemonSkewInfo | null
+}
+
+/** Результат «Остановить фоновые сессии». */
+export interface DaemonStopResult {
+  ok: boolean
+  stopped: number
+  error: string | null
+}
+
 /** Состояние remote-моста (вкладка General). */
 export interface RemoteStatus {
   running: boolean
@@ -1006,6 +1032,14 @@ export interface PiWrightApi {
   remoteCheckPort(port: number): Promise<{ busy: boolean }>
   /** Немедленная повторная попытка поднять remote-сервер (кнопка «Повторить»); false — нечего повторять. */
   remoteRetry(): Promise<boolean>
+  /** Состояние демона фоновых сессий: жив ли канал и сколько детей без клиентов (фоновых). */
+  daemonStatus(): Promise<DaemonStatus>
+  /** «Остановить фоновые сессии»: kill детей демона без клиентов; stopped — сколько убито. */
+  stopBackgroundSessions(): Promise<DaemonStopResult>
+  /** Ответ на диалог version-skew: true — погасить старый демон, false — продолжить с ним. */
+  resolveVersionSkew(stop: boolean): Promise<{ ok: boolean }>
+  /** Push при расхождении protoVersion (демон от старой версии пережил обновление). */
+  onDaemonSkew(cb: (info: DaemonSkewInfo) => void): () => void
   modelsList(backend: BackendMode, serverId?: string): Promise<ModelsListResult>
   modelsSave(backend: BackendMode, doc: unknown, serverId?: string): Promise<ModelsOpResult>
   modelsReveal(backend: BackendMode, serverId?: string): Promise<ModelsOpResult>
@@ -1153,6 +1187,10 @@ export const REMOTE_STATUS_CHANNEL = 'remote:status'
 export const REMOTE_CHECK_PORT_CHANNEL = 'remote:check-port'
 export const REMOTE_RETRY_CHANNEL = 'remote:retry'
 export const REMOTE_SHARE_SESSION_CHANNEL = 'remote:share-session'
+export const DAEMON_STATUS_CHANNEL = 'daemon:status'
+export const DAEMON_STOP_BACKGROUND_CHANNEL = 'daemon:stop-background'
+export const DAEMON_SKEW_CHANNEL = 'daemon:skew'
+export const DAEMON_RESOLVE_SKEW_CHANNEL = 'daemon:resolve-skew'
 export const MODELS_LIST_CHANNEL = 'models:list'
 export const MODELS_SAVE_CHANNEL = 'models:save'
 export const MODELS_REVEAL_CHANNEL = 'models:reveal'

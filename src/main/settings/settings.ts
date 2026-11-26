@@ -18,7 +18,8 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
     error: 'C:\\Windows\\Media\\Windows Exclamation.wav'
   },
   telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
-  remote: { enabled: false, port: 7690, staticPin: '' }
+  remote: { enabled: false, port: 7690, staticPin: '' },
+  backgroundGraceMinutes: 10
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -65,7 +66,8 @@ export function mergeNotifications(value: unknown): NotificationSettings {
   const out: NotificationSettings = {
     sounds: { ...DEFAULT_NOTIFICATIONS.sounds },
     telegram: { chatId: '', events: { ...DEFAULT_NOTIFICATIONS.telegram.events } },
-    remote: { ...DEFAULT_NOTIFICATIONS.remote }
+    remote: { ...DEFAULT_NOTIFICATIONS.remote },
+    backgroundGraceMinutes: DEFAULT_NOTIFICATIONS.backgroundGraceMinutes
   }
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
   const raw = value as Record<string, unknown>
@@ -94,6 +96,9 @@ export function mergeNotifications(value: unknown): NotificationSettings {
     if (typeof remote['staticPin'] === 'string' && isValidStaticPin(remote['staticPin'])) {
       out.remote.staticPin = remote['staticPin']
     }
+  }
+  if (typeof raw['backgroundGraceMinutes'] === 'number' && Number.isFinite(raw['backgroundGraceMinutes'])) {
+    out.backgroundGraceMinutes = Math.min(1440, Math.max(0, Math.round(raw['backgroundGraceMinutes'])))
   }
   return out
 }

@@ -20,6 +20,8 @@ export interface DaemonSessionInfo {
   sessionKey: string
   sessionFile: string | null
   mode: BackendMode
+  /** Сколько клиентов приаттачено: 0 — сессия фоновая (уведомления и grace-kill демона). */
+  clients: number
 }
 
 export interface DaemonHello {
@@ -27,6 +29,8 @@ export interface DaemonHello {
   token: string
   protoVersion: number
   appVersion: string
+  /** Токен бота Telegram (safeStorage расшифрован в main) — для фоновых уведомлений. */
+  telegramToken?: string
 }
 
 export interface DaemonWelcome {
@@ -44,6 +48,9 @@ export type DaemonRequest =
   | { type: 'rekey'; id: string; sessionKey: string; sessionFile: string }
   | { type: 'list'; id: string }
   | { type: 'shutdown'; id: string }
+  /** Вкладка закрыта (detach): ребёнок остаётся фоновым, даже пока клиент подключён. */
+  | { type: 'detachChild'; sessionKey: string }
+  | { type: 'killBackground'; id: string }
 
 export type DaemonResponse =
   | { type: 'response'; id: string; ok: true; data: Record<string, unknown> }

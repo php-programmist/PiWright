@@ -10,7 +10,7 @@ import { ChangelogModal } from './ChangelogModal'
 import { SshProjectDialog } from './SshProjectDialog'
 import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
-import type { BackendMode, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
+import type { BackendMode, DaemonStatus, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
 
 const DOT_CLASS: Record<string, string> = {
   confirm: 'confirm',
@@ -538,6 +538,7 @@ export function SessionsPanel(): React.JSX.Element {
   const [changelogOpen, setChangelogOpen] = useState(false)
   const [updateFrom, setUpdateFrom] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ availableVersion: null, phase: 'idle' })
+  const [daemon, setDaemon] = useState<DaemonStatus>({ alive: false, background: 0, skew: null })
   const [query, setQuery] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [dragKey, setDragKey] = useState<string | null>(null)
@@ -600,6 +601,28 @@ export function SessionsPanel(): React.JSX.Element {
     void window.piwright.updateStatus().then(setUpdateStatus)
     return window.piwright.onUpdateEvent(setUpdateStatus)
   }, [])
+
+  // Демон фоновых сессий: индикатор «N в фоне» — опрос раз в 5 с (канал pull, пушей нет).
+  useEffect(() => {
+    let cancelled = false
+    const pull = (): void => {
+      void window.piwright.daemonStatus().then((s) => {
+        if (!cancelled) setDaemon(s)
+      })
+    }
+    pull()
+    const timer = setInterval(pull, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
+  const stopBackground = async (): Promise<void> => {
+    if (!(await confirmDialog({ message: t('Stop background sessions? Running agents will be interrupted.'), confirmLabel: t('Stop'), danger: true }))) return
+    await window.piwright.stopBackgroundSessions()
+    void window.piwright.daemonStatus().then(setDaemon)
+  }
 
   const availableVersion = updateStatus.availableVersion
   const downloading = updateStatus.phase === 'downloading'
@@ -697,6 +720,14 @@ export function SessionsPanel(): React.JSX.Element {
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
+        {daemon.background > 0 && (
+          <span className="daemon-bg">
+            <span className="daemon-bg-count" title={t('Sessions running in the background (PiWright closed or tab closed)')}>
+              {t('{count} in background', { count: daemon.background })}
+            </span>
+            <button className="icon daemon-bg-stop" title={t('Stop background sessions')} onClick={() => void stopBackground()}>■</button>
+          </span>
+        )}
         {updateFrom !== null && version !== '' && !changelogOpen && (
           <div className="update-popup" onClick={() => {
             setUpdateFrom(null)

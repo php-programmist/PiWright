@@ -1,7 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen } from 'electron'
-import { APP_UPDATE_EVENT_CHANNEL, FILES_CHANGED_CHANNEL, PI_EVENT_CHANNEL, PI_STATUS_CHANNEL, SCHEDULED_CHANGED_CHANNEL, TERM_DATA_CHANNEL, TERM_EXIT_CHANNEL } from '../shared/ipc-contracts'
+import {
+  APP_UPDATE_EVENT_CHANNEL,
+  DAEMON_RESOLVE_SKEW_CHANNEL,
+  DAEMON_SKEW_CHANNEL,
+  DAEMON_STATUS_CHANNEL,
+  DAEMON_STOP_BACKGROUND_CHANNEL,
+  FILES_CHANGED_CHANNEL,
+  PI_EVENT_CHANNEL,
+  PI_STATUS_CHANNEL,
+  SCHEDULED_CHANGED_CHANNEL,
+  TERM_DATA_CHANNEL,
+  TERM_EXIT_CHANNEL
+} from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
 import { GitService } from './git/git-service'
 import { CodeCheckpoints } from './git/code-checkpoints'
@@ -25,7 +37,7 @@ import { NotificationHub } from './notifications/hub'
 import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
 import { initDaemonClient, getDaemonClient } from './daemon/client'
-import type { PiStatus } from '../shared/ipc-contracts'
+import type { DaemonSkewInfo, DaemonStatus, DaemonStopResult, PiStatus } from '../shared/ipc-contracts'
 
 let mainWindow: BrowserWindow | null = null
 let piHost: PiHost | null = null
@@ -39,6 +51,8 @@ let loopController: LoopController | null = null
 let scheduledService: ScheduleService | null = null
 let statsService: TokenStatsService | null = null
 let windowStatePath = ''
+/** Нерешённое расхождение версии протокола демона (диалог в renderer). */
+let daemonSkew: DaemonSkewInfo | null = null
 
 // Смоук-режим: окно вне всех мониторов, чтобы не красть фокус. Без этих переключателей
 // Chromium режет таймеры/rAF у невидимого окна и смоук начинает таймаутить.
@@ -153,7 +167,6 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
-  initDaemonClient({ userDataDir: app.getPath('userData'), appVersion: app.getVersion() })
   initSshService(
     app.getPath('userData'),
     (value) => safeStorage.encryptString(value),
@@ -170,6 +183,17 @@ app.whenReady().then(async () => {
     (value) => safeStorage.encryptString(value),
     (buffer) => safeStorage.decryptString(buffer)
   )
+  // Демон фоновых сессий: токен бота — для фоновых telegram-уведомлений (safeStorage — только main);
+  // version-skew — диалог «остановить или продолжить» в renderer.
+  initDaemonClient({
+    userDataDir: app.getPath('userData'),
+    appVersion: app.getVersion(),
+    getTelegramToken: () => tokenStore.read(),
+    onVersionSkew: (info) => {
+      daemonSkew = info
+      mainWindow?.webContents.send(DAEMON_SKEW_CHANNEL, info)
+    }
+  })
   const sendStatus = (status: PiStatus): void => {
     scheduledService?.onStatus(status)
     mainWindow?.webContents.send(PI_STATUS_CHANNEL, {
@@ -254,6 +278,49 @@ app.whenReady().then(async () => {
   startAutoUpdater(() => settings.get().updateUrl, settings, (status) => {
     mainWindow?.webContents.send(APP_UPDATE_EVENT_CHANNEL, status)
   })
+  // Каналы демона: статус (индикатор «N в фоне»), остановка фоновых, решение version-skew.
+  // Не в register.ts: нужны skew-состояние и mainWindow этого модуля.
+  ipcMain.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
+    const client = getDaemonClient()
+    if (client === null || !client.connectedNow) return { alive: false, background: 0, skew: daemonSkew }
+    try {
+      const sessions = await client.list()
+      return { alive: true, background: sessions.filter((s) => s.clients === 0).length, skew: daemonSkew }
+    } catch {
+      return { alive: false, background: 0, skew: daemonSkew }
+    }
+  })
+  ipcMain.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {
+    const client = getDaemonClient()
+    if (client === null || !client.connectedNow) return { ok: false, stopped: 0, error: 'Daemon is not running' }
+    try {
+      return { ok: true, stopped: await client.killBackground(), error: null }
+    } catch (err) {
+      return { ok: false, stopped: 0, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+  ipcMain.handle(DAEMON_RESOLVE_SKEW_CHANNEL, (_event, stop: unknown) => {
+    const client = getDaemonClient()
+    if (client === null) return { ok: false }
+    if (stop === true) {
+      // Старый демон гасится (дети прерваны) — следующий спавн поднимет свежий.
+      void client.shutdownDaemon().then((ok) => {
+        if (!ok) return
+        daemonSkew = null
+        client.clearDisabled()
+        piHost?.ensureAllStarted()
+      }).catch(() => {})
+    } else {
+      // Продолжаем со старым демоном: пересылка стабильна, новые фичи демона — после следующего обновления.
+      daemonSkew = null
+      client.clearDisabled()
+      piHost?.ensureAllStarted()
+    }
+    return { ok: true }
+  })
+  // Раннее подключение к демону: обнаружение version-skew до восстановления вкладок
+  // (спавнеры при skew не делают локальный фолбэк — иначе дубли процессов на файл сессии).
+  void getDaemonClient()?.connect().catch(() => {})
   // Восстановление открытых вкладок сессий: хосты создаются сразу (видны в панели), подъём —
   // на первом sessions:list из рендерера, чтобы реплей транскрипта не ушёл в пустоту.
   for (const tab of settings.get().openSessionTabs) {

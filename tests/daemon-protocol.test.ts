@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connect, type Socket } from 'node:net'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -41,7 +41,7 @@ class TestClient {
   socket: Socket | null = null
   closed = false
 
-  async connect(channel: string, token: string): Promise<void> {
+  async connect(channel: string, token: string, telegramToken?: string): Promise<void> {
     const socket = await connectTo(channel)
     this.socket = socket
     socket.setEncoding('utf8')
@@ -49,7 +49,9 @@ class TestClient {
     socket.on('close', () => {
       this.closed = true
     })
-    socket.write(`${JSON.stringify({ type: 'hello', token, protoVersion: DAEMON_PROTO_VERSION, appVersion: '0.5.0' })}\n`)
+    socket.write(
+      `${JSON.stringify({ type: 'hello', token, protoVersion: DAEMON_PROTO_VERSION, appVersion: '0.5.0', telegramToken })}\n`
+    )
     const welcome = await this.next()
     expect(welcome['type']).toBe('welcome')
   }
@@ -261,7 +263,7 @@ describe('daemon protocol', () => {
 
     client.send({ type: 'list', id: 'r2' })
     const before = await client.next()
-    expect((before.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile: null, mode: 'native' }])
+    expect((before.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile: null, mode: 'native', clients: 1 }])
 
     const sessionFile = 'C:\\proj\\.pi\\new.json'
     client.send({ type: 'rekey', id: 'r3', sessionKey: key, sessionFile })
@@ -270,7 +272,7 @@ describe('daemon protocol', () => {
 
     client.send({ type: 'list', id: 'r4' })
     const after = await client.next()
-    expect((after.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile, mode: 'native' }])
+    expect((after.data as Record<string, unknown>)['sessions']).toEqual([{ sessionKey: key, sessionFile, mode: 'native', clients: 1 }])
 
     client.send({ type: 'spawn', id: 'r5', spec: SPEC, sessionFile })
     const attach = await client.next()
@@ -321,7 +323,7 @@ describe('daemon protocol', () => {
     const key = (spawn.data as Record<string, unknown>)['sessionKey'] as string
     client.send({ type: 'list', id: 'r2' })
     const list = await client.next()
-    expect(list.data).toEqual({ sessions: [{ sessionKey: key, sessionFile: 'C:\\proj\\.pi\\s.json', mode: 'native' }] })
+    expect(list.data).toEqual({ sessions: [{ sessionKey: key, sessionFile: 'C:\\proj\\.pi\\s.json', mode: 'native', clients: 1 }] })
     children[0].closeWith(0)
     await client.next()
     client.send({ type: 'list', id: 'r3' })
@@ -422,5 +424,268 @@ describe('daemon protocol parsing', () => {
     const path = daemonChannelPath('C:\\Users\\x\\AppData\\PiWright')
     if (process.platform === 'win32') expect(path).toMatch(/^\\\\\.\\pipe\\piwright-daemon-[0-9a-f]{32}$/)
     else expect(path).toContain('daemon.sock')
+  })
+})
+
+describe('daemon background notifications', () => {
+  let userDataDir: string
+  let channel: string
+  let settingsPath: string
+  let server: DaemonServer
+  const children: FakeChild[] = []
+  let sounds: string[]
+  const telegramPosts: { chatId: string; text: string }[] = []
+
+  const SESSION_FILE = 'C:\\proj\\.pi\\s.json'
+
+  function writeSettings(patch: Record<string, unknown>): void {
+    const base = {
+      notifications: {
+        sounds: { completion: '', await: '', error: '' },
+        telegram: { chatId: '42', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
+        remote: { enabled: false, port: 7690, staticPin: '' },
+        backgroundGraceMinutes: 10
+      },
+      sessionToggles: { [SESSION_FILE]: { telegram: true, shared: false } },
+      ...patch
+    }
+    writeFileSync(settingsPath, JSON.stringify(base), 'utf8')
+  }
+
+  beforeEach(() => {
+    userDataDir = mkdtempSync(join(tmpdir(), 'piwright-daemon-notify-'))
+    channel = testChannel()
+    settingsPath = join(userDataDir, 'settings.json')
+    children.length = 0
+    sounds = []
+    telegramPosts.length = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: unknown, init?: { body?: string }) => {
+        const body = JSON.parse(init?.body ?? '{}') as { chat_id: string; text: string }
+        telegramPosts.push({ chatId: body.chat_id, text: body.text })
+        return { ok: true, status: 200, json: async () => ({ ok: true }) } as Response
+      })
+    )
+  })
+
+  afterEach(async () => {
+    vi.unstubAllGlobals()
+    await server?.stop()
+    try {
+      rmSync(userDataDir, { recursive: true, force: true })
+    } catch {
+      // tmp
+    }
+    vi.restoreAllMocks()
+  })
+
+  function startServer(opts: Partial<ConstructorParameters<typeof DaemonServer>[0]> = {}): void {
+    server = new DaemonServer({
+      userDataDir,
+      channelPath: channel,
+      appVersion: '0.5.0',
+      settingsPath,
+      playSound: (path) => sounds.push(path),
+      spawnChild: async () => {
+        const child = new FakeChild()
+        children.push(child)
+        return child as unknown as PiChildProcess
+      },
+      ...opts
+    })
+  }
+
+  /** Спавн ребёнка; клиент можно оставить подключённым или закрыть (приложение закрылось).
+   *  startTurn — ход начинается до отключения: иначе disconnect убьёт idle-ребёнка. */
+  async function spawnChild(
+    sessionFile: string | null,
+    opts: { keepConnected?: boolean; startTurn?: boolean } = {}
+  ): Promise<{ client: TestClient; sessionKey: string }> {
+    const client = new TestClient()
+    await client.connect(channel, readDaemonToken(userDataDir) ?? '', '123:ABC')
+    client.send({ type: 'spawn', id: 'r1', spec: SPEC, sessionFile })
+    const response = await client.next()
+    expect(response).toMatchObject({ type: 'response', ok: true })
+    const sessionKey = (response.data as Record<string, unknown>)['sessionKey'] as string
+    if (opts.startTurn === true) {
+      children[children.length - 1].emitData('{"type":"agent_start"}\n')
+      await flushIo()
+    }
+    if (opts.keepConnected !== true) client.destroy()
+    await flushIo()
+    return { client, sessionKey }
+  }
+
+  it('turn end without a client: sound + telegram + grace kill', async () => {
+    writeSettings({})
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 80 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { startTurn: true })
+    // Ход дописался уже без клиента (приложение закрыто).
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(sounds).toEqual([''])
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: ход завершён' }])
+    expect(children[0].killed).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(children[0].killed).toBe(true)
+  })
+
+  it('session telegram toggle off: sound plays, telegram silent', async () => {
+    writeSettings({ sessionToggles: {} })
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { startTurn: true })
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(sounds).toEqual([''])
+    expect(telegramPosts).toEqual([])
+  })
+
+  it('client still connected: daemon stays silent (main sends notifications)', async () => {
+    writeSettings({})
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { keepConnected: true })
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(sounds).toEqual([])
+    expect(telegramPosts).toEqual([])
+    expect(children[0].killed).toBe(false)
+  })
+
+  it('turn error (message_end stopReason=error) notifies as error', async () => {
+    writeSettings({})
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { startTurn: true })
+    children[0].emitData('{"type":"message_end","message":{"stopReason":"error","errorMessage":"boom"}}\n')
+    children[0].emitData('{"type":"agent_end"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: ошибка (boom)' }])
+  })
+
+  it('extension_ui_request without a client notifies permission/question', async () => {
+    writeSettings({})
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    await spawnChild(SESSION_FILE, { startTurn: true })
+    children[0].emitData('{"type":"extension_ui_request","id":"d1","method":"confirm","title":"run?"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: просит разрешение на команду' }])
+    telegramPosts.length = 0
+    children[0].emitData('{"type":"extension_ui_request","id":"d2","method":"input","title":"q?"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: нужен ответ' }])
+  })
+
+  it('attach during the grace cancels the kill', async () => {
+    writeSettings({})
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 150 })
+    await server.start()
+    const { sessionKey } = await spawnChild(SESSION_FILE, { startTurn: true })
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    // Приложение открыли заново: attach по тому же sessionFile отменяет грейс.
+    // Второй клиент остаётся подключённым: иначе disconnect убьёт idle-ребёнка.
+    const second = new TestClient()
+    await second.connect(channel, readDaemonToken(userDataDir) ?? '')
+    second.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile: SESSION_FILE })
+    const response = await second.next()
+    expect(response).toMatchObject({ type: 'response', ok: true, data: { attached: true, sessionKey } })
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(children[0].killed).toBe(false)
+  })
+
+  it('idle child is killed when the client disconnects, a streaming one survives', async () => {
+    writeSettings({})
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 10_000 })
+    await server.start()
+    // Первый — idle (хода нет): умрёт при отключении клиента.
+    await spawnChild(SESSION_FILE)
+    // Второй — в ходе: переживёт отключение и дозает ход.
+    const second = new TestClient()
+    await second.connect(channel, readDaemonToken(userDataDir) ?? '')
+    second.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile: null })
+    await second.next()
+    children[1].emitData('{"type":"agent_start"}\n')
+    await flushIo()
+    // Оба клиента отключились (приложение закрылось): idle умирает, занятый дозает ход.
+    second.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(children[0].killed).toBe(true)
+    expect(children[1].killed).toBe(false)
+  })
+
+  it('detachChild makes the child background while the client stays connected', async () => {
+    writeSettings({})
+    startServer({ killAfterCloseMs: 20, backgroundGraceMs: 10_000 })
+    await server.start()
+    const { client, sessionKey } = await spawnChild(SESSION_FILE, { keepConnected: true })
+    client.send({ type: 'detachChild', sessionKey })
+    await flushIo()
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toEqual([{ chatId: '42', text: 'proj · session: ход завершён' }])
+  })
+
+  it('killBackground stops only children without clients and reports the count', async () => {
+    writeSettings({})
+    startServer({ killAfterCloseMs: 20 })
+    await server.start()
+    const { client } = await spawnChild(SESSION_FILE, { keepConnected: true })
+    // Фоновый: спавн вторым клиентом, ход начался, клиент отключился (стриминг — переживает).
+    const second = new TestClient()
+    await second.connect(channel, readDaemonToken(userDataDir) ?? '')
+    second.send({ type: 'spawn', id: 'r2', spec: SPEC, sessionFile: 'C:\\proj\\.pi\\bg.json' })
+    await second.next()
+    children[1].emitData('{"type":"agent_start"}\n')
+    await flushIo()
+    second.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(children[1].killed).toBe(false)
+    client.send({ type: 'killBackground', id: 'kb1' })
+    const kb = await client.next()
+    expect(kb).toMatchObject({ type: 'response', id: 'kb1', ok: true, data: { stopped: 1 } })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    expect(children[0].killed).toBe(false)
+    expect(children[1].killed).toBe(true)
+  })
+
+  it('list reports the clients count per child', async () => {
+    writeSettings({})
+    startServer()
+    await server.start()
+    const { client, sessionKey } = await spawnChild(SESSION_FILE, { keepConnected: true })
+    client.send({ type: 'list', id: 'l1' })
+    const response = await client.next()
+    const sessions = (response.data as Record<string, unknown>)['sessions'] as Record<string, unknown>[]
+    expect(sessions).toEqual([{ sessionKey, sessionFile: SESSION_FILE, mode: 'native', clients: 1 }])
+  })
+
+  it('hello telegramToken reaches the telegram request URL', async () => {
+    writeSettings({})
+    startServer({ backgroundGraceMs: 10_000 })
+    await server.start()
+    const client = new TestClient()
+    const socket = await connectTo(channel)
+    client.socket = socket
+    socket.setEncoding('utf8')
+    socket.on('data', (chunk: string) => client.handleData(chunk))
+    socket.write(
+      `${JSON.stringify({ type: 'hello', token: readDaemonToken(userDataDir) ?? '', protoVersion: DAEMON_PROTO_VERSION, appVersion: '0.5.0', telegramToken: '123:ABC' })}\n`
+    )
+    await client.next()
+    client.send({ type: 'spawn', id: 'r1', spec: SPEC, sessionFile: SESSION_FILE })
+    await client.next()
+    children[0].emitData('{"type":"agent_start"}\n')
+    await flushIo()
+    client.destroy()
+    await flushIo()
+    children[0].emitData('{"type":"agent_settled"}\n')
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    expect(telegramPosts).toHaveLength(1)
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toContain('/bot123:ABC/sendMessage')
   })
 })

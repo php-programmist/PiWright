@@ -619,6 +619,25 @@ function NotificationsTab({
           )}
         </div>
       </section>
+      <section className="settings-section">
+        <h3>{t('Background sessions')}</h3>
+        <label>
+          {t('Grace before stopping a background session, min')}
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            value={draft.notifications.backgroundGraceMinutes}
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              if (Number.isFinite(n)) update({ notifications: { ...draft.notifications, backgroundGraceMinutes: Math.min(1440, Math.max(0, Math.round(n))) } })
+            }}
+          />
+        </label>
+        <p className="settings-hint">
+          {t('After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.')}
+        </p>
+      </section>
     </>
   )
 }

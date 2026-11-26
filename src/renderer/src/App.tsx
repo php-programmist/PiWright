@@ -18,7 +18,7 @@ import { McpView } from './views/mcp/McpView'
 import { SkillsView } from './views/skills/SkillsView'
 import { SettingsView } from './views/settings/SettingsView'
 import { StatsView } from './views/stats/StatsView'
-import { ConfirmDialogHost } from './components/ConfirmDialog'
+import { ConfirmDialogHost, confirmDialog } from './components/ConfirmDialog'
 import { RenameDialogHost } from './components/RenameDialog'
 import { TabSwitcherHost } from './components/TabSwitcher'
 import { SearchEverywhereHost } from './components/SearchEverywhere'
@@ -253,6 +253,19 @@ export function App(): React.JSX.Element {
     const offMenuSettings = window.piwright.onMenuSettings(() => useSessionsStore.getState().openSettings())
     const offMenuStats = window.piwright.onMenuStats(() => useStatsStore.getState().openModal())
     const offScheduled = window.piwright.onScheduledChanged(() => void useScheduledStore.getState().refresh())
+    // Version-skew: демон от старой версии пережил обновление — остановить детей или продолжить.
+    const offDaemonSkew = window.piwright.onDaemonSkew((info) => {
+      void confirmDialog({
+        message: t(
+          'Background sessions from version {version} are running. Stop them (agents will be interrupted) or continue as is?',
+          { version: info.daemonAppVersion || `proto ${info.daemonProto}` }
+        ),
+        confirmLabel: t('Stop sessions'),
+        danger: true
+      }).then((stop) => {
+        void window.piwright.resolveVersionSkew(stop)
+      })
+    })
     void useScheduledStore.getState().refresh()
     void load()
     void window.piwright.getPendingDialogs().then((pending) => {
@@ -267,8 +280,9 @@ export function App(): React.JSX.Element {
       offMenuSettings()
       offMenuStats()
       offScheduled()
+      offDaemonSkew()
     }
-  }, [applyEvent, applyChatStatus, applySessionsStatus, load])
+  }, [applyEvent, applyChatStatus, applySessionsStatus, load, t])
 
   return (
     <div className="app">

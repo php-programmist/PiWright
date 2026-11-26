@@ -89,7 +89,13 @@ function main(): void {
     }
     return spawnFromSpec(spec, ssh)
   }
-  const server = new DaemonServer({ userDataDir: parsed.userDataDir, appVersion: parsed.appVersion, spawnChild, log })
+  const server = new DaemonServer({
+    userDataDir: parsed.userDataDir,
+    appVersion: parsed.appVersion,
+    spawnChild,
+    settingsPath: join(parsed.userDataDir, 'settings.json'),
+    log
+  })
   server
     .start()
     .then((state) => {

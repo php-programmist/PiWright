@@ -39,9 +39,17 @@ export interface DaemonClientOptions {
   connectRetryTotalMs?: number
   helloTimeoutMs?: number
   spawnTimeoutMs?: number
-  /** Грейс отвязанной сессии после завершения хода: столько живёт процесс без нового хода,
-   *  потом закрывается (держать агента в памяти дороже, чем восстановить из транскрипта). */
-  detachedGraceMs?: number
+  /** Токен бота Telegram для hello (safeStorage расшифрован в main) — фоновые уведомления демона. */
+  getTelegramToken?: () => string | null
+  /** Расхождение protoVersion (демон от старой версии пережил обновление) — диалог в renderer. */
+  onVersionSkew?: (info: DaemonSkewInfo) => void
+}
+
+/** Расхождение версии протокола: демон от старой версии пережил обновление. */
+export interface DaemonSkewInfo {
+  daemonProto: number
+  appProto: number
+  daemonAppVersion: string
 }
 
 export interface DaemonSpawnResult {
@@ -68,12 +76,10 @@ export class DaemonClient implements DaemonChildTransport {
   private readonly pending = new Map<string, PendingRequest>()
   private readonly adapters = new Map<string, DaemonChildProcess>()
   private readonly buffered = new Map<string, DaemonPush[]>()
-  /** Ключи отвязанных детей (detach вкладки во время хода): живы в демоне, пуши не буферизуются.
-   *  stdout легковесно парсится: ход завершился (agent_settled) → грейс 10 мин без нового хода →
-   *  ребёнок закрывается (держать агента в памяти дороже, чем восстановить из транскрипта). */
+  /** Ключи отвязанных детей (detach вкладки во время хода): живы в демоне, пуши не буферизуются
+   *  (транскрипт догоняет get_messages-реплеем). Грейс, уведомления и kill — на стороне демона:
+   *  detachChild делает ребёнка фоновым, это работает и при закрытом приложении. */
   private readonly detached = new Set<string>()
-  /** Таймеры грейса отвязанных сессий (agent_settled → грейс → close; agent_start → отмена). */
-  private readonly detachedTimers = new Map<string, NodeJS.Timeout>()
   private welcomeWaiter: { resolve: (welcome: DaemonWelcome) => void; reject: (error: Error) => void; timer: NodeJS.Timeout | null } | null = null
 
   constructor(options: DaemonClientOptions) {
@@ -102,10 +108,6 @@ export class DaemonClient implements DaemonChildTransport {
 
   private get spawnTimeoutMs(): number {
     return this.options.spawnTimeoutMs ?? 60_000
-  }
-
-  private get detachedGraceMs(): number {
-    return this.options.detachedGraceMs ?? 10 * 60_000
   }
 
   /** Спавн/attach ребёнка через демона. Ответ ошибки spawn пробрасывается как есть —
@@ -162,8 +164,8 @@ export class DaemonClient implements DaemonChildTransport {
     })
   }
 
-  /** Живые ли дети у демона (для тестов и задачи восстановления). */
-  async list(): Promise<{ sessionKey: string; sessionFile: string | null; mode: BackendMode }[]> {
+  /** Живые ли дети у демона (для панели «N в фоне» и восстановления). */
+  async list(): Promise<{ sessionKey: string; sessionFile: string | null; mode: BackendMode; clients: number }[]> {
     await this.ensureConnected()
     const id = String(this.nextId++)
     const response = await this.request({ type: 'list', id }, this.helloTimeoutMs)
@@ -171,9 +173,78 @@ export class DaemonClient implements DaemonChildTransport {
     const sessions = response.data['sessions']
     if (!Array.isArray(sessions)) throw new Error('malformed list response from daemon')
     return sessions.filter(
-      (s): s is { sessionKey: string; sessionFile: string | null; mode: BackendMode } =>
+      (s): s is { sessionKey: string; sessionFile: string | null; mode: BackendMode; clients: number } =>
         s !== null && typeof s === 'object' && typeof (s as Record<string, unknown>)['sessionKey'] === 'string'
     )
+  }
+
+  /** Остановить фоновых детей (без клиентов); возвращает сколько убито. Без живого канала —
+   *  ошибка без попытки подключения (иначе каждый вызов будил бы запуск демона). */
+  async killBackground(): Promise<number> {
+    if (!this.connectedNow) throw new DaemonUnavailableError('not connected')
+    const id = String(this.nextId++)
+    const response = await this.request({ type: 'killBackground', id }, this.helloTimeoutMs)
+    if (!response.ok) throw new Error(response.error)
+    return typeof response.data['stopped'] === 'number' ? response.data['stopped'] : 0
+  }
+
+  /** Явное подключение (старт приложения): раннее обнаружение version-skew и запуск демона. */
+  connect(): Promise<void> {
+    return this.ensureConnected()
+  }
+
+  /** Активен ли блокиратор после version-skew (спавнеры не делают локальный фолбэк). */
+  get versionSkew(): boolean {
+    return this.disabled
+  }
+
+  /** Жив ли канал прямо сейчас (без попытки подключения). */
+  get connectedNow(): boolean {
+    return this.connected && this.socket !== null && !this.socket.destroyed
+  }
+
+  /** Снять блокировку после version-skew: stop — демон погашен, подключаемся к новому;
+   *  continue — работаем со старым демоном (протокол пересылки стабилен). */
+  clearDisabled(): void {
+    this.disabled = false
+  }
+
+  /** Погасить демон одним соединением («Остановить» в диалоге version-skew): hello без разбора
+   *  welcome (версия не совпадает — обычный путь заблокирован), shutdown, ожидание ответа/закрытия.
+   *  false — не подключились (демон уже мёртв — это тоже успех для вызывающего). */
+  async shutdownDaemon(timeoutMs = 5000): Promise<boolean> {
+    let socket: Socket
+    try {
+      socket = await this.connectOnce()
+    } catch {
+      return false
+    }
+    const token = readDaemonToken(this.options.userDataDir)
+    if (token === null) {
+      socket.destroy()
+      return false
+    }
+    socket.setEncoding('utf8')
+    return new Promise<boolean>((resolve) => {
+      let buffer = ''
+      const finish = (value: boolean): void => {
+        clearTimeout(timer)
+        socket.destroy()
+        resolve(value)
+      }
+      const timer = setTimeout(() => finish(true), timeoutMs)
+      socket.on('data', (chunk: string) => {
+        buffer += chunk
+        if (buffer.includes('"ok":true')) finish(true)
+      })
+      socket.on('error', () => finish(false))
+      socket.on('close', () => {
+        clearTimeout(timer)
+        resolve(true)
+      })
+      this.write(socket, { type: 'hello', token, protoVersion: DAEMON_PROTO_VERSION, appVersion: this.options.appVersion })
+      this.write(socket, { type: 'shutdown', id: 'skew' })
+    })
   }
 
   private ensureConnected(): Promise<void> {
@@ -289,10 +360,15 @@ export class DaemonClient implements DaemonChildTransport {
           clearTimeout(timer)
           this.welcomeWaiter = null
           if (welcome.protoVersion !== DAEMON_PROTO_VERSION) {
-            // демон от другой версии пережил обновление — работаем локально (диалог — задача 3)
+            // демон от другой версии пережил обновление — решает пользователь (диалог в renderer)
             this.disabled = true
             socket.destroy()
             this.handleDisconnect()
+            this.options.onVersionSkew?.({
+              daemonProto: welcome.protoVersion,
+              appProto: DAEMON_PROTO_VERSION,
+              daemonAppVersion: welcome.appVersion
+            })
             reject(new DaemonUnavailableError(`protocol version ${welcome.protoVersion} != ${DAEMON_PROTO_VERSION}`))
             return
           }
@@ -309,7 +385,8 @@ export class DaemonClient implements DaemonChildTransport {
         type: 'hello',
         token,
         protoVersion: DAEMON_PROTO_VERSION,
-        appVersion: this.options.appVersion
+        appVersion: this.options.appVersion,
+        telegramToken: this.options.getTelegramToken?.() ?? undefined
       })
     })
   }
@@ -333,48 +410,7 @@ export class DaemonClient implements DaemonChildTransport {
     const push = message as DaemonPush
     const adapter = this.adapters.get(push.sessionKey)
     if (adapter !== undefined) adapter.handlePush(push)
-    else if (this.detached.has(push.sessionKey)) this.handleDetachedPush(push)
-    else this.bufferPush(push)
-  }
-
-  private handleDetachedPush(push: DaemonPush): void {
-    if (push.type === 'exit') {
-      this.clearDetachedGrace(push.sessionKey)
-      this.detached.delete(push.sessionKey)
-      return
-    }
-    if (push.type !== 'stdout') return
-    let eventType: string | null = null
-    try {
-      const parsed: unknown = JSON.parse(push.line)
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const t = (parsed as Record<string, unknown>)['type']
-        if (typeof t === 'string') eventType = t
-      }
-    } catch {
-      // не JSON — строка не про ход агента
-    }
-    if (eventType === 'agent_settled') {
-      // Ход в фоне дописан: грейс (по умолчанию 10 мин) — вдруг начнётся новый ход;
-      // по истечении закрываем ребёнка (stdin.end + kill через 2 c у демона).
-      if (this.detachedTimers.has(push.sessionKey)) return
-      const timer = setTimeout(() => {
-        this.detachedTimers.delete(push.sessionKey)
-        this.sendClose(push.sessionKey)
-      }, this.detachedGraceMs)
-      timer.unref()
-      this.detachedTimers.set(push.sessionKey, timer)
-      return
-    }
-    if (eventType === 'agent_start') this.clearDetachedGrace(push.sessionKey)
-  }
-
-  private clearDetachedGrace(sessionKey: string): void {
-    const timer = this.detachedTimers.get(sessionKey)
-    if (timer !== undefined) {
-      clearTimeout(timer)
-      this.detachedTimers.delete(sessionKey)
-    }
+    else if (!this.detached.has(push.sessionKey)) this.bufferPush(push)
   }
 
   private bufferPush(push: DaemonPush): void {
@@ -398,19 +434,20 @@ export class DaemonClient implements DaemonChildTransport {
   }
 
   /** Отвязать адаптер без остановки ребёнка (detach вкладки): адаптер уходит, пуши ключа
-   *  не буферизуются — при повторном открытии транскрипт догоняет get_messages-реплей. */
+   *  не буферизуются — при повторном открытии транскрипт догоняет get_messages-реплей.
+   *  Демон помечает ребёнка фоновым (detachChild): уведомления, grace и kill — там, это
+   *  работает и при закрытом приложении (клиентские таймеры умирают вместе с main). */
   releaseAdapter(sessionKey: string): void {
     this.adapters.delete(sessionKey)
     this.buffered.delete(sessionKey)
     this.detached.add(sessionKey)
+    this.send({ type: 'detachChild', sessionKey })
   }
 
   private handleDisconnect(): void {
     if (!this.connected && this.pending.size === 0 && this.adapters.size === 0 && this.welcomeWaiter === null) return
     this.connected = false
     this.socket = null
-    for (const timer of this.detachedTimers.values()) clearTimeout(timer)
-    this.detachedTimers.clear()
     this.detached.clear()
     const error = new DaemonUnavailableError('connection lost')
     for (const pending of this.pending.values()) {

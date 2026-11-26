@@ -23,7 +23,12 @@ export function createDaemonSpawner(options: DaemonSpawnerOptions): PiSpawner {
       const result = await client.spawn(spec, sessionFileFromArgs(req.args))
       return result.child
     } catch (err) {
-      if (err instanceof DaemonUnavailableError) return spawnLocal(spec)
+      if (err instanceof DaemonUnavailableError) {
+        // Version-skew: локальный спавн дал бы второй процесс на тот же файл сессии
+        // (старый демон держит своего). Ждём решения пользователя из диалога.
+        if (client.versionSkew) throw err
+        return spawnLocal(spec)
+      }
       throw err
     }
   }

@@ -612,7 +612,18 @@ const RU: Record<string, string> = {
   'Grouped': 'Раздельно',
   'Stacked': 'Стопкой',
   'No data': 'Нет данных',
-  'Loading…': 'Загрузка…'
+  'Loading…': 'Загрузка…',
+
+  // Фоновые сессии (демон)
+  '{count} in background': '{count} в фоне',
+  'Sessions running in the background (PiWright closed or tab closed)': 'Сессии, работающие в фоне (PiWright закрыт или вкладка закрыта)',
+  'Stop background sessions': 'Остановить фоновые сессии',
+  'Stop background sessions? Running agents will be interrupted.': 'Остановить фоновые сессии? Работающие агенты будут прерваны.',
+  'Stop sessions': 'Остановить сессии',
+  'Background sessions from version {version} are running. Stop them (agents will be interrupted) or continue as is?': 'В фоне работают сессии из версии {version}. Остановить их (агенты будут прерваны) или продолжить как есть?',
+  'Background sessions': 'Фоновые сессии',
+  'Grace before stopping a background session, min': 'Пауза перед остановкой фоновой сессии, мин',
+  'After a background turn or dialog the agent waits this long, then its process is stopped. 0 — stop right after the notification.': 'После фонового хода или диалога агент ждёт столько, затем его процесс останавливается. 0 — остановить сразу после уведомления.'
 }
 
 export type TFunc = (key: string, vars?: Record<string, string | number>) => string
