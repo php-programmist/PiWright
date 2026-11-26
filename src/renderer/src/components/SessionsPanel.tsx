@@ -6,6 +6,7 @@ import { useLang, useT } from '../lib/i18n'
 import { isWindows } from '../lib/platform'
 import { canReveal, isWeb } from '../api/web'
 import { closeSessionAndSweepWorktree, makeSessionBackground, stopSession } from '../lib/worktree-cleanup'
+import { mergeBackgroundSessions, type BgSessionRow } from '../lib/bg-sessions'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
 import { ChangelogModal } from './ChangelogModal'
@@ -13,7 +14,7 @@ import { SshProjectDialog } from './SshProjectDialog'
 import { LocalDirDialog } from './LocalDirDialog'
 import { renameDialog } from './RenameDialog'
 import { sameProjectDir, splitWorktreeHostDir } from '../../../shared/worktree'
-import type { BackendMode, DaemonBgSession, DaemonStatus, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
+import type { BackendMode, DaemonStatus, ProjectEntry, SessionSummary, UpdateStatus } from '../../../shared/ipc-contracts'
 
 const DOT_CLASS: Record<string, string> = {
   confirm: 'confirm',
@@ -586,6 +587,8 @@ export function SessionsPanel(): React.JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ availableVersion: null, phase: 'idle' })
   const [daemon, setDaemon] = useState<DaemonStatus>({ alive: false, background: 0, skew: null, sessions: [] })
   const [bgOpen, setBgOpen] = useState(false)
+  // Фоновые сессии: дети демона без клиентов + eject-сессии приложения (см. mergeBackgroundSessions).
+  const bgSessions = useMemo(() => mergeBackgroundSessions(daemon, activeAll), [daemon, activeAll])
   const daemonBgRef = useRef<HTMLSpanElement>(null)
   const [query, setQuery] = useState('')
   const bodyRef = useRef<HTMLDivElement | null>(null)
@@ -669,6 +672,8 @@ export function SessionsPanel(): React.JSX.Element {
   const stopBackground = async (): Promise<void> => {
     if (!(await confirmDialog({ message: t('Stop background sessions? Running agents will be interrupted.'), confirmLabel: t('Stop'), danger: true }))) return
     await window.piwright.stopBackgroundSessions()
+    // Eject-сессии демону не видны (их дети прицеплены) — останавливаем через их хосты.
+    for (const row of activeAll.filter((r) => r.background)) await stopSession(row.hostId)
     void window.piwright.daemonStatus().then(setDaemon)
   }
 
@@ -689,8 +694,18 @@ export function SessionsPanel(): React.JSX.Element {
     }
   }, [bgOpen])
 
-  /** Аттач фоновой сессии из попапа: открыть вкладку (ребёнок демона приатчится). */
-  const attachBgSession = async (s: DaemonBgSession): Promise<void> => {
+  /** Аттач фоновой сессии из попапа: eject-сессия — активировать живой хост (как play-иконка
+   *  строки), сессия демона — открыть вкладку (ребёнок демона приатчится). */
+  const attachBgSession = async (s: BgSessionRow): Promise<void> => {
+    if (s.hostId !== undefined) {
+      const row = useSessionsStore.getState().active.find((r) => r.hostId === s.hostId)
+      if (row === undefined) return
+      useTabsStore.getState().setActiveProject(parentTabKey(row.project))
+      useTabsStore.getState().activateSession(row.project)
+      useSessionsStore.getState().setActive(row.hostId)
+      setBgOpen(false)
+      return
+    }
     if (s.sessionFile === null) return
     const project: ProjectEntry = { kind: s.mode, dir: s.projectDir }
     const result = await window.piwright.openSession(project, s.sessionFile)
@@ -801,28 +816,28 @@ export function SessionsPanel(): React.JSX.Element {
       </div>
       <div className="panel-foot">
         <button className="icon" title={t('Settings')} onClick={openSettings}>⚙</button>
-        {daemon.background > 0 && (
+        {bgSessions.length > 0 && (
           <span className="daemon-bg" ref={daemonBgRef}>
             <button
               className="daemon-bg-count"
               title={t('Sessions running in the background (PiWright closed or tab closed)')}
               onClick={() => setBgOpen((v) => !v)}
             >
-              {t('{count} in background', { count: daemon.background })}
+              {t('{count} in background', { count: bgSessions.length })}
             </button>
             <button className="icon daemon-bg-stop" title={t('Stop background sessions')} onClick={() => void stopBackground()}>■</button>
             {bgOpen && (
               <div className="daemon-bg-popover">
                 <div className="daemon-bg-head">{t('Background sessions')}</div>
-                {daemon.sessions.length === 0 && <div className="daemon-bg-empty">{t('No background sessions')}</div>}
-                {daemon.sessions.map((s) => {
+                {bgSessions.length === 0 && <div className="daemon-bg-empty">{t('No background sessions')}</div>}
+                {bgSessions.map((s) => {
                   const label = s.title ?? (s.sessionFile !== null ? dirName(s.sessionFile).replace(/\.json$/, '') : '—')
                   return (
                     <button
                       key={s.sessionKey}
                       className="daemon-bg-row"
-                      disabled={s.sessionFile === null}
-                      title={s.sessionFile === null ? t('Session has no file yet') : t('Attach session')}
+                      disabled={s.hostId === undefined && s.sessionFile === null}
+                      title={s.hostId === undefined && s.sessionFile === null ? t('Session has no file yet') : t('Attach session')}
                       onClick={() => void attachBgSession(s)}
                     >
                       {s.streaming && <span className="daemon-bg-dot" title={t('Agent is running')} />}

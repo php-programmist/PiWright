@@ -99,6 +99,7 @@ function seedSettings() {
     join(userData, 'settings.json'),
     JSON.stringify({
       projects: [{ kind: 'native', dir: REPO }],
+      backgroundSessions: true,
       notifications: {
         sounds: { completion: '', await: '', error: '' },
         telegram: { chatId: '777', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },
@@ -239,8 +240,9 @@ async function waitForPosts(count, timeoutMs) {
     await sleep(8000)
     check('no duplicate notification after relaunch', telegramPosts.length === 1, `posts=${telegramPosts.length}`)
 
-    // Детач во время хода (крестик вкладки): сессия становится фоновой при открытом приложении.
-    // Крестик должен попасть в ход: ждём busy-точку, задача длинная — ход не успеет кончиться.
+    // Детач во время хода: closeSession(keepAlive=true) отвязывает ребёнка демона — ход дозреет
+    // без клиента (уведомление + grace). Крестик вкладки после 1479bbb фонит сессию без детача,
+    // поэтому детач дергаем напрямую IPC — смоук проверяет поведение демона, не кнопку.
     await sendPrompt(page, 'Count from 1 to 300, one number per line, no extra text.')
     const busyDeadline = Date.now() + 60000
     let busy = false
@@ -253,7 +255,11 @@ async function waitForPosts(count, timeoutMs) {
       await sleep(300)
     }
     check('second turn is streaming', busy)
-    await page.locator('.session-row.current button[title="Close session"]').click()
+    await page.evaluate(async () => {
+      const hostId = (await window.piwright.listSessions()).active[0]?.hostId ?? null
+      if (hostId === null) throw new Error('no active host to detach')
+      await window.piwright.closeSession(hostId, true)
+    })
     const bgDeadline = Date.now() + 10000
     let bgCount = 0
     while (Date.now() < bgDeadline) {

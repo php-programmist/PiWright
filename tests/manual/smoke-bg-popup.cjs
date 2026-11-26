@@ -58,6 +58,7 @@ function seedSettings() {
     join(userData, 'settings.json'),
     JSON.stringify({
       projects: [{ kind: 'native', dir: REPO }],
+      backgroundSessions: true,
       notifications: {
         sounds: { completion: '', await: '', error: '' },
         telegram: { chatId: '', events: { turnEnd: false, permission: false, question: false, error: false, loopEnd: false } },
