@@ -22,6 +22,7 @@ import { decodeExtensionDialog, decodeExtensionUi, encodeDialogAnswer } from '..
 import { sessionStatus } from '../pi/session-status'
 import type { RemoteAuth } from './auth'
 import { isValidStaticPin } from './auth'
+import type { RpcUpgradeHandler } from './rpc-ws'
 import { RemoteWebServer, lanCandidates } from './server'
 import {
   attachedFrame,
@@ -147,7 +148,9 @@ export class RemoteBridge {
     /** Контроллер петель: старт с телефона, рассылка loop_state. Не задан в тестах. */
     private readonly loops?: LoopController,
     /** Канбан: доски и мутации с телефона. Не задан в тестах без канбана. */
-    private readonly kanban?: RemoteKanban
+    private readonly kanban?: RemoteKanban,
+    /** WS-транспорт RPC (путь /rpc) — апгрейд делегируется в rpc-ws. */
+    private readonly rpcUpgrade?: RpcUpgradeHandler
   ) {}
 
   // ------------------------------------------------------------- lifecycle
@@ -240,7 +243,8 @@ export class RemoteBridge {
         onText: (socket, text) => this.onText(socket, text),
         onClose: (socket) => this.onClose(socket)
       },
-      () => this.getSettings().language
+      () => this.getSettings().language,
+      this.rpcUpgrade
     )
     const result = await created.start()
     const live = this.getSettings().notifications.remote

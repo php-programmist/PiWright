@@ -15,6 +15,11 @@ import {
   TERM_EXIT_CHANNEL
 } from '../shared/ipc-contracts'
 import { registerIpc } from './ipc/register'
+import { RpcRouter } from './ipc/router'
+import { EventBroadcaster } from './ipc/events'
+import { attachIpcServer } from './ipc/ipc-server'
+import { attachRpcWs } from './remote/rpc-ws'
+import type { RpcPlatform } from '../shared/rpc-transport'
 import { GitService } from './git/git-service'
 import { CodeCheckpoints } from './git/code-checkpoints'
 import { FileService } from './files/file-service'
@@ -169,6 +174,11 @@ function createWindow(bg: string, lang: () => 'en' | 'ru'): void {
 
 app.whenReady().then(async () => {
   windowStatePath = join(app.getPath('userData'), 'window-state.json')
+  // Транспорт-агностичный диспетчер каналов + шина событий: провода — IPC (окно)
+  // и WS-RPC (веб-режим, путь /rpc remote-сервера).
+  const router = new RpcRouter()
+  const events = new EventBroadcaster()
+  events.addSink((channel, ...values) => mainWindow?.webContents.send(channel, ...values))
   const settings = new SettingsService(join(app.getPath('userData'), 'settings.json'))
   const secretCodec = createSecretCodec()
   initSshService(
@@ -180,7 +190,7 @@ app.whenReady().then(async () => {
   gitService = new GitService(() => settings.get())
   kanbanService = new KanbanService(() => settings.get())
   fileService = new FileService({
-    onChanged: (project, path) => mainWindow?.webContents.send(FILES_CHANGED_CHANNEL, { project, path })
+    onChanged: (project, path) => events.emit(FILES_CHANGED_CHANNEL, { project, path })
   }, () => settings.get())
   const tokenStore = new TelegramTokenStore(
     app.getPath('userData'),
@@ -197,13 +207,13 @@ app.whenReady().then(async () => {
     isEnabled: () => settings.get().backgroundSessions,
     onVersionSkew: (info) => {
       daemonSkew = info
-      mainWindow?.webContents.send(DAEMON_SKEW_CHANNEL, info)
+      events.emit(DAEMON_SKEW_CHANNEL, info)
     }
   })
   const sendStatus = (status: PiStatus): void => {
     loopController?.onStatus(status)
     scheduledService?.onStatus(status)
-    mainWindow?.webContents.send(PI_STATUS_CHANNEL, {
+    events.emit(PI_STATUS_CHANNEL, {
       ...status,
       telegram: bridge?.telegramEnabledFor(status.hostId) ?? false,
       shared: bridge?.sharedFor(status.hostId) ?? false
@@ -216,7 +226,7 @@ app.whenReady().then(async () => {
       onEvent: (message) => {
         loopController?.onEvent(message)
         scheduledService?.onEvent(message)
-        mainWindow?.webContents.send(PI_EVENT_CHANNEL, message)
+        events.emit(PI_EVENT_CHANNEL, message)
         hub?.onEvent(message)
       }
     },
@@ -246,7 +256,7 @@ app.whenReady().then(async () => {
   )
   const git = gitService
   loopController = new LoopController(piHost, (hostId, event) => {
-    mainWindow?.webContents.send(PI_EVENT_CHANNEL, { hostId, event })
+    events.emit(PI_EVENT_CHANNEL, { hostId, event })
     if (event.type === 'loop_state') {
       bridge?.loopState(hostId, event.info)
       if (!event.info.active && event.info.reason !== null) hub?.onLoopStopped(hostId, event.info.reason)
@@ -267,22 +277,23 @@ app.whenReady().then(async () => {
     loopController,
     () => settings.get(),
     () => {
-      mainWindow?.webContents.send(SCHEDULED_CHANGED_CHANNEL)
+      events.emit(SCHEDULED_CHANGED_CHANNEL)
     }
   )
   const staticPin = settings.get().notifications.remote.staticPin
   const auth = new RemoteAuth(isValidStaticPin(staticPin) ? staticPin : generatePin())
-  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController, kanbanService)
+  const rpcWs = attachRpcWs({ router, events, platform: process.platform as RpcPlatform, appVersion: app.getVersion() })
+  bridge = new RemoteBridge(() => settings.get(), piHost, auth, null, loopController, kanbanService, rpcWs.upgrade)
   bridge.applySettings(settings.get())
   hub = new NotificationHub(() => settings.get(), tokenStore, piHost, () => bridge)
   statsService = new TokenStatsService(join(app.getPath('userData'), 'token-stats.json'), () => settings.get())
   void statsService.ensureScanned().catch(() => {})
   terminalService = new TerminalService({
-    onData: (id, data) => mainWindow?.webContents.send(TERM_DATA_CHANNEL, { id, data }),
-    onExit: (id, code) => mainWindow?.webContents.send(TERM_EXIT_CHANNEL, { id, code })
+    onData: (id, data) => events.emit(TERM_DATA_CHANNEL, { id, data }),
+    onExit: (id, code) => events.emit(TERM_EXIT_CHANNEL, { id, code })
   }, undefined, (server, cwd) => createSshPty(getSshService(), server, cwd))
-  const rebuildMenu = installAppMenu(() => settings.get().language, () => mainWindow)
-  registerIpc(ipcMain, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
+  const rebuildMenu = installAppMenu(() => settings.get().language, events)
+  registerIpc(router, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, {
     tokenStore,
     bridge,
     onSettingsChanged: (next) => {
@@ -290,12 +301,13 @@ app.whenReady().then(async () => {
       rebuildMenu()
     }
   }, scheduledService, statsService, await consumeUpdateInfo(app.getPath('userData'), app.getVersion()))
+  attachIpcServer(ipcMain, router)
   startAutoUpdater(() => settings.get().updateUrl, settings, (status) => {
-    mainWindow?.webContents.send(APP_UPDATE_EVENT_CHANNEL, status)
+    events.emit(APP_UPDATE_EVENT_CHANNEL, status)
   })
   // Каналы демона: статус (индикатор «N в фоне»), остановка фоновых, решение version-skew.
-  // Не в register.ts: нужны skew-состояние и mainWindow этого модуля.
-  ipcMain.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
+  // Здесь: нужны skew-состояние и клиент демона этого модуля.
+  router.handle(DAEMON_STATUS_CHANNEL, async (): Promise<DaemonStatus> => {
     // Настройка «Фоновые сессии» выключена — индикатор фона скрыт, даже если старый демон ещё жив.
     if (!settings.get().backgroundSessions) return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     const client = getDaemonClient()
@@ -318,7 +330,7 @@ app.whenReady().then(async () => {
       return { alive: false, background: 0, skew: daemonSkew, sessions: [] }
     }
   })
-  ipcMain.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {
+  router.handle(DAEMON_STOP_BACKGROUND_CHANNEL, async (): Promise<DaemonStopResult> => {
     if (!settings.get().backgroundSessions) return { ok: false, stopped: 0, error: 'Background sessions are disabled in settings' }
     const client = getDaemonClient()
     if (client === null || !client.connectedNow) return { ok: false, stopped: 0, error: 'Daemon is not running' }
@@ -328,7 +340,7 @@ app.whenReady().then(async () => {
       return { ok: false, stopped: 0, error: err instanceof Error ? err.message : String(err) }
     }
   })
-  ipcMain.handle(DAEMON_RESOLVE_SKEW_CHANNEL, (_event, stop: unknown) => {
+  router.handle(DAEMON_RESOLVE_SKEW_CHANNEL, (stop: unknown) => {
     const client = getDaemonClient()
     if (client === null) return { ok: false }
     if (stop === true) {

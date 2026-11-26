@@ -42,7 +42,8 @@ export class WsConnection implements RemoteSocket {
     seq: number,
     private readonly socket: Socket,
     private readonly onText: (text: string) => void,
-    private readonly onClose: () => void
+    private readonly onClose: () => void,
+    private readonly maxMessageBytes: number = MAX_MESSAGE_BYTES
   ) {
     this.seq = seq
     this.peer = socket.remoteAddress ?? '?'
@@ -94,14 +95,14 @@ export class WsConnection implements RemoteSocket {
     } else if (length === 127) {
       if (buf.length < offset + 8) return null
       const big = buf.readBigUInt64BE(offset)
-      if (big > BigInt(MAX_MESSAGE_BYTES)) {
+      if (big > BigInt(this.maxMessageBytes)) {
         this.close()
         return null
       }
       length = Number(big)
       offset += 8
     }
-    if (length > MAX_MESSAGE_BYTES) {
+    if (length > this.maxMessageBytes) {
       this.close()
       return null
     }

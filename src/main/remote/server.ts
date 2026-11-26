@@ -10,6 +10,7 @@ import type { AddressInfo, Socket as NetSocket } from 'node:net'
 import { networkInterfaces } from 'node:os'
 import type { UiLanguage } from '../../shared/ipc-contracts'
 import type { RemoteAuth } from './auth'
+import type { RpcUpgradeHandler } from './rpc-ws'
 import type { RemoteSocket } from './ws'
 import { WsConnection, wsAcceptKey } from './ws'
 
@@ -175,7 +176,8 @@ export class RemoteWebServer {
     private readonly requestedPort: number,
     private readonly auth: RemoteAuth,
     private readonly listener: RemoteWebServerListener,
-    private readonly getLanguage: () => UiLanguage = () => 'en'
+    private readonly getLanguage: () => UiLanguage = () => 'en',
+    private readonly rpcUpgrade?: RpcUpgradeHandler
   ) {}
 
   async start(): Promise<RemoteStartResult> {
@@ -288,10 +290,13 @@ export class RemoteWebServer {
       socket.destroy()
       return
     }
-    socket.write(
-      'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
-        `Sec-WebSocket-Accept: ${wsAcceptKey(key)}\r\n\r\n`
-    )
+    const path = (req.url ?? '/').split('?')[0]
+    if (path === '/rpc' && this.rpcUpgrade !== undefined) {
+      acceptUpgrade(socket, key)
+      this.rpcUpgrade(req, socket)
+      return
+    }
+    acceptUpgrade(socket, key)
     const connection = new WsConnection(
       this.nextSeq++,
       socket,
@@ -300,6 +305,13 @@ export class RemoteWebServer {
     )
     this.listener.onOpen(connection)
   }
+}
+
+function acceptUpgrade(socket: NetSocket, key: string): void {
+  socket.write(
+    'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+      `Sec-WebSocket-Accept: ${wsAcceptKey(key)}\r\n\r\n`
+  )
 }
 
 async function readBody(req: IncomingMessage): Promise<string> {

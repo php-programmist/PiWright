@@ -6,6 +6,7 @@ import htmlWorker from 'monaco-editor/language/html/html.worker?worker'
 import jsonWorker from 'monaco-editor/language/json/json.worker?worker'
 import tsWorker from 'monaco-editor/language/typescript/ts.worker?worker'
 import { App } from './App'
+import { ensurePiWrightApi } from './api/ensure-piwright'
 import './app.css'
 
 ;(self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
@@ -32,4 +33,12 @@ import './app.css'
 
 const container = document.getElementById('root')
 if (container === null) throw new Error('Missing #root element')
-createRoot(container).render(<App />)
+// Выбор транспорта до монтирования: preload (Electron) или WS `/rpc` (веб-режим).
+void ensurePiWrightApi().then(
+  () => {
+    createRoot(container).render(<App />)
+  },
+  (err: unknown) => {
+    document.body.textContent = `PiWright: transport failed — ${err instanceof Error ? err.message : String(err)}`
+  }
+)
