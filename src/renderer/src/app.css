@@ -286,14 +286,28 @@ body {
   color: var(--red);
 }
 
-/* Остановка сессии — всегда красная (панель проектов и шапка чата). */
+/* Остановка сессии — красная в шапке чата; в строке панели проектов — серая, краснеет при наведении. */
 .icon.stop {
+  color: var(--red);
+}
+
+.session-row .icon.stop {
+  color: var(--muted);
+}
+
+.session-row .icon.stop:hover {
   color: var(--red);
 }
 
 /* Play-иконка фоновой сессии (аттач) — зелёная. */
 .session-row .icon.play {
   color: var(--green);
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Eject-иконка «сделать фоновой» — как play, без своей окраски. */
+.session-row .icon.eject {
   display: inline-flex;
   align-items: center;
 }

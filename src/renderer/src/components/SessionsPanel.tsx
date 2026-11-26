@@ -5,7 +5,7 @@ import { parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 import { isWindows } from '../lib/platform'
 import { canReveal, isWeb } from '../api/web'
-import { closeSessionAndSweepWorktree, stopSession } from '../lib/worktree-cleanup'
+import { closeSessionAndSweepWorktree, makeSessionBackground, stopSession } from '../lib/worktree-cleanup'
 import { persistPanel } from '../stores/panels-prefs'
 import { confirmDialog } from './ConfirmDialog'
 import { ChangelogModal } from './ChangelogModal'
@@ -512,9 +512,24 @@ function ProjectRow({
                       </svg>
                     </button>
                   )}
-                  {backgroundSessions && <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>}
                   <button className="icon" title={t('Rename (or double-click title)')} onClick={() => void startSessionRename(s.hostId, s.title)}>✎</button>
-                  <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>
+                  {backgroundSessions && !s.background && s.dot !== 'idle' && (
+                    <button
+                      className="icon eject"
+                      title={t('Make background')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void makeSessionBackground(s.hostId)
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 4.5l8 8.5H4z" fill="currentColor" />
+                        <rect x="4" y="16.5" width="16" height="3" rx="1" fill="currentColor" />
+                      </svg>
+                    </button>
+                  )}
+                  {backgroundSessions && <button className="icon stop" title={t('Stop session')} onClick={() => void stopSession(s.hostId)}>■</button>}
+                  {!backgroundSessions && <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>}
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
                   sub.filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}

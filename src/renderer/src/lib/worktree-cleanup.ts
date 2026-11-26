@@ -40,6 +40,12 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
   if (!result.ok) window.alert(result.error)
 }
 
+/** «Сделать фоновой» — закрыть вкладку, агент продолжает ход в фоне (режим фоновых сессий). */
+export async function makeSessionBackground(hostId: string): Promise<void> {
+  await window.piwright.backgroundSession(hostId)
+  useSessionsStore.getState().setBackground(hostId, true)
+}
+
 /** «Остановить сессию» — явная остановка: убить процесс агента (в отличие от крестика —
  *  отключиться и оставить агента работать в фоне). */
 export async function stopSession(hostId: string): Promise<void> {

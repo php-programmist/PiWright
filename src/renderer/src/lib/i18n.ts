@@ -44,6 +44,7 @@ const RU: Record<string, string> = {
   'Rename (or double-click title)': 'Переименовать (или двойной клик по названию)',
   'Close session': 'Закрыть сессию',
   'Stop session': 'Остановить сессию',
+  'Make background': 'Сделать фоновой',
   'Attach session': 'Подключить сессию',
   'no active sessions': 'нет активных сессий',
   'History': 'История',
