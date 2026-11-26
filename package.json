@@ -23,7 +23,8 @@
     "dist": "electron-vite build && electron-builder --win",
     "dist:dir": "electron-vite build && electron-builder --dir",
     "dist:linux": "electron-vite build && electron-builder --linux",
-    "dist:dir:linux": "electron-vite build && electron-builder --dir --linux"
+    "dist:dir:linux": "electron-vite build && electron-builder --dir --linux",
+    "build:server": "node scripts/build-server-package.cjs"
   },
   "dependencies": {
     "chokidar": "^3.6.0",

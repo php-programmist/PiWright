@@ -6,6 +6,7 @@ node_modules/
 dist/
 out/
 release/
+dist-server/
 *.tsbuildinfo
 
 # Env и секреты — только в %APPDATA%\PiWright
