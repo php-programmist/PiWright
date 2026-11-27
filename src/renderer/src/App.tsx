@@ -13,6 +13,7 @@ import { BoardView } from './views/kanban/BoardView'
 import { TaskView } from './views/kanban/TaskView'
 import { DBPanel } from './views/db/DBPanel'
 import { DbTableTab } from './views/db/DbTableTab'
+import { DbConsoleTab } from './views/db/DbConsoleTab'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -368,6 +369,8 @@ export function App(): React.JSX.Element {
                   <SkillsView key={tabId(activeTab)} tab={activeTab} onClose={closeActiveTab} />
                 ) : activeTab.kind === 'db-table' ? (
                   <DbTableTab key={tabId(activeTab)} tab={activeTab} />
+                ) : activeTab.kind === 'db-console' ? (
+                  <DbConsoleTab key={tabId(activeTab)} tab={activeTab} />
                 ) : (
                   <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}

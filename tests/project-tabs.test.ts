@@ -89,4 +89,19 @@ describe('mergeProjectTabs — kanban', () => {
       { kind: 'db-table', connectionId: 'db-abc', schema: 'public', table: 'users' }
     ])
   })
+
+  it('сохраняет db-console-вкладку с connectionId и title, отбрасывает без connectionId', () => {
+    const out = mergeProjectTabs({
+      k: {
+        tabs: [
+          { kind: 'db-console', title: 'Benchmark' },
+          { kind: 'db-console', connectionId: 'db-abc', title: 'Benchmark' }
+        ],
+        activeIndex: 1
+      }
+    })
+    expect(out['k']?.tabs).toEqual([{ kind: 'db-console', connectionId: 'db-abc', title: 'Benchmark' }])
+    // activeIndex 1 выходил за границы после отбрасывания первой вкладки — снят.
+    expect(out['k']?.activeIndex).toBeUndefined()
+  })
 })

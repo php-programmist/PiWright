@@ -32,7 +32,7 @@ export function useCenterProject(): ProjectEntry | null {
   return tab?.project ?? real ?? projectForKey(activeProjectKey)
 }
 
-export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript' | 'db-table'
+export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript' | 'db-table' | 'db-console'
 
 export interface ProjectTab {
   kind: TabKind
@@ -45,7 +45,7 @@ export interface ProjectTab {
   boardId?: string
   /** task — id карточки. */
   taskId?: string
-  /** db-table — подключение/схема/таблица дерева БД. */
+  /** db-table — подключение/схема/таблица дерева БД; db-console — подключение консоли. */
   connectionId?: string
   schema?: string
   table?: string
@@ -122,7 +122,7 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
           if (t.connectionId !== undefined) savedTab.connectionId = t.connectionId
           if (t.schema !== undefined) savedTab.schema = t.schema
           if (t.table !== undefined) savedTab.table = t.table
-          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task' || t.kind === 'db-table')) savedTab.title = t.title
+          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task' || t.kind === 'db-table' || t.kind === 'db-console')) savedTab.title = t.title
           return savedTab
         })
       const index = saved.findIndex((t) => tabId(t) === activeId)

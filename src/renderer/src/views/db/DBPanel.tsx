@@ -106,6 +106,7 @@ function SchemaRow({ connection, schema }: { connection: DbConnectionEntry; sche
 
 function ConnectionNode({ connection }: { connection: DbConnectionEntry }): React.JSX.Element {
   const t = useT()
+  const project = useCenterProject()
   const expanded = useDbStore((s) => s.expandedConnections.has(connection.id))
   const schemas = useDbStore((s) => s.schemasByConnection[connection.id])
   const loading = useDbStore((s) => s.schemasLoading[connection.id] === true)
@@ -126,6 +127,25 @@ function ConnectionNode({ connection }: { connection: DbConnectionEntry }): Reac
         </svg>
         <span className="db-tree-name">{connection.name}</span>
         <span className="db-tree-meta">{connection.kind === 'postgres' ? 'PostgreSQL' : 'MySQL'}</span>
+        <span className="spacer" />
+        <button
+          className="icon"
+          title={t('Open console')}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (project === null) return
+            useTabsStore.getState().openTab(project, {
+              kind: 'db-console',
+              connectionId: connection.id,
+              title: connection.name
+            })
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M4 6l2.4 2L4 10M8 10.2h4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </div>
       {expanded && (
         <>

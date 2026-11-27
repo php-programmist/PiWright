@@ -1,4 +1,4 @@
-/** Вкладка данных таблицы БД: грид колонки/строки, пагинация LIMIT/OFFSET (50/100/200),
+/** Вкладка данных таблицы БД: грид (общий DbGrid), пагинация LIMIT/OFFSET (50/100/200),
  *  сортировка кликом по заголовку (asc → desc → без сортировки), фильтры per-column
  *  (значение уходит только параметром запроса, идентификаторы квотирует драйвер).
  *  Число строк — count(*) с таймаутом на бэкенде; total === null → «≥ N» (увидено строк). */
@@ -6,19 +6,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import type { DbTableDataResult, DbTableOrder } from '../../../../shared/ipc-contracts'
 import type { ProjectTab } from '../../stores/tabs'
+import { DbGrid } from './DbGrid'
 
 const PAGE_SIZES = [50, 100, 200]
-
-function cellText(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL'
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
-
-function sortIndicator(order: DbTableOrder | null, column: string): string {
-  if (order === null || order.column !== column) return '↕'
-  return order.desc ? '▼' : '▲'
-}
 
 export function DbTableTab({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const t = useT()
@@ -162,15 +152,14 @@ export function DbTableTab({ tab }: { tab: ProjectTab }): React.JSX.Element {
       </div>
       <div className="db-table-scroll">
         {columns.length > 0 ? (
-          <table className={'db-grid' + (loading ? ' db-grid-loading' : '')}>
-            <thead>
-              <tr>
-                {columns.map((column) => (
-                  <th key={column.name} onClick={() => clickSort(column.name)} title={column.type ?? column.name}>
-                    {column.name} <span className="db-grid-sort">{sortIndicator(orderBy, column.name)}</span>
-                  </th>
-                ))}
-              </tr>
+          <DbGrid
+            columns={columns}
+            rows={rows}
+            loading={loading}
+            emptyText={t('no rows')}
+            onSort={clickSort}
+            sortOrder={orderBy}
+            filterRow={
               <tr className="db-grid-filters">
                 {columns.map((column) => (
                   <th key={column.name}>
@@ -187,26 +176,8 @@ export function DbTableTab({ tab }: { tab: ProjectTab }): React.JSX.Element {
                   </th>
                 ))}
               </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={index}>
-                  {row.map((value, cell) => (
-                    <td key={cell} className={value === null || value === undefined ? 'null' : undefined} title={cellText(value)}>
-                      {cellText(value)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={columns.length} className="db-grid-empty">
-                    {t('no rows')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            }
+          />
         ) : (
           !loading && <div className="panel-hint">{error ?? t('no rows')}</div>
         )}

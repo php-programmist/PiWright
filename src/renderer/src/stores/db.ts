@@ -28,6 +28,9 @@ interface DbState {
   /** Раскрытые узлы дерева. */
   expandedConnections: Set<string>
   expandedSchemas: Set<string>
+  /** История запросов консоли per connectionId (в памяти, не персистится, новые сверху). */
+  queryHistory: Record<string, string[]>
+  pushQueryHistory: (connectionId: string, sql: string) => void
   load: () => Promise<void>
   /** Перечитать подключения и сбросить кэши схем/таблиц; раскрытые узлы перезагружаются. */
   refresh: () => Promise<void>
@@ -69,6 +72,13 @@ export const useDbStore = create<DbState>((set, get) => ({
   tablesLoading: {},
   expandedConnections: new Set(),
   expandedSchemas: new Set(),
+  queryHistory: {},
+
+  pushQueryHistory: (connectionId, sql) => {
+    set((state) => ({
+      queryHistory: { ...state.queryHistory, [connectionId]: [sql, ...state.queryHistory[connectionId]?.filter((q) => q !== sql) ?? []].slice(0, 50) }
+    }))
+  },
 
   load: async () => {
     if (get().connectionsLoaded || get().connectionsLoading) return

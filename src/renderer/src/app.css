@@ -3584,6 +3584,74 @@ pre.code-block {
   opacity: 0.6;
 }
 
+.db-console-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.db-console-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.db-console-run {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--fg);
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.db-console-run:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.db-console-run:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.db-console-history {
+  max-width: 340px;
+  font-size: 12px;
+  padding: 1px 2px;
+  color: var(--fg);
+}
+
+.db-console-status {
+  color: var(--muted);
+}
+
+.db-console-editor {
+  height: 38%;
+  min-height: 140px;
+  border-bottom: 1px solid var(--border);
+}
+
+.db-console-editor-canvas {
+  height: 100%;
+}
+
+.db-console-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.db-console-results .db-grid thead th {
+  cursor: default;
+}
+
 .right-side {
   display: flex;
   min-width: 0;

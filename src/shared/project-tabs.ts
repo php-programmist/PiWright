@@ -2,7 +2,7 @@
  *  не сохраняются: сессии не возобновляются при открытии проекта (решение юзера). */
 import type { Settings } from './ipc-contracts'
 
-export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'db-table'
+export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'db-table' | 'db-console'
 
 export interface SavedProjectTab {
   kind: ProjectTabKind
@@ -14,11 +14,11 @@ export interface SavedProjectTab {
   boardId?: string
   /** task — id карточки. */
   taskId?: string
-  /** db-table — подключение/схема/таблица дерева БД. */
+  /** db-table — подключение/схема/таблица дерева БД; db-console — подключение консоли. */
   connectionId?: string
   schema?: string
   table?: string
-  /** kanban/task/db-table — имя доски / заголовок задачи / подпись таблицы. */
+  /** kanban/task/db-table/db-console — имя доски / заголовок задачи / подпись таблицы / имя подключения. */
   title?: string
 }
 
@@ -43,7 +43,7 @@ export function setProjectTabs(settings: Settings, key: string, snapshot: Projec
 export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnapshot> {
   const out: Record<string, ProjectTabsSnapshot> = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task', 'db-table']
+  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task', 'db-table', 'db-console']
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
     const rawTabs = (raw as Record<string, unknown>)['tabs']
@@ -74,6 +74,7 @@ export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnap
       if (kind === 'kanban' && tab.boardId === undefined) continue
       if (kind === 'task' && (tab.boardId === undefined || tab.taskId === undefined)) continue
       if (kind === 'db-table' && (tab.connectionId === undefined || tab.schema === undefined || tab.table === undefined)) continue
+      if (kind === 'db-console' && tab.connectionId === undefined) continue
       tabs.push(tab)
     }
     if (tabs.length === 0) continue
