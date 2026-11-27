@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { Duplex } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DbSecretsService } from '../src/main/db/db-secrets'
-import { buildSelectSql, DbService, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
+import { buildSelectSql, DbService, errorMessage, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { SshService } from '../src/main/ssh/ssh-service'
 import type { SshSecret } from '../src/main/ssh/secrets'
@@ -206,6 +206,25 @@ describe('DbService (fake drivers)', () => {
     secrets.set('pg1', { password: 'p' })
     secrets.set('ghost', { password: 'q' })
     expect(db.removedConnectionIds(new Set(['pg1']))).toEqual(['ghost'])
+  })
+})
+
+describe('errorMessage', () => {
+  it('AggregateError (multi-address connect): joins inner messages, message is empty', () => {
+    const err = new AggregateError([new Error('connect ECONNREFUSED 127.0.0.1:5435'), new Error('connect ECONNREFUSED ::1:5435')])
+    expect(err.message).toBe('')
+    expect(errorMessage(err)).toBe('connect ECONNREFUSED 127.0.0.1:5435; connect ECONNREFUSED ::1:5435')
+  })
+
+  it('AggregateError: dedupes identical inner messages, skips empty ones', () => {
+    const err = new AggregateError([new Error('connect ECONNREFUSED localhost:5435'), new Error('connect ECONNREFUSED localhost:5435'), new Error('')])
+    expect(errorMessage(err)).toBe('connect ECONNREFUSED localhost:5435')
+  })
+
+  it('plain Error keeps message; empty message and non-Error fall back to String(err)', () => {
+    expect(errorMessage(new Error('auth failed'))).toBe('auth failed')
+    expect(errorMessage(new Error(''))).toBe('Error')
+    expect(errorMessage('boom')).toBe('boom')
   })
 })
 
