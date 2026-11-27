@@ -851,6 +851,7 @@ export function registerIpc(
   })
 
   router.handle(SESSIONS_BACKGROUND_CHANNEL, (hostId: unknown) => {
+    if (settings.get().backgroundSessions !== true) return { ok: false, error: 'Background sessions are disabled' }
     if (typeof hostId === 'string') piHost.background(hostId)
     return { ok: true, error: null }
   })

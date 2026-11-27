@@ -9,16 +9,18 @@ function translator(): TFunc {
   return tFor(useSessionsStore.getState().settings?.language ?? 'en')
 }
 
-/** Закрыть вкладку сессии. Не-idle сессия (ход/диалог/ошибка): крестик закрывает только вкладку —
- *  сессия работает дальше в фоне, строка остаётся в панели с живым индикатором и play-иконкой
- *  аттача; повторный крестик у фоновой строки закрывает сессию как раньше (решение main:
- *  ход идёт — агент дозреет в фоне и закроется по грейсу, ход не идёт — процесс остановится).
+/** Закрыть вкладку сессии. Не-idle сессия (ход/диалог/ошибка) при включённых фоновых сессиях:
+ *  крестик закрывает только вкладку — сессия работает дальше в фоне, строка остаётся в панели
+ *  с живым индикатором и play-иконкой аттача; повторный крестик у фоновой строки закрывает
+ *  сессию как раньше (решение main: ход идёт — агент дозреет в фоне и закроется по грейсу,
+ *  ход не идёт — процесс остановится). Фоновые сессии выключены — не-idle сессия закрывается
+ *  с остановкой процесса (режим 0.5.0: сессии живут в процессе приложения).
  *  Worktree-сессия — всегда kill (живой агент держит каталог и `git worktree remove` упадёт).
  *  askCleanup=false — не дергать диалог. */
 export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = true): Promise<void> {
   const sessions = useSessionsStore.getState()
   const row = sessions.active.find((r) => r.hostId === hostId)
-  if (row !== undefined && !row.background && row.dot !== 'idle') {
+  if (row !== undefined && !row.background && row.dot !== 'idle' && sessions.settings?.backgroundSessions === true) {
     void window.piwright.backgroundSession(hostId)
     sessions.setBackground(hostId, true)
     return
@@ -42,7 +44,8 @@ export async function closeSessionAndSweepWorktree(hostId: string, askCleanup = 
 
 /** «Сделать фоновой» — закрыть вкладку, агент продолжает ход в фоне (режим фоновых сессий). */
 export async function makeSessionBackground(hostId: string): Promise<void> {
-  await window.piwright.backgroundSession(hostId)
+  const result = await window.piwright.backgroundSession(hostId)
+  if (!result.ok) return
   useSessionsStore.getState().setBackground(hostId, true)
 }
 
