@@ -322,6 +322,7 @@ export function KanbanPanel(): React.JSX.Element {
       <div className="git-resizer" onMouseDown={startResize} />
       <div className="git-head">
         <span>{t('Kanban')}</span>
+        <span className="spacer" />
         <button
           className="kanban-add"
           title={t('New board')}
@@ -331,6 +332,16 @@ export function KanbanPanel(): React.JSX.Element {
           }}
         >
           +
+        </button>
+        <button
+          className="icon"
+          title={t('Collapse panel')}
+          onClick={() => {
+            useKanbanStore.getState().toggleOpen()
+            persistPanel('kanban', { open: false })
+          }}
+        >
+          −
         </button>
       </div>
       <div className="kanban-body">

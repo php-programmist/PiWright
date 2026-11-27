@@ -202,6 +202,16 @@ export function FilesPanel(): React.JSX.Element {
         <span className="files-title">{t('Files')}</span>
         <span className="spacer" />
         <button className="icon" title={t('Refresh tree')} onClick={() => void reloadDir(project, '')}>⟲</button>
+        <button
+          className="icon"
+          title={t('Collapse panel')}
+          onClick={() => {
+            useFilesStore.getState().toggleOpen()
+            persistPanel('files', { open: false })
+          }}
+        >
+          −
+        </button>
       </div>
       <FilesError />
       <div

@@ -268,6 +268,16 @@ export function GitPanel(): React.JSX.Element {
         {(status?.behind ?? 0) > 0 && <span className="git-ab">↓{status?.behind}</span>}
         <span className="spacer" />
         <button className="icon" title={t('Refresh')} onClick={() => void refresh(project)}>⟲</button>
+        <button
+          className="icon"
+          title={t('Collapse panel')}
+          onClick={() => {
+            useGitStore.getState().toggleOpen()
+            persistPanel('git', { open: false })
+          }}
+        >
+          −
+        </button>
       </div>
       <ErrorBanner />
       <div className="git-body">

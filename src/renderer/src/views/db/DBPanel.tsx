@@ -208,6 +208,16 @@ export function DBPanel(): React.JSX.Element {
         >
           ⟲
         </button>
+        <button
+          className="icon"
+          title={t('Collapse panel')}
+          onClick={() => {
+            useDbStore.getState().toggleOpen()
+            persistPanel('db', { open: false })
+          }}
+        >
+          −
+        </button>
       </div>
       <ErrorBanner />
       <div className="git-body">
