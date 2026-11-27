@@ -1,15 +1,23 @@
-/** Настройки: JSON в `%APPDATA%\PiWright\settings.json`. Атомарная запись (tmp + rename).
- *  Проекты добавляются в панели; настройки фаз 1–2 (backend/projectDir/piPath) мигтируются:
- *  projectDir → первый проект, piPath → поле соответствующего формата (native/wsl). */
+/** Настройки: глобальный JSON в `%APPDATA%\PiWright\settings.json` + per-project файлы
+ *  `<проект>/.piwright/settings.json` (native/wsl; ssh — только глобальный файл). get()
+ *  возвращает объединение, set() роутит per-project map'ы по файлам проектов; при первом
+ *  старте мигратор переносит записи из глобального файла. Атомарная запись (tmp + rename)
+ *  + .bak везде. Настройки фаз 1–2 (backend/projectDir/piPath) мигтируются: projectDir →
+ *  первый проект, piPath → поле соответствующего формата (native/wsl). */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { TERMINAL_PROFILE_IDS, type DbAuthType, type DbConnectionEntry, type DbKind, type DbSshTunnel, type NotificationSettings, type PersistedLoop, type ProjectEntry, type SessionToggles, type Settings, type SavedSessionTab, type SavedTerminalTab, type SshAuthType, type SshServerEntry, type TerminalTabsSnapshot } from '../../shared/ipc-contracts'
+import { type DbConnectionEntry, type NotificationSettings, type PersistedLoop, type ProjectEntry, type SessionToggles, type Settings, type SavedSessionTab, type SshAuthType, type SshServerEntry } from '../../shared/ipc-contracts'
 import { KANBAN_DEFAULT_THEME_ID } from '../../shared/kanban-theme'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { isValidStaticPin } from '../remote/auth'
 import { defaultSoundPaths } from '../sounds/defaults'
+import { SSH_AUTH_TYPES, SSH_ID_RE, mergeDbConnections, mergeExpandedProjects, mergeTerminalTabs, sanitizeSshString } from './settings-sanitize'
+import { ProjectSettingsStore, projectKeyOf, supportsProjectFile, type ProjectSettingsFile } from './project-settings'
+
+// Санитайзеры, общие с файлами проектов, доступны по старому пути (register.ts, тесты).
+export { DB_CONNECTIONS_MAX, TERMINAL_TABS_MAX, mergeDbConnections, mergeExpandedProjects, mergeTerminalTabs } from './settings-sanitize'
 
 /** Дефолтные звуки: системные wav Windows или свои wav из ресурсов (см. sounds/defaults.ts);
  *  пустая строка = выключено. */
@@ -104,19 +112,6 @@ export function mergeNotifications(value: unknown): NotificationSettings {
   }
   return out
 }
-
-/** expandedProjects из файла/settings:set поверх дефолтов: только строковые ключи и boolean-значения. */
-export function mergeExpandedProjects(value: unknown): Record<string, boolean> {
-  const out: Record<string, boolean> = {}
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  for (const [key, flag] of Object.entries(value as Record<string, unknown>)) {
-    if (key.length > 0 && typeof flag === 'boolean') out[key] = flag
-  }
-  return out
-}
-
-/** Лимит вкладок терминала на проект (санитайзер). */
-export const TERMINAL_TABS_MAX = 16
 
 /** Лимит восстанавливаемых вкладок сессий (санитайзер). */
 export const OPEN_SESSION_TABS_MAX = 32
@@ -215,13 +210,6 @@ export function mergeLoops(value: unknown): PersistedLoop[] {
 /** Лимит SSH-серверов в настройках. */
 export const SSH_SERVERS_MAX = 20
 
-const SSH_ID_RE = /^[A-Za-z0-9._-]{1,64}$/
-const SSH_AUTH_TYPES: SshAuthType[] = ['password', 'key', 'agent']
-
-function sanitizeSshString(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.trim().slice(0, max) : ''
-}
-
 /** sshServers из файла/settings:set: id по маске, порт 1–65535, auth из белого списка. */
 export function mergeSshServers(value: unknown): SshServerEntry[] {
   const out: SshServerEntry[] = []
@@ -260,75 +248,6 @@ export function mergeThinkingLevelByModel(value: unknown): Record<string, string
   return out
 }
 
-/** Лимит подключений БД в настройках. */
-export const DB_CONNECTIONS_MAX = 20
-
-const DB_KINDS: DbKind[] = ['postgres', 'mysql']
-const DB_AUTH_TYPES: DbAuthType[] = ['password', 'none']
-
-/** ssh-туннель подключения БД: белый список полей, порт 1–65535, auth из белого списка. */
-function mergeDbSshTunnel(value: unknown): DbSshTunnel | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  const raw = value as Record<string, unknown>
-  const host = sanitizeSshString(raw['host'], 253)
-  const user = sanitizeSshString(raw['user'], 64)
-  if (host.length === 0 || user.length === 0) return null
-  const portRaw = raw['port']
-  const port = typeof portRaw === 'number' && Number.isFinite(portRaw) ? Math.round(portRaw) : 22
-  const authRaw = raw['auth']
-  const auth: SshAuthType = SSH_AUTH_TYPES.includes(authRaw as SshAuthType) ? (authRaw as SshAuthType) : 'password'
-  const tunnel: DbSshTunnel = { host, port: Math.min(65535, Math.max(1, port)), user, auth }
-  const keyPath = sanitizeSshString(raw['keyPath'], 500)
-  if (keyPath.length > 0) tunnel.keyPath = keyPath
-  return tunnel
-}
-
-/** dbConnections из файла/settings:set: id по маске, порт 1–65535, kind/authType из белых списков,
- *  секреты (если их зачем-то сюда записали) выбрасываются. */
-export function mergeDbConnections(value: unknown): DbConnectionEntry[] {
-  const out: DbConnectionEntry[] = []
-  if (!Array.isArray(value)) return out
-  const seen = new Set<string>()
-  for (const item of value) {
-    if (out.length >= DB_CONNECTIONS_MAX) break
-    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
-    const raw = item as Record<string, unknown>
-    const id = sanitizeSshString(raw['id'], 64)
-    if (!SSH_ID_RE.test(id) || seen.has(id)) continue
-    const host = sanitizeSshString(raw['host'], 253)
-    const user = sanitizeSshString(raw['user'], 64)
-    const database = sanitizeSshString(raw['database'], 64)
-    if (host.length === 0 || user.length === 0 || database.length === 0) continue
-    const portRaw = raw['port']
-    const port = typeof portRaw === 'number' && Number.isFinite(portRaw) ? Math.round(portRaw) : 5432
-    const kindRaw = raw['kind']
-    const kind: DbKind = DB_KINDS.includes(kindRaw as DbKind) ? (kindRaw as DbKind) : 'postgres'
-    const authRaw = raw['authType']
-    const authType: DbAuthType = DB_AUTH_TYPES.includes(authRaw as DbAuthType) ? (authRaw as DbAuthType) : 'password'
-    const entry: DbConnectionEntry = {
-      id,
-      name: sanitizeSshString(raw['name'], 60) || database,
-      kind,
-      host,
-      port: Math.min(65535, Math.max(1, port)),
-      database,
-      user,
-      authType
-    }
-    const ssh = mergeDbSshTunnel(raw['ssh'])
-    if (ssh !== null) entry.ssh = ssh
-    const selected = raw['selectedSchemas']
-    if (Array.isArray(selected)) {
-      // Пустой массив валиден — «ни одной схемы» (панель скрывает все); отсутствует/undefined — все схемы.
-      const schemas = selected.filter((s): s is string => typeof s === 'string' && s.length > 0 && s.length <= 64).slice(0, 50)
-      entry.selectedSchemas = schemas
-    }
-    seen.add(id)
-    out.push(entry)
-  }
-  return out
-}
-
 /** projectDbConnections из файла/settings:set: непустые строковые ключи, значения — mergeDbConnections
  *  (пустые списки не храним). */
 export function mergeProjectDbConnections(value: unknown): Record<string, DbConnectionEntry[]> {
@@ -338,37 +257,6 @@ export function mergeProjectDbConnections(value: unknown): Record<string, DbConn
     if (key.length === 0 || key.length > 512) continue
     const list = mergeDbConnections(raw)
     if (list.length > 0) out[key] = list
-  }
-  return out
-}
-
-/** terminalTabs из файла/settings:set поверх дефолтов: строковые ключи, валидные profileId,
- *  опциональные строковые label, активный индекс в границах. */
-export function mergeTerminalTabs(value: unknown): Record<string, TerminalTabsSnapshot> {
-  const out: Record<string, TerminalTabsSnapshot> = {}
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
-    const rawTabs = (raw as Record<string, unknown>)['tabs']
-    if (!Array.isArray(rawTabs)) continue
-    const tabs: SavedTerminalTab[] = []
-    for (const item of rawTabs) {
-      if (tabs.length >= TERMINAL_TABS_MAX) break
-      if (item === null || typeof item !== 'object' || Array.isArray(item)) continue
-      const profileId = (item as Record<string, unknown>)['profileId']
-      if (typeof profileId !== 'string' || !TERMINAL_PROFILE_IDS.includes(profileId as never)) continue
-      const label = (item as Record<string, unknown>)['label']
-      const tab: SavedTerminalTab = { profileId: profileId as SavedTerminalTab['profileId'] }
-      if (typeof label === 'string' && label.trim().length > 0) tab.label = label.trim().slice(0, 60)
-      tabs.push(tab)
-    }
-    if (tabs.length === 0) continue
-    const snapshot: TerminalTabsSnapshot = { tabs }
-    const activeIndex = (raw as Record<string, unknown>)['activeIndex']
-    if (typeof activeIndex === 'number' && Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < tabs.length) {
-      snapshot.activeIndex = activeIndex
-    }
-    out[key] = snapshot
   }
   return out
 }
@@ -397,18 +285,45 @@ function migrateLegacy(raw: Record<string, unknown>, base: Settings): Settings {
   return migrated
 }
 
+/** Per-project map'ы настроек: поле Settings → поле плоского файла проекта.
+ *  prefixed — ключи map'а вида `projectKey\u0000хвост` (остальные — ровно projectKey). */
+const PROJECT_SETTING_SPECS = [
+  { settings: 'expandedProjects', flat: 'expanded', prefixed: false },
+  { settings: 'kanbanBoardsExpanded', flat: 'kanbanBoardsExpanded', prefixed: true },
+  { settings: 'kanbanColumnsCollapsed', flat: 'kanbanColumnsCollapsed', prefixed: true },
+  { settings: 'kanbanCardAttention', flat: 'kanbanCardAttention', prefixed: false },
+  { settings: 'terminalTabs', flat: 'terminalTabs', prefixed: false },
+  { settings: 'projectTabs', flat: 'projectTabs', prefixed: false },
+  { settings: 'pinnedBranches', flat: 'pinnedBranches', prefixed: false },
+  { settings: 'projectDbConnections', flat: 'dbConnections', prefixed: false }
+] as const
+
+type FileProject = { key: string; project: ProjectEntry }
+
+function fileProjectsOf(projects: ProjectEntry[]): FileProject[] {
+  const out: FileProject[] = []
+  for (const project of projects) {
+    if (supportsProjectFile(project)) out.push({ key: projectKeyOf(project), project })
+  }
+  return out
+}
+
 export class SettingsService {
-  private cache: Settings
+  private global: Settings
+  private merged: Settings
+  private readonly projectStore = new ProjectSettingsStore()
 
   constructor(private readonly filePath: string) {
-    this.cache = this.read()
+    this.global = this.readGlobal()
+    this.migratePerProject()
+    this.merged = this.buildMerged()
   }
 
   get path(): string {
     return this.filePath
   }
 
-  private read(): Settings {
+  private readGlobal(): Settings {
     if (!existsSync(this.filePath)) return { ...DEFAULT_SETTINGS }
     try {
       const raw: unknown = JSON.parse(readFileSync(this.filePath, 'utf8'))
@@ -442,18 +357,160 @@ export class SettingsService {
   }
 
   get(): Settings {
-    return this.cache
+    return this.merged
   }
 
   set(patch: Partial<Settings>): Settings {
-    this.cache = { ...this.cache, ...patch }
+    let next: Settings = { ...this.global, ...patch }
+    next = this.splitProjectMaps(next, patch)
+    this.global = next
+    this.writeGlobalFile()
+    this.merged = this.buildMerged()
+    return this.merged
+  }
+
+  private writeGlobalFile(): void {
     mkdirSync(dirname(this.filePath), { recursive: true })
     if (existsSync(this.filePath)) {
       copyFileSync(this.filePath, `${this.filePath}.bak`)
     }
     const tmp = `${this.filePath}.tmp`
-    writeFileSync(tmp, JSON.stringify(this.cache, null, 2), 'utf8')
+    writeFileSync(tmp, JSON.stringify(this.global, null, 2), 'utf8')
     renameSync(tmp, this.filePath)
-    return this.cache
+  }
+
+  /** Роутит per-project map'ы из patch в файлы проектов (patch содержит полную map —
+   *  renderer шлёт зеркало целиком): срез известного native/wsl-проекта — в его файл
+ *  (отсутствие записей = очистка поля), остальные ключи — в глобальный файл. */
+  private splitProjectMaps(next: Settings, patch: Partial<Settings>): Settings {
+    const projects = fileProjectsOf(next.projects)
+    if (projects.length === 0) return next
+    const result: Settings = { ...next }
+    for (const spec of PROJECT_SETTING_SPECS) {
+      const map = patch[spec.settings]
+      if (map === undefined || map === null || typeof map !== 'object' || Array.isArray(map)) continue
+      const globalPart: Record<string, unknown> = {}
+      const slices = new Map<string, Record<string, unknown>>()
+      const seen = new Set<string>()
+      for (const [key, value] of Object.entries(map as Record<string, unknown>)) {
+        const hit = spec.prefixed
+          ? projects.find((p) => key.startsWith(`${p.key}\u0000`)) ?? null
+          : projects.find((p) => p.key === key) ?? null
+        if (hit === null) {
+          globalPart[key] = value
+          continue
+        }
+        seen.add(hit.key)
+        const slice = slices.get(hit.key) ?? {}
+        if (spec.prefixed) {
+          const flatKey = key.slice(hit.key.length + 1)
+          slice[spec.flat] = { ...((slice[spec.flat] as Record<string, unknown> | undefined) ?? {}), [flatKey]: value }
+        } else {
+          slice[spec.flat] = value
+        }
+        slices.set(hit.key, slice)
+      }
+      for (const p of projects) {
+        if (seen.has(p.key)) continue
+        const slice = slices.get(p.key) ?? {}
+        slice[spec.flat] = null
+        slices.set(p.key, slice)
+      }
+      result[spec.settings] = globalPart as never
+      for (const [key, slice] of slices) {
+        const project = projects.find((p) => p.key === key)?.project
+        if (project === undefined) continue
+        try {
+          this.projectStore.write(key, project.dir, slice as ProjectSettingsFile)
+        } catch {
+          // Каталог недоступен — данные остаются в глобальной map (overlay их покажет).
+          const value = (slice as Record<string, unknown>)[spec.flat]
+          if (spec.prefixed && value !== null && typeof value === 'object') {
+            for (const [flatKey, v] of Object.entries(value as Record<string, unknown>)) {
+              globalPart[`${key}\u0000${flatKey}`] = v
+            }
+          } else if (value !== null) {
+            globalPart[key] = value
+          }
+        }
+      }
+    }
+    return result
+  }
+
+  /** Объединение глобального файла и файлов проектов (файл проекта перекрывает
+   *  одноимённые записи глобала — так видны данные, чья запись в файл не удалась). */
+  private buildMerged(): Settings {
+    const merged: Settings = { ...this.global }
+    merged.expandedProjects = { ...this.global.expandedProjects }
+    merged.kanbanBoardsExpanded = { ...this.global.kanbanBoardsExpanded }
+    merged.kanbanColumnsCollapsed = { ...this.global.kanbanColumnsCollapsed }
+    merged.kanbanCardAttention = { ...this.global.kanbanCardAttention }
+    merged.terminalTabs = { ...this.global.terminalTabs }
+    merged.projectTabs = { ...this.global.projectTabs }
+    merged.pinnedBranches = { ...this.global.pinnedBranches }
+    merged.projectDbConnections = { ...this.global.projectDbConnections }
+    for (const { key, project } of fileProjectsOf(this.global.projects)) {
+      const ps = this.projectStore.read(key, project.dir)
+      if (ps.expanded !== undefined) merged.expandedProjects[key] = ps.expanded
+      for (const [boardId, flag] of Object.entries(ps.kanbanBoardsExpanded ?? {})) {
+        merged.kanbanBoardsExpanded[`${key}\u0000${boardId}`] = flag
+      }
+      for (const [columnKey, flag] of Object.entries(ps.kanbanColumnsCollapsed ?? {})) {
+        merged.kanbanColumnsCollapsed[`${key}\u0000${columnKey}`] = flag
+      }
+      if (ps.kanbanCardAttention !== undefined) merged.kanbanCardAttention[key] = ps.kanbanCardAttention
+      if (ps.terminalTabs !== undefined) merged.terminalTabs[key] = ps.terminalTabs
+      if (ps.projectTabs !== undefined) merged.projectTabs[key] = ps.projectTabs
+      if (ps.pinnedBranches !== undefined) merged.pinnedBranches[key] = ps.pinnedBranches
+      if (ps.dbConnections !== undefined) merged.projectDbConnections[key] = ps.dbConnections
+    }
+    return merged
+  }
+
+  /** Мигратор: переносит per-project записи глобального файла в файлы проектов.
+   *  Записи, перекрытые уже существующим файлом проекта, просто удаляются из глобала;
+   *  при неудачной записи (каталог недоступен) всё остаётся в глобале. */
+  private migratePerProject(): void {
+    let dirty = false
+    for (const { key, project } of fileProjectsOf(this.global.projects)) {
+      if (!existsSync(project.dir)) continue
+      const file = this.projectStore.read(key, project.dir)
+      const adopted: ProjectSettingsFile = {}
+      const deletions: Array<{ spec: (typeof PROJECT_SETTING_SPECS)[number]; keys: string[] }> = []
+      let adoptedAny = false
+      for (const spec of PROJECT_SETTING_SPECS) {
+        const map = this.global[spec.settings] as Record<string, unknown>
+        const keys = Object.keys(map).filter((k) => (spec.prefixed ? k.startsWith(`${key}\u0000`) : k === key))
+        if (keys.length === 0) continue
+        const hasFileField = spec.prefixed
+          ? Object.keys((file[spec.flat] as Record<string, unknown> | undefined) ?? {}).length > 0
+          : file[spec.flat] !== undefined
+        if (!hasFileField) {
+          if (spec.prefixed) {
+            const flat: Record<string, unknown> = {}
+            for (const k of keys) flat[k.slice(key.length + 1)] = map[k]
+            adopted[spec.flat] = flat as never
+          } else {
+            adopted[spec.flat] = map[key] as never
+          }
+          adoptedAny = true
+        }
+        deletions.push({ spec, keys })
+      }
+      if (adoptedAny) {
+        try {
+          this.projectStore.write(key, project.dir, adopted)
+        } catch {
+          continue
+        }
+      }
+      for (const { spec, keys } of deletions) {
+        const map = this.global[spec.settings] as Record<string, unknown>
+        for (const k of keys) delete map[k]
+        dirty = true
+      }
+    }
+    if (dirty) this.writeGlobalFile()
   }
 }
