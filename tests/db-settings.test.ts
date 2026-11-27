@@ -27,7 +27,7 @@ describe('mergeDbConnections', () => {
   })
 
   it('valid entry passes with all fields', () => {
-    expect(mergeDbConnections([valid])).toEqual([valid as DbConnectionEntry])
+    expect(mergeDbConnections([valid])).toEqual([valid as unknown as DbConnectionEntry])
   })
 
   it('defaults: port 5432, kind postgres, authType password, name = database', () => {
@@ -87,7 +87,7 @@ describe('SettingsService dbConnections', () => {
     const file = join(dir, 'settings.json')
     await fs.writeFile(file, JSON.stringify({ dbConnections: [{ ...valid, password: 'leak' }] }), 'utf8')
     const service = new SettingsService(file)
-    expect(service.get().dbConnections).toEqual([valid as DbConnectionEntry])
+    expect(service.get().dbConnections).toEqual([valid as unknown as DbConnectionEntry])
     // Файл переписывается только при set(): после него секрет-мусор из исходного JSON исчезает.
     service.set({})
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))

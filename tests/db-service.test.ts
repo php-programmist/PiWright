@@ -9,7 +9,8 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { DbSecretsService } from '../src/main/db/db-secrets'
 import { buildSelectSql, DbService, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
-import type { SshSecret, SshService } from '../src/main/ssh/ssh-service'
+import type { SshService } from '../src/main/ssh/ssh-service'
+import type { SshSecret } from '../src/main/ssh/secrets'
 import type { DbConnectionEntry, DbSecretInput, Settings, SshServerEntry } from '../src/shared/ipc-contracts'
 
 const dirs: string[] = []

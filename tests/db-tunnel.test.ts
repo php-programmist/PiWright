@@ -1,5 +1,5 @@
-/** SshService.forwardOut против in-process ssh2-сервера: direct-tcpip канал до локального
- *  echo-TCP-сервера, двусторонний обмен, закрытие SSH-клиента закрывает поток. */
+/** SshService.forwardOut РїСЂРѕС‚РёРІ in-process ssh2-СЃРµСЂРІРµСЂР°: direct-tcpip РєР°РЅР°Р» РґРѕ Р»РѕРєР°Р»СЊРЅРѕРіРѕ
+ *  echo-TCP-СЃРµСЂРІРµСЂР°, РґРІСѓСЃС‚РѕСЂРѕРЅРЅРёР№ РѕР±РјРµРЅ, Р·Р°РєСЂС‹С‚РёРµ SSH-РєР»РёРµРЅС‚Р° Р·Р°РєСЂС‹РІР°РµС‚ РїРѕС‚РѕРє. */
 import { generateKeyPairSync } from 'node:crypto'
 import { createConnection, createServer, type Server as TcpServer, type Socket as TcpSocket } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -31,13 +31,13 @@ class TunnelSshServer {
         ctx.reject()
       })
       client.on('ready', () => {
-        client.on('tcpip', (accept, reject, info) => {
+        client.on('tcpip', (accept, _reject, info) => {
           const stream = accept()
           const upstream = createConnection({ host: info.destIP, port: info.destPort }, () => {
             stream.pipe(upstream)
             upstream.pipe(stream)
           })
-          upstream.on('error', () => stream.close())
+          upstream.on('error', () => stream.destroy())
           stream.on('close', () => upstream.destroy())
         })
       })
@@ -110,7 +110,7 @@ describe('SshService.forwardOut (in-process ssh2 server)', () => {
       stream.write('ping-payload')
     })
     expect(received).toContain('ping-payload')
-    stream.close()
+    stream.destroy()
   })
 
   it('explicit secret overrides stored one', async () => {
@@ -123,11 +123,11 @@ describe('SshService.forwardOut (in-process ssh2 server)', () => {
       stream.write('ok')
     })
     expect(ok).toBe(true)
-    stream.close()
+    stream.destroy()
   })
 
   it('closing the ssh pool kills the tunnel stream', async () => {
-    // Свежий сервис: предыдущие тесты переиспользовали пул и закрывали каналы вручную.
+    // РЎРІРµР¶РёР№ СЃРµСЂРІРёСЃ: РїСЂРµРґС‹РґСѓС‰РёРµ С‚РµСЃС‚С‹ РїРµСЂРµРёСЃРїРѕР»СЊР·РѕРІР°Р»Рё РїСѓР» Рё Р·Р°РєСЂС‹РІР°Р»Рё РєР°РЅР°Р»С‹ РІСЂСѓС‡РЅСѓСЋ.
     const dir = mkdtempSync(join(tmpdir(), 'piwright-db-tunnel-close-'))
     dirs.push(dir)
     const secrets = new SshSecretsService(
@@ -152,7 +152,7 @@ describe('SshService.forwardOut (in-process ssh2 server)', () => {
     })
   })
 
-  it('bad credentials reject forwardOut (другой user — другой ключ пула, реальная аутентификация)', async () => {
+  it('bad credentials reject forwardOut (РґСЂСѓРіРѕР№ user вЂ” РґСЂСѓРіРѕР№ РєР»СЋС‡ РїСѓР»Р°, СЂРµР°Р»СЊРЅР°СЏ Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ)', async () => {
     const bad: SshServerEntry = { ...entry, user: 'wrong-user' }
     await expect(ssh.forwardOut(bad, '127.0.0.1', echoPort)).rejects.toThrow()
   })
