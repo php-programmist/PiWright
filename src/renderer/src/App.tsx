@@ -11,6 +11,8 @@ import { GitLogPanel } from './views/git/GitLogPanel'
 import { KanbanPanel } from './views/kanban/KanbanPanel'
 import { BoardView } from './views/kanban/BoardView'
 import { TaskView } from './views/kanban/TaskView'
+import { DBPanel } from './views/db/DBPanel'
+import { DbTableTab } from './views/db/DbTableTab'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -31,6 +33,7 @@ import { parentTabKey, tabId, useTabsStore, useCenterProject } from './stores/ta
 import { useTerminalStore } from './stores/terminal'
 import { useGitLogStore } from './stores/gitlog'
 import { useKanbanStore } from './stores/kanban'
+import { useDbStore } from './stores/db'
 import { useScheduledStore } from './stores/scheduled'
 import { useStatsStore } from './stores/stats'
 import { hydratePanels, persistPanel } from './stores/panels-prefs'
@@ -56,6 +59,7 @@ export function App(): React.JSX.Element {
   const termOpen = useTerminalStore((s) => s.open)
   const gitLogOpen = useGitLogStore((s) => s.open)
   const kanbanOpen = useKanbanStore((s) => s.open)
+  const dbOpen = useDbStore((s) => s.open)
   const settings = useSessionsStore((s) => s.settings)
   const activeProjectKey = useTabsStore((s) => s.activeProjectKey)
   const tabEntry = useTabsStore((s) => (s.activeProjectKey !== null ? s.byProject[s.activeProjectKey] : undefined))
@@ -149,6 +153,10 @@ export function App(): React.JSX.Element {
       useKanbanStore.getState().toggleOpen()
       persistPanel('kanban', { open: false })
     }
+    if (useGitStore.getState().open && useDbStore.getState().open) {
+      useDbStore.getState().toggleOpen()
+      persistPanel('db', { open: false })
+    }
     persistPanel('git', { open: useGitStore.getState().open })
   }
   const toggleFiles = (): void => {
@@ -161,9 +169,13 @@ export function App(): React.JSX.Element {
       useKanbanStore.getState().toggleOpen()
       persistPanel('kanban', { open: false })
     }
+    if (useFilesStore.getState().open && useDbStore.getState().open) {
+      useDbStore.getState().toggleOpen()
+      persistPanel('db', { open: false })
+    }
     persistPanel('files', { open: useFilesStore.getState().open })
   }
-  // Канбан делит правый рельс с git/files: открытие закрывает обе.
+  // Канбан делит правый рельс с git/files/db: открытие закрывает остальные.
   const toggleKanban = (): void => {
     useKanbanStore.getState().toggleOpen()
     if (useKanbanStore.getState().open) {
@@ -175,8 +187,31 @@ export function App(): React.JSX.Element {
         useFilesStore.getState().toggleOpen()
         persistPanel('files', { open: false })
       }
+      if (useDbStore.getState().open) {
+        useDbStore.getState().toggleOpen()
+        persistPanel('db', { open: false })
+      }
     }
     persistPanel('kanban', { open: useKanbanStore.getState().open })
+  }
+  // DB делит правый рельс с git/files/kanban: открытие закрывает остальные.
+  const toggleDb = (): void => {
+    useDbStore.getState().toggleOpen()
+    if (useDbStore.getState().open) {
+      if (useGitStore.getState().open) {
+        useGitStore.getState().toggleOpen()
+        persistPanel('git', { open: false })
+      }
+      if (useFilesStore.getState().open) {
+        useFilesStore.getState().toggleOpen()
+        persistPanel('files', { open: false })
+      }
+      if (useKanbanStore.getState().open) {
+        useKanbanStore.getState().toggleOpen()
+        persistPanel('kanban', { open: false })
+      }
+    }
+    persistPanel('db', { open: useDbStore.getState().open })
   }
   const toggleTerm = (): void => {
     useTerminalStore.getState().toggleOpen()
@@ -331,6 +366,8 @@ export function App(): React.JSX.Element {
                   <McpView key={tabId(activeTab)} tab={activeTab} onClose={closeActiveTab} />
                 ) : activeTab.kind === 'skills' ? (
                   <SkillsView key={tabId(activeTab)} tab={activeTab} onClose={closeActiveTab} />
+                ) : activeTab.kind === 'db-table' ? (
+                  <DbTableTab key={tabId(activeTab)} tab={activeTab} />
                 ) : (
                   <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}
@@ -339,6 +376,7 @@ export function App(): React.JSX.Element {
                 {gitOpen && <GitPanel />}
                 {filesOpen && <FilesPanel />}
                 {settings?.kanbanEnabled && kanbanOpen && <KanbanPanel />}
+                {dbOpen && <DBPanel />}
               </div>
             </div>
             {termOpen && <TerminalPanel />}
@@ -371,6 +409,13 @@ export function App(): React.JSX.Element {
                 </svg>
               </button>
             )}
+            <button className={dbOpen ? 'active' : ''} title={t('Databases')} onClick={toggleDb} data-testid="db-toggle">
+              <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+                <ellipse cx="8" cy="3.8" rx="5.5" ry="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M2.5 3.8v8.4c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V3.8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+              </svg>
+            </button>
             <button
               className={activeTab?.kind === 'mcp' ? 'active' : ''}
               title={t('MCP servers')}

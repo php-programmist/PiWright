@@ -97,6 +97,13 @@ export const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
       <path d="M5 5.5h6M5 8h4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   ),
+  'db-table': (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="1.5" y1="6" x2="14.5" y2="6" stroke="currentColor" strokeWidth="1.3" />
+      <line x1="6" y1="6" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  ),
 }
 
 function tabLabel(tab: ProjectTab, t: T): string {
@@ -104,6 +111,7 @@ function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
   if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
   if (tab.kind === 'task') return tab.title ?? t('Task')
+  if (tab.kind === 'db-table') return tab.title ?? `${tab.schema}.${tab.table}`
   return tab.kind === 'mcp' ? t('MCP servers') : t('Skills')
 }
 
@@ -116,6 +124,7 @@ function typeLabel(kind: MenuState['kind'], t: T): string {
     case 'skills': return t('Skills')
     case 'kanban': return t('Kanban')
     case 'task': return t('Tasks')
+    case 'db-table': return t('Tables')
     case 'transcript': return t('Transcripts')
   }
 }

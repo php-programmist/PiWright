@@ -2,7 +2,7 @@
  *  не сохраняются: сессии не возобновляются при открытии проекта (решение юзера). */
 import type { Settings } from './ipc-contracts'
 
-export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task'
+export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'db-table'
 
 export interface SavedProjectTab {
   kind: ProjectTabKind
@@ -14,7 +14,11 @@ export interface SavedProjectTab {
   boardId?: string
   /** task — id карточки. */
   taskId?: string
-  /** kanban/task — имя доски / заголовок задачи (для подписи вкладки). */
+  /** db-table — подключение/схема/таблица дерева БД. */
+  connectionId?: string
+  schema?: string
+  table?: string
+  /** kanban/task/db-table — имя доски / заголовок задачи / подпись таблицы. */
   title?: string
 }
 
@@ -39,7 +43,7 @@ export function setProjectTabs(settings: Settings, key: string, snapshot: Projec
 export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnapshot> {
   const out: Record<string, ProjectTabsSnapshot> = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task']
+  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task', 'db-table']
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
     const rawTabs = (raw as Record<string, unknown>)['tabs']
@@ -54,15 +58,22 @@ export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnap
       const hash = (item as Record<string, unknown>)['hash']
       const boardId = (item as Record<string, unknown>)['boardId']
       const taskId = (item as Record<string, unknown>)['taskId']
+      const connectionId = (item as Record<string, unknown>)['connectionId']
+      const schema = (item as Record<string, unknown>)['schema']
+      const table = (item as Record<string, unknown>)['table']
       const title = (item as Record<string, unknown>)['title']
       const tab: SavedProjectTab = { kind: kind as ProjectTabKind }
       if (typeof path === 'string' && path.length > 0) tab.path = path
       if (typeof hash === 'string' && hash.length > 0) tab.hash = hash
       if (typeof boardId === 'string' && boardId.length > 0) tab.boardId = boardId
       if (typeof taskId === 'string' && taskId.length > 0) tab.taskId = taskId
+      if (typeof connectionId === 'string' && connectionId.length > 0) tab.connectionId = connectionId
+      if (typeof schema === 'string' && schema.length > 0) tab.schema = schema
+      if (typeof table === 'string' && table.length > 0) tab.table = table
       if (typeof title === 'string' && title.length > 0) tab.title = title
       if (kind === 'kanban' && tab.boardId === undefined) continue
       if (kind === 'task' && (tab.boardId === undefined || tab.taskId === undefined)) continue
+      if (kind === 'db-table' && (tab.connectionId === undefined || tab.schema === undefined || tab.table === undefined)) continue
       tabs.push(tab)
     }
     if (tabs.length === 0) continue

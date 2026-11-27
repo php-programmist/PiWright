@@ -11,6 +11,7 @@ import { useFilesStore } from './files'
 import { useTerminalStore } from './terminal'
 import { useGitLogStore } from './gitlog'
 import { useKanbanStore } from './kanban'
+import { useDbStore } from './db'
 
 let persistChain: Promise<void> = Promise.resolve()
 
@@ -26,7 +27,7 @@ export function persistPanel(panel: PanelName, patch: PanelPrefs): void {
 }
 
 export function hydratePanels(settings: Settings): void {
-  const { git, files, terminal, gitlog, kanban, sessions } = settings.panels
+  const { git, files, terminal, gitlog, kanban, sessions, db } = settings.panels
   if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}) })
   if (files !== undefined) useFilesStore.setState({ ...(files.open !== undefined ? { open: files.open } : {}), ...(files.width !== undefined ? { width: files.width } : {}) })
   if (terminal !== undefined)
@@ -43,6 +44,11 @@ export function hydratePanels(settings: Settings): void {
     useKanbanStore.setState({
       ...(kanban.open !== undefined ? { open: kanban.open } : {}),
       ...(kanban.width !== undefined ? { width: kanban.width } : {})
+    })
+  if (db !== undefined)
+    useDbStore.setState({
+      ...(db.open !== undefined ? { open: db.open } : {}),
+      ...(db.width !== undefined ? { width: db.width } : {})
     })
   if (sessions !== undefined)
     useSessionsStore.setState({
@@ -66,5 +72,20 @@ export function hydratePanels(settings: Settings): void {
   if ((terminal?.open ?? false) && (gitlog?.open ?? false)) {
     useGitLogStore.setState({ open: false })
     persistPanel('gitlog', { open: false })
+  }
+  // DB делит правый рельс с git/files/kanban: сохранена открытой — вытесняет остальные.
+  if (db?.open ?? false) {
+    if (git?.open ?? false) {
+      useGitStore.setState({ open: false })
+      persistPanel('git', { open: false })
+    }
+    if (files?.open ?? false) {
+      useFilesStore.setState({ open: false })
+      persistPanel('files', { open: false })
+    }
+    if (kanban?.open ?? false) {
+      useKanbanStore.setState({ open: false })
+      persistPanel('kanban', { open: false })
+    }
   }
 }

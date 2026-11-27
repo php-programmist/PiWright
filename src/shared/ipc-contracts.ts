@@ -109,7 +109,7 @@ export interface Settings {
   /** Язык интерфейса (дефолт English). */
   language: UiLanguage
   /** Состояние правых панелей — переживает перезапуск. */
-  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs; kanban?: PanelPrefs; sessions?: PanelPrefs }
+  panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; gitlog?: PanelPrefs; kanban?: PanelPrefs; db?: PanelPrefs; sessions?: PanelPrefs }
   /** Развернутые проекты в панели слева (ключ projectKey) — переживает перезапуск. */
   expandedProjects: Record<string, boolean>
   /** Развернутые доски в панели канбана (ключ projectKey\0boardId). */
@@ -177,7 +177,7 @@ export interface PanelPrefs {
   height?: number
 }
 
-export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'sessions'
+export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'db' | 'sessions'
 
 /** Сохранённая вкладка сессии для восстановления после рестарта (эффект Herdr): при старте
  *  хост пересоздаётся; живой ребёнок демона аттачится, мёртвый — обычный респавн с --session. */

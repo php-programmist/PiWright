@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { hydratePanels, persistPanel } from '../src/renderer/src/stores/panels-prefs'
 import { useGitStore } from '../src/renderer/src/stores/git'
 import { useFilesStore } from '../src/renderer/src/stores/files'
+import { useKanbanStore } from '../src/renderer/src/stores/kanban'
+import { useDbStore } from '../src/renderer/src/stores/db'
 import { useSessionsStore } from '../src/renderer/src/stores/sessions'
 import type { PanelPrefs, Settings } from '../src/shared/ipc-contracts'
 
-function settingsWith(panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs }): Settings {
+function settingsWith(panels: { git?: PanelPrefs; files?: PanelPrefs; terminal?: PanelPrefs; kanban?: PanelPrefs; db?: PanelPrefs }): Settings {
   return { panels } as unknown as Settings
 }
 
@@ -46,6 +48,24 @@ describe('panels prefs', () => {
     const second = setSettings.mock.calls[1][0] as Settings
     expect(second.panels?.git).toMatchObject({ open: true })
     expect(second.panels?.files).toMatchObject({ open: true })
+    vi.unstubAllGlobals()
+  })
+
+  it('hydrate: db открыта в настройках — вытесняет git/files/kanban', async () => {
+    const setSettings = vi.fn().mockImplementation(async (patch: Settings) => patch)
+    vi.stubGlobal('window', { piwright: { setSettings } })
+    useGitStore.setState({ open: true })
+    useFilesStore.setState({ open: false })
+    useKanbanStore.setState({ open: true })
+    useDbStore.setState({ open: true })
+    hydratePanels(settingsWith({ git: { open: true }, kanban: { open: true }, db: { open: true } }))
+    expect(useDbStore.getState().open).toBe(true)
+    expect(useGitStore.getState().open).toBe(false)
+    expect(useKanbanStore.getState().open).toBe(false)
+    await vi.waitFor(() => expect(setSettings.mock.calls.length).toBeGreaterThanOrEqual(2))
+    const patches = setSettings.mock.calls.map((c) => (c[0] as Settings).panels)
+    expect(patches.some((p) => p?.git?.open === false)).toBe(true)
+    expect(patches.some((p) => p?.kanban?.open === false)).toBe(true)
     vi.unstubAllGlobals()
   })
 })

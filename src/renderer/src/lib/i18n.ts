@@ -250,6 +250,15 @@ const RU: Record<string, string> = {
   'Not a git repository': 'Не git-репозиторий',
   'Pick a session to see its git status': 'Выберите сессию, чтобы увидеть её git-статус',
 
+  // DB-панель
+  'No connections yet — add one in Settings → Databases': 'Пока нет подключений — добавьте в Настройки → Базы данных',
+  'no schemas': 'нет схем',
+  'no tables': 'нет таблиц',
+  'Show schema in the tree': 'Показывать схему в дереве',
+  'Open table data': 'Открыть данные таблицы',
+  'Tables': 'Таблицы',
+  'Table data will appear here': 'Данные таблицы появятся здесь',
+
   // Файлы
   'Refresh tree': 'Обновить дерево',
   'New folder': 'Новая папка',

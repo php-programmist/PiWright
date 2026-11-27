@@ -3373,6 +3373,103 @@ pre.code-block {
   opacity: 0.4;
 }
 
+/* DB-панель: дерево подключение → схемы → таблицы (контейнер — .git-panel). */
+.db-tree-connection {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-tree-connection:hover {
+  background: var(--hover);
+}
+
+.db-tree-connection svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.db-tree-chevron {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  width: 14px;
+  padding: 0;
+  flex: none;
+}
+
+.db-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-tree-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10.5px;
+  flex: none;
+}
+
+.db-tree-schema {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-tree-schema:hover {
+  background: var(--hover);
+}
+
+.db-schema-check {
+  flex: none;
+  margin: 0;
+}
+
+.db-tree-table {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.db-tree-table:hover {
+  background: var(--hover);
+}
+
+.db-tree-table svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.db-tree-hint {
+  color: var(--muted);
+  padding: 2px 8px;
+}
+
+.db-table-tab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.db-table-tab-head {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
 .right-side {
   display: flex;
   min-width: 0;

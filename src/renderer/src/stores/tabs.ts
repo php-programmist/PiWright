@@ -32,7 +32,7 @@ export function useCenterProject(): ProjectEntry | null {
   return tab?.project ?? real ?? projectForKey(activeProjectKey)
 }
 
-export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript'
+export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript' | 'db-table'
 
 export interface ProjectTab {
   kind: TabKind
@@ -45,6 +45,10 @@ export interface ProjectTab {
   boardId?: string
   /** task — id карточки. */
   taskId?: string
+  /** db-table — подключение/схема/таблица дерева БД. */
+  connectionId?: string
+  schema?: string
+  table?: string
   /** transcript/kanban/task — заголовок (сессии / доски / задачи). */
   title?: string
   /** transcript — полная сводка для TranscriptView. */
@@ -76,12 +80,17 @@ export function mruAlive(entry: MruEntry): boolean {
   return useTabsStore.getState().byProject[entry.key]?.tabs.some((t) => tabId(t) === entry.id) ?? false
 }
 
-export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId' | 'taskId'>): string {
-  if (tab.path === undefined) {
-    if (tab.boardId === undefined) return tab.kind
+export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId' | 'taskId' | 'connectionId' | 'schema' | 'table'>): string {
+  if (tab.path !== undefined) {
+    return tab.hash === undefined ? `${tab.kind}\u0000${tab.path}` : `${tab.kind}\u0000${tab.path}\u0000${tab.hash}`
+  }
+  if (tab.boardId !== undefined) {
     return tab.taskId === undefined ? `${tab.kind}\u0000${tab.boardId}` : `${tab.kind}\u0000${tab.boardId}\u0000${tab.taskId}`
   }
-  return tab.hash === undefined ? `${tab.kind}\u0000${tab.path}` : `${tab.kind}\u0000${tab.path}\u0000${tab.hash}`
+  if (tab.connectionId !== undefined) {
+    return `${tab.kind}\u0000${tab.connectionId}\u0000${tab.schema}\u0000${tab.table}`
+  }
+  return tab.kind
 }
 
 /** Ключ набора вкладок: у worktree-сессий вкладки живут в наборе родительского проекта. */
@@ -110,7 +119,10 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
           if (t.hash !== undefined) savedTab.hash = t.hash
           if (t.boardId !== undefined) savedTab.boardId = t.boardId
           if (t.taskId !== undefined) savedTab.taskId = t.taskId
-          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task')) savedTab.title = t.title
+          if (t.connectionId !== undefined) savedTab.connectionId = t.connectionId
+          if (t.schema !== undefined) savedTab.schema = t.schema
+          if (t.table !== undefined) savedTab.table = t.table
+          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task' || t.kind === 'db-table')) savedTab.title = t.title
           return savedTab
         })
       const index = saved.findIndex((t) => tabId(t) === activeId)
@@ -224,6 +236,9 @@ export const useTabsStore = create<TabsState>((set, get) => ({
             ...(t.hash !== undefined ? { hash: t.hash } : {}),
             ...(t.boardId !== undefined ? { boardId: t.boardId } : {}),
             ...(t.taskId !== undefined ? { taskId: t.taskId } : {}),
+            ...(t.connectionId !== undefined ? { connectionId: t.connectionId } : {}),
+            ...(t.schema !== undefined ? { schema: t.schema } : {}),
+            ...(t.table !== undefined ? { table: t.table } : {}),
             ...(t.title !== undefined ? { title: t.title } : {})
           }))
           const savedActiveId = snap.activeIndex !== undefined && snap.activeIndex < restored.length ? tabId(restored[snap.activeIndex]) : null
