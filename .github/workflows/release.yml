@@ -22,7 +22,7 @@ jobs:
     needs: create-release
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - run: npm run rebuild
       - run: npm run dist:linux
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
       - run: npm run dist
         if: matrix.os == 'windows-latest'
       - uses: softprops/action-gh-release@v2
