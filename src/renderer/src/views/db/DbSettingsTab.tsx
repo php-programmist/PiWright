@@ -56,6 +56,7 @@ function draftEntry(draft: DraftConnection): DbConnectionEntry {
     user: draft.user.trim(),
     authType: draft.authType
   }
+  if (draft.selectedSchemas !== undefined) entry.selectedSchemas = draft.selectedSchemas
   if (draft.ssh !== null && draft.ssh !== undefined) {
     const ssh = { ...draft.ssh, host: draft.ssh.host.trim(), user: draft.ssh.user.trim() }
     if (ssh.keyPath !== undefined && ssh.keyPath.trim().length === 0) delete ssh.keyPath
@@ -109,6 +110,9 @@ function DbConnectionsEditor({
   const [testResult, setTestResult] = useState<{ connectionId: string; ok: boolean; text: string } | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const [busy, setBusy] = useState(false)
+  /** Пикер схем per connectionId (ключ — id): состояние не надо сбрасывать при смене редактируемого подключения. */
+  const [pickerById, setPickerById] = useState<Record<string, { open: boolean; loading: boolean; error: string | null; schemas: string[] | null }>>({})
+  const picker = editing !== null && editing.id.length > 0 ? pickerById[editing.id] : undefined
 
   useEffect(() => {
     useDbStore.getState().clearAddEditor()
@@ -143,6 +147,8 @@ function DbConnectionsEditor({
         const saved = result.connections.find((c) => c.id === id)
         if (saved !== undefined) setEditing({ ...saved })
         setSavedFlash(true)
+        // Конфиг мог измениться (хост/база) — кэш схем пикера сбрасываем.
+        setPickerById((prev) => ({ ...prev, [id]: { open: false, loading: false, error: null, schemas: null } }))
       } else {
         setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
       }
@@ -154,6 +160,52 @@ function DbConnectionsEditor({
   const remove = async (connection: DbConnectionEntry): Promise<void> => {
     const result = await window.piwright.dbConnectionDelete(projectKey, connection.id)
     if (result.ok) onChange(result.connections)
+  }
+
+  /** Кнопка «Выбрать схемы»: список схем сохранённого подключения с чекбоксами (у нового
+   *  подключения — после первого сохранения). Список кэшируется per id до пересохранения. */
+  const toggleSchemaPicker = async (): Promise<void> => {
+    if (editing === null || editing.id.length === 0) return
+    const id = editing.id
+    const current = pickerById[id] ?? { open: false, loading: false, error: null, schemas: null }
+    if (current.open) {
+      setPickerById({ ...pickerById, [id]: { ...current, open: false } })
+      return
+    }
+    setPickerById({ ...pickerById, [id]: { ...current, open: true } })
+    if (current.schemas !== null || current.loading) return
+    setPickerById({ ...pickerById, [id]: { ...current, open: true, loading: true } })
+    try {
+      const result = await window.piwright.dbSchemas(id)
+      setPickerById((prev) => ({
+        ...prev,
+        [id]: {
+          open: true,
+          loading: false,
+          error: result.ok ? null : (result.error ?? t('Connection failed')),
+          schemas: result.ok ? result.schemas : null
+        }
+      }))
+    } catch (err) {
+      setPickerById((prev) => ({
+        ...prev,
+        [id]: { open: true, loading: false, error: err instanceof Error ? err.message : String(err), schemas: null }
+      }))
+    }
+  }
+
+  /** Чекбокс схемы в пикере: undefined — все; пустой список — ни одной (предупреждение).
+   *  Подключение уже сохранено — выбор персистится сразу, как чекбоксы в дереве панели. */
+  const patchSelectedSchemas = (schema: string, checked: boolean): void => {
+    if (editing === null || editing.id.length === 0) return
+    const all = picker?.schemas ?? []
+    const base = editing.selectedSchemas ?? all
+    const next = checked ? [...base, schema] : base.filter((s) => s !== schema)
+    const selected = checked && all.length > 0 && next.length >= all.length ? undefined : next
+    setEditing({ ...editing, selectedSchemas: selected })
+    const store = useDbStore.getState()
+    if (store.connectionsProjectKey === projectKey) store.setSelectedSchemas(editing.id, selected)
+    else onChange(connections.map((c) => (c.id === editing.id ? { ...c, selectedSchemas: selected } : c)))
   }
 
   const test = async (draftConnection: DraftConnection): Promise<void> => {
@@ -365,6 +417,7 @@ function DbConnectionsEditor({
               {t('Save connection')}
             </button>
             <button disabled={!formValid(editing) || busy} onClick={() => void test(editing)}>{t('Test connection')}</button>
+            {editing.id.length > 0 && <button disabled={busy} onClick={() => void toggleSchemaPicker()}>{t('Select schemas')}</button>}
             <button
               className="ghost"
               onClick={() => {
@@ -377,6 +430,30 @@ function DbConnectionsEditor({
               {t('Cancel')}
             </button>
           </div>
+          {picker?.open === true && (
+            <div className="db-schema-picker">
+              {picker.loading && <div className="panel-hint">{t('loading…')}</div>}
+              {picker.error !== null && <div className="ssh-test-result err">{picker.error}</div>}
+              {picker.schemas !== null && (
+                <>
+                  {picker.schemas.length === 0 && <div className="panel-hint">{t('no schemas')}</div>}
+                  {picker.schemas.map((schema) => (
+                    <label key={schema} className="settings-check">
+                      <input
+                        type="checkbox"
+                        checked={editing.selectedSchemas === undefined || editing.selectedSchemas.includes(schema)}
+                        onChange={(e) => patchSelectedSchemas(schema, e.target.checked)}
+                      />
+                      <span>{schema}</span>
+                    </label>
+                  ))}
+                  {editing.selectedSchemas !== undefined && editing.selectedSchemas.length === 0 && (
+                    <div className="ssh-test-result err">{t('No schemas will be available in the databases panel')}</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </section>
       )}
     </div>

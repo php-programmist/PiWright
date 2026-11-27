@@ -4,7 +4,7 @@
  *  центральную вкладку данных. */
 import { useEffect, useRef, useState } from 'react'
 import { useCenterProject, parentTabKey, useTabsStore } from '../../stores/tabs'
-import { dbTablesKey, useDbStore } from '../../stores/db'
+import { dbTablesKey, ensureTables, useDbStore } from '../../stores/db'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useSessionsStore } from '../../stores/sessions'
 import { useT } from '../../lib/i18n'
@@ -89,11 +89,10 @@ function SchemaRow({ connection, schema }: { connection: DbConnectionEntry; sche
   const patchSelected = (nextChecked: boolean): void => {
     const store = useDbStore.getState()
     const all = store.schemasByConnection[connection.id] ?? []
-    // Пустой список sanitizer настроек превращает в «все схемы» — последнюю схему не снимаем.
     if (!nextChecked) {
       const base = selected ?? all
-      const next = base.filter((s) => s !== schema)
-      store.setSelectedSchemas(connection.id, next.length > 0 && next.length < all.length ? next : undefined)
+      // Пустой список валиден — «ни одной схемы» (панель покажет подсказку).
+      store.setSelectedSchemas(connection.id, base.filter((s) => s !== schema))
       return
     }
     if (selected === undefined) return
@@ -129,12 +128,20 @@ function ConnectionNode({ connection, onMenu }: {
   const schemas = useDbStore((s) => s.schemasByConnection[connection.id])
   const loading = useDbStore((s) => s.schemasLoading[connection.id] === true)
   const testResult = useDbStore((s) => s.panelTests[connection.id])
+  // Единственная выбранная схема: уровень схемы в дереве не показываем — сразу таблицы.
+  const singleSchema =
+    connection.selectedSchemas !== undefined && connection.selectedSchemas.length === 1 ? connection.selectedSchemas[0] : null
   const visible =
     schemas === undefined
       ? []
-      : connection.selectedSchemas !== undefined && connection.selectedSchemas.length > 0
+      : connection.selectedSchemas !== undefined
         ? schemas.filter((s) => connection.selectedSchemas?.includes(s))
         : schemas
+  // Таблицы единственной выбранной схемы: грузим при каждом раскрытом состоянии с такой схемой
+  // (покрывает и смену выбора в форме настроек при раскрытом узле).
+  useEffect(() => {
+    if (expanded && singleSchema !== null) void ensureTables(connection.id, singleSchema)
+  }, [expanded, singleSchema, connection.id])
   return (
     <>
       <div
@@ -201,7 +208,8 @@ function ConnectionNode({ connection, onMenu }: {
       {testResult !== undefined && !testResult.running && (
         <div className={`ssh-test-result ${testResult.ok ? 'ok' : 'err'}`} style={{ paddingLeft: 26 }}>{testResult.text}</div>
       )}
-      {expanded && (
+      {expanded && singleSchema !== null && <TableRows connectionId={connection.id} schema={singleSchema} />}
+      {expanded && singleSchema === null && (
         <>
           {loading && schemas === undefined && <div className="db-tree-hint" style={{ paddingLeft: 34 }}>{t('loading…')}</div>}
           {schemas !== undefined && visible.length === 0 && (

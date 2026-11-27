@@ -255,6 +255,8 @@ const RU: Record<string, string> = {
   'No connections yet — add one with the + button above': 'Пока нет подключений — добавьте через кнопку «+» выше',
   'no schemas': 'нет схем',
   'no tables': 'нет таблиц',
+  'Select schemas': 'Выбрать схемы',
+  'No schemas will be available in the databases panel': 'Ни одна схема не будет доступна в панели баз данных',
   'Show schema in the tree': 'Показывать схему в дереве',
   'Open table data': 'Открыть данные таблицы',
   'Tables': 'Таблицы',

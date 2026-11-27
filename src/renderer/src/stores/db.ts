@@ -136,7 +136,12 @@ export const useDbStore = create<DbState>((set, get) => ({
       schemasLoading: {},
       tablesLoading: {}
     })
-    for (const id of get().expandedConnections) await ensureSchemas(id)
+    for (const id of get().expandedConnections) {
+      // Единственная выбранная схема — в дереве таблицы вместо схем, перезагружаем именно их.
+      const selected = get().connections.find((c) => c.id === id)?.selectedSchemas
+      if (selected !== undefined && selected.length === 1) await ensureTables(id, selected[0])
+      else await ensureSchemas(id)
+    }
   },
 
   toggleConnection: (id) => {
@@ -148,7 +153,10 @@ export const useDbStore = create<DbState>((set, get) => ({
     }
     expanded.add(id)
     set({ expandedConnections: expanded })
-    void ensureSchemas(id)
+    // Единственная выбранная схема — таблицы грузим сразу, уровень схемы в дереве не показываем.
+    const selected = get().connections.find((c) => c.id === id)?.selectedSchemas
+    if (selected !== undefined && selected.length === 1) void ensureTables(id, selected[0])
+    else void ensureSchemas(id)
   },
 
   toggleSchema: (connectionId, schema) => {
