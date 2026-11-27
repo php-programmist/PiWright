@@ -4,10 +4,12 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { once } from 'node:events'
+import { createServer, connect as netConnect, type Server as NetServer, type Socket as NetSocket } from 'node:net'
 import { Duplex } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DbSecretsService } from '../src/main/db/db-secrets'
-import { buildSelectSql, DbService, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
+import { buildSelectSql, DbService, PgDriver, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { SshService } from '../src/main/ssh/ssh-service'
 import type { SshSecret } from '../src/main/ssh/secrets'
@@ -185,6 +187,105 @@ describe('DbService (fake drivers)', () => {
     expect(second.ok).toBe(true)
   })
 
+  it('connection-level query error evicts cached driver, next call opens fresh', async () => {
+    let fail: Error | null = new Error('timeout expired')
+    let created = 0
+    let closed = 0
+    const factory: DbDriverFactory = async () => {
+      created += 1
+      return {
+        kind: 'postgres',
+        version: async () => 'v',
+        listSchemas: async () => ['public'],
+        listTables: async () => {
+          if (fail !== null) throw fail
+          return ['users']
+        },
+        describeTable: async () => [],
+        selectRows: async () => ({ columns: [], rows: [], total: null }),
+        query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
+        close: async () => {
+          closed += 1
+        }
+      }
+    }
+    const { db } = makeService([pgEntry], factory)
+    const first = await db.tables('pg1', 'public')
+    expect(first.ok).toBe(false)
+    expect(created).toBe(1)
+    // Драйвер вымыт: close вызван без ожидания, ждём его и повторного открытия.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(closed).toBe(1)
+    fail = null
+    const second = await db.tables('pg1', 'public')
+    expect(second.ok).toBe(true)
+    expect(created).toBe(2)
+  })
+
+  it('server-side SQL error (pg 5-digit code) keeps cached driver', async () => {
+    let created = 0
+    let closed = 0
+    const factory: DbDriverFactory = async () => {
+      created += 1
+      return {
+        kind: 'postgres',
+        version: async () => 'v',
+        listSchemas: async () => ['public'],
+        listTables: async () => {
+          throw Object.assign(new Error('syntax error'), { code: '42601' })
+        },
+        describeTable: async () => [],
+        selectRows: async () => ({ columns: [], rows: [], total: null }),
+        query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
+        close: async () => {
+          closed += 1
+        }
+      }
+    }
+    const { db } = makeService([pgEntry], factory)
+    const first = await db.tables('pg1', 'public')
+    expect(first.ok).toBe(false)
+    const second = await db.tables('pg1', 'public')
+    expect(second.ok).toBe(false)
+    expect(created).toBe(1)
+    expect(closed).toBe(0)
+  })
+
+  it('mysql: server error (errno+sqlState) keeps driver, protocol error evicts', async () => {
+    let mode: 'server' | 'protocol' = 'server'
+    let created = 0
+    let closed = 0
+    const factory: DbDriverFactory = async () => {
+      created += 1
+      return {
+        kind: 'mysql',
+        version: async () => 'v',
+        listSchemas: async () => ['shop'],
+        listTables: async () => ['items'],
+        describeTable: async () => [],
+        selectRows: async () => ({ columns: [], rows: [], total: null }),
+        query: async () => {
+          if (mode === 'server') throw Object.assign(new Error('no such table'), { errno: 1146, sqlState: '42S02' })
+          throw new Error('PROTOCOL_CONNECTION_LOST')
+        },
+        close: async () => {
+          closed += 1
+        }
+      }
+    }
+    const { db } = makeService([mysqlEntry], factory)
+    expect((await db.query('my1', 'SELECT 1')).ok).toBe(false)
+    expect((await db.query('my1', 'SELECT 1')).ok).toBe(false)
+    expect(created).toBe(1)
+    expect(closed).toBe(0)
+    mode = 'protocol'
+    expect((await db.query('my1', 'SELECT 1')).ok).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(closed).toBe(1)
+    expect((await db.query('my1', 'SELECT 1')).ok).toBe(false)
+    expect(created).toBe(2)
+  })
+
   it('disconnect closes driver and evicts; disposeAll closes all', async () => {
     const state: FakeDriverState = { created: 0, closed: 0, sockets: [], passwords: [] }
     const { db } = makeService([pgEntry, mysqlEntry], makeFakeFactory(state))
@@ -254,5 +355,122 @@ describe('SQL builders', () => {
     expect(built.sql).toBe('SELECT * FROM `shop`.`items` ORDER BY `id` ASC LIMIT 10 OFFSET 0')
     expect(built.params).toEqual([])
     expect(built.countSql).toBe('SELECT count(*) AS total FROM `shop`.`items`')
+  })
+})
+
+/** Минимальный fake pg-сервер: startup → AuthOk+ReadyForQuery, 'Q' → CommandComplete+ReadyForQuery. */
+function pgFrame(type: string, payload: Buffer): Buffer {
+  const head = Buffer.alloc(5)
+  head.write(type, 0)
+  head.writeUInt32BE(4 + payload.length, 1)
+  return Buffer.concat([head, payload])
+}
+
+const PG_AUTH_OK = pgFrame('R', Buffer.from([0, 0, 0, 0]))
+const PG_READY = pgFrame('Z', Buffer.from('I'))
+
+function serveFakePg(socket: NetSocket): void {
+  let buffer = Buffer.alloc(0)
+  let started = false
+  socket.on('data', (chunk: Buffer) => {
+    buffer = Buffer.concat([buffer, chunk])
+    for (;;) {
+      if (!started) {
+        // Startup-пакет: [int32 len][payload], len включает себя самого — весь кадр = len байт.
+        if (buffer.length < 4) return
+        const len = buffer.readUInt32BE(0)
+        if (buffer.length < len) return
+        buffer = buffer.subarray(len)
+        started = true
+        socket.write(PG_AUTH_OK)
+        socket.write(PG_READY)
+        continue
+      }
+      if (buffer.length < 5) return
+      const len = buffer.readUInt32BE(1)
+      if (buffer.length < 1 + len) return
+      const type = buffer[0]
+      buffer = buffer.subarray(1 + len)
+      if (type === 0x51) {
+        socket.write(pgFrame('C', Buffer.from('SELECT 1\x00')))
+        socket.write(PG_READY)
+      }
+    }
+  })
+}
+
+function listenFakePg(): Promise<NetServer> {
+  return new Promise((resolve) => {
+    const server = createServer((socket) => serveFakePg(socket))
+    server.listen(0, '127.0.0.1', () => resolve(server))
+  })
+}
+
+function portOf(server: NetServer): number {
+  const addr = server.address()
+  return typeof addr === 'object' && addr !== null ? addr.port : 0
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+describe('PgDriver pool config', () => {
+  /** ssh2-подобный канал поверх TCP: без setNoDelay/connect, не эмитит 'connect' —
+   *  как direct-tcpip канал forwardOut (под preparePgTunnelStream). */
+  function channelOver(upstream: NetSocket): Duplex {
+    // Голый Duplex как ssh2 Channel: без setNoDelay/connect/ref/unref, не эмитит 'connect'.
+    const channel = new Duplex({
+      read() {},
+      write(chunk: Buffer, _enc, cb) {
+        upstream.write(chunk)
+        cb()
+      }
+    })
+    upstream.on('data', (chunk: Buffer) => channel.push(chunk))
+    upstream.on('close', () => channel.destroy())
+    upstream.on('error', () => channel.destroy())
+    return channel
+  }
+
+  it('tunnel pool: idle client not removed (idleTimeoutMillis forced to 0) — shared channel survives idle', async () => {
+    const server = await listenFakePg()
+    try {
+      const tcp = netConnect({ host: '127.0.0.1', port: portOf(server) })
+      tcp.on('error', () => {})
+      await once(tcp, 'connect')
+      const driver = new PgDriver({ host: '127.0.0.1', port: portOf(server), connectionTimeoutMillis: 5000, idleTimeoutMillis: 30 }, channelOver(tcp))
+      const first = await driver.query('SELECT 1')
+      expect(first.isSelect).toBe(true)
+      await sleep(120)
+      // Канал жив: второй запрос уходит по тому же стриму (с дефолтом 10с клиент был бы вымет и канал закрыт)
+      const second = await driver.query('SELECT 2')
+      expect(second.isSelect).toBe(true)
+      await driver.close()
+      tcp.destroy()
+    } finally {
+      server.close()
+    }
+  })
+
+  it('direct pool honors idleTimeoutMillis: idle client removed, connection closed (mechanism)', async () => {
+    const server = await listenFakePg()
+    const closed = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('idle client was not removed')), 3000)
+      timer.unref()
+      server.on('connection', (socket: NetSocket) => {
+        socket.on('close', () => {
+          clearTimeout(timer)
+          resolve()
+        })
+      })
+    })
+    try {
+      const driver = new PgDriver({ host: '127.0.0.1', port: portOf(server), connectionTimeoutMillis: 5000, idleTimeoutMillis: 30 }, null)
+      const result = await driver.query('SELECT 1')
+      expect(result.isSelect).toBe(true)
+      await closed
+      await driver.close()
+    } finally {
+      server.close()
+    }
   })
 })

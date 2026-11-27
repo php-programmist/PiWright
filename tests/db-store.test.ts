@@ -31,6 +31,7 @@ const api = {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('window', { piwright: api })
+  api.dbConnectionsList.mockResolvedValue({ ok: true, error: null, connections: [connection] })
   useSessionsStore.setState({ settings: seedSettings({ [PROJECT_KEY]: [connection] }) })
   useDbStore.setState({
     open: false,
@@ -76,6 +77,32 @@ describe('db store', () => {
     useDbStore.getState().toggleSchema(connection.id, 'public')
     await vi.waitFor(() => expect(useDbStore.getState().tablesBySchema[dbTablesKey(connection.id, 'public')]).toEqual(['users']))
     expect(api.dbTables).toHaveBeenCalledWith(connection.id, 'public')
+  })
+
+  it('единственная выбранная схема: раскрытие грузит таблицы сразу, без запроса схем', async () => {
+    const single = { ...connection, selectedSchemas: ['public'] }
+    api.dbConnectionsList.mockResolvedValue({ ok: true, error: null, connections: [single] })
+    api.dbTables.mockResolvedValue({ ok: true, error: null, tables: ['users'] })
+    await useDbStore.getState().load(PROJECT_KEY)
+    useDbStore.getState().toggleConnection(single.id)
+    await vi.waitFor(() => expect(useDbStore.getState().tablesBySchema[dbTablesKey(single.id, 'public')]).toEqual(['users']))
+    expect(api.dbTables).toHaveBeenCalledWith(single.id, 'public')
+    expect(api.dbSchemas).not.toHaveBeenCalled()
+  })
+
+  it('пустой selectedSchemas («ни одной») персистится без превращения в «все»', async () => {
+    api.dbSchemas.mockResolvedValue({ ok: true, error: null, schemas: ['public', 'sales'] })
+    api.setSettings.mockImplementation(async (patch: Settings) => patch)
+    await useDbStore.getState().load(PROJECT_KEY)
+    useDbStore.getState().toggleConnection(connection.id)
+    await vi.waitFor(() => expect(useDbStore.getState().schemasByConnection[connection.id]).toBeDefined())
+    useDbStore.getState().setSelectedSchemas(connection.id, [])
+    expect(useDbStore.getState().connections[0].selectedSchemas).toEqual([])
+    await vi.waitFor(() => expect(api.setSettings).toHaveBeenCalledTimes(1))
+    const patch = api.setSettings.mock.calls[0][0] as Settings
+    expect(patch.projectDbConnections).toEqual({
+      [PROJECT_KEY]: [{ ...connection, selectedSchemas: [] }]
+    })
   })
 
   it('чекбокс схемы пишет selectedSchemas и персистит патч в settings', async () => {

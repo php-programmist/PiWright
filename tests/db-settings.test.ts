@@ -64,11 +64,13 @@ describe('mergeDbConnections', () => {
     expect(out[0]).not.toHaveProperty('extra')
   })
 
-  it('selectedSchemas sanitized, empty dropped', () => {
+  it('selectedSchemas sanitized, empty kept as «ни одной»', () => {
     const out = mergeDbConnections([{ id: 'c', host: 'h', user: 'u', database: 'd', selectedSchemas: ['public', 42, '', 'x'.repeat(100)] }])
     expect(out[0].selectedSchemas).toEqual(['public'])
     const out2 = mergeDbConnections([{ id: 'c', host: 'h', user: 'u', database: 'd', selectedSchemas: [] }])
-    expect(out2[0].selectedSchemas).toBeUndefined()
+    expect(out2[0].selectedSchemas).toEqual([])
+    const out3 = mergeDbConnections([{ id: 'c', host: 'h', user: 'u', database: 'd' }])
+    expect(out3[0].selectedSchemas).toBeUndefined()
   })
 
   it('count limited to DB_CONNECTIONS_MAX', () => {
