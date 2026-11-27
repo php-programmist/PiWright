@@ -1427,6 +1427,15 @@ body {
   font: inherit;
 }
 
+.settings-section select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+
 .settings-section label.settings-check {
   flex-direction: row;
   align-items: center;
@@ -3403,6 +3412,17 @@ pre.code-block {
   color: var(--muted);
 }
 
+/* Иконки строки подключения (шестерёнка, консоль) — только при наведении. */
+.db-tree-connection .icon {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.db-tree-connection:hover .icon,
+.db-tree-connection .icon:focus-visible {
+  opacity: 1;
+}
+
 .db-tree-chevron {
   background: transparent;
   border: none;
@@ -3466,6 +3486,23 @@ pre.code-block {
 .db-tree-hint {
   color: var(--muted);
   padding: 2px 8px;
+}
+
+.db-settings-tab {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+/* Форма нового/редактируемого подключения: карточка по центру с рамкой. */
+.db-settings-tab .db-conn-form {
+  max-width: 560px;
+  margin: 28px auto;
+  padding: 18px 22px 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-bg);
 }
 
 .db-table-tab {

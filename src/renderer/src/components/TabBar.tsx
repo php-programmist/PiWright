@@ -133,7 +133,7 @@ function tabLabel(tab: ProjectTab, t: T): string {
   if (tab.kind === 'task') return tab.title ?? t('Task')
   if (tab.kind === 'db-table') return tab.title ?? `${tab.schema}.${tab.table}`
   if (tab.kind === 'db-console') return tab.title ?? t('Console')
-  if (tab.kind === 'db-settings') return t('Databases')
+  if (tab.kind === 'db-settings') return tab.title ?? t('Databases')
   return tab.kind === 'mcp' ? t('MCP servers') : t('Skills')
 }
 

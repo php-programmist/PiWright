@@ -38,6 +38,9 @@ interface DbState {
   addEditorPending: boolean
   requestAddEditor: () => void
   clearAddEditor: () => void
+  /** Результат «Проверить» из контекстного меню панели (в памяти). */
+  panelTests: Record<string, { running: boolean; ok: boolean; text: string }>
+  setPanelTest: (connectionId: string, result?: { running: boolean; ok: boolean; text: string }) => void
   /** Загрузить подключения проекта (повторный вызов с тем же ключом — no-op). */
   load: (projectKey: string) => Promise<void>
   /** Перечитать подключения проекта и сбросить кэши схем/таблиц; раскрытые узлы перезагружаются. */
@@ -96,6 +99,15 @@ export const useDbStore = create<DbState>((set, get) => ({
   addEditorPending: false,
   requestAddEditor: () => set({ addEditorPending: true }),
   clearAddEditor: () => set({ addEditorPending: false }),
+
+  panelTests: {},
+  setPanelTest: (connectionId, result) =>
+    set((state) => {
+      const panelTests = { ...state.panelTests }
+      if (result === undefined) delete panelTests[connectionId]
+      else panelTests[connectionId] = result
+      return { panelTests }
+    }),
 
   load: async (projectKey) => {
     if (get().connectionsProjectKey === projectKey && (get().connectionsLoaded || get().connectionsLoading)) return

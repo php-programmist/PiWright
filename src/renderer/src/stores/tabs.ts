@@ -128,7 +128,7 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
           if (t.connectionId !== undefined) savedTab.connectionId = t.connectionId
           if (t.schema !== undefined) savedTab.schema = t.schema
           if (t.table !== undefined) savedTab.table = t.table
-          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task' || t.kind === 'db-table' || t.kind === 'db-console')) savedTab.title = t.title
+          if (t.title !== undefined && (t.kind === 'kanban' || t.kind === 'task' || t.kind === 'db-table' || t.kind === 'db-console' || t.kind === 'db-settings')) savedTab.title = t.title
           return savedTab
         })
       const index = saved.findIndex((t) => tabId(t) === activeId)

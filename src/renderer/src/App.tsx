@@ -376,7 +376,7 @@ export function App(): React.JSX.Element {
                 ) : activeTab.kind === 'db-console' ? (
                   <DbConsoleTab key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'db-settings' ? (
-                  <DbSettingsTab key={tabId(activeTab)} project={activeTab.project} />
+                  <DbSettingsTab key={tabId(activeTab)} tab={activeTab} />
                 ) : (
                   <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}

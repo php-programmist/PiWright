@@ -5,15 +5,14 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { useSessionsStore } from '../../stores/sessions'
-import { parentTabKey } from '../../stores/tabs'
+import { parentTabKey, type ProjectTab } from '../../stores/tabs'
 import { useDbStore } from '../../stores/db'
 import type {
   DbAuthType,
   DbConnectionEntry,
   DbKind,
   DbSecretInput,
-  SshAuthType,
-  ProjectEntry
+  SshAuthType
 } from '../../../../shared/ipc-contracts'
 
 const KIND_LABELS: Record<DbKind, string> = {
@@ -71,9 +70,9 @@ function formValid(draft: DraftConnection): boolean {
   return true
 }
 
-export function DbSettingsTab({ project }: { project: ProjectEntry }): React.JSX.Element {
+export function DbSettingsTab({ tab }: { tab: ProjectTab }): React.JSX.Element {
   const settings = useSessionsStore((s) => s.settings)
-  const key = parentTabKey(project)
+  const key = parentTabKey(tab.project)
   const connections = settings?.projectDbConnections[key] ?? []
 
   const onChange = (list: DbConnectionEntry[]): void => {
@@ -85,23 +84,27 @@ export function DbSettingsTab({ project }: { project: ProjectEntry }): React.JSX
     })()
   }
 
-  return <DbConnectionsEditor projectKey={key} connections={connections} onChange={onChange} />
+  return <DbConnectionsEditor projectKey={key} editId={tab.connectionId} connections={connections} onChange={onChange} />
 }
 
 function DbConnectionsEditor({
   projectKey,
+  editId,
   connections,
   onChange
 }: {
   projectKey: string
+  /** Вкладка редактирования конкретного подключения (из шестерёнки панели) — форма без списка. */
+  editId?: string
   connections: DbConnectionEntry[]
   onChange: (connections: DbConnectionEntry[]) => void
 }): React.JSX.Element {
   const t = useT()
+  const original = editId !== undefined ? connections.find((c) => c.id === editId) : undefined
   // Кнопка «+» панели БД открывает эту вкладку сразу с формой нового подключения:
   // флаг читается при монтировании (вкладка была закрыта) и по подписке (вкладка уже открыта).
   const [editing, setEditing] = useState<DraftConnection | null>(() =>
-    useDbStore.getState().addEditorPending ? emptyDraft() : null
+    original !== undefined ? { ...original } : (useDbStore.getState().addEditorPending ? emptyDraft() : null)
   )
   const [testResult, setTestResult] = useState<{ connectionId: string; ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
@@ -115,6 +118,15 @@ function DbConnectionsEditor({
     })
   }, [])
 
+  // Подключение вкладки удалено (например, из панели) — редактировать нечего.
+  if (editId !== undefined && original === undefined) {
+    return (
+      <div className="db-settings-tab">
+        <div className="panel-hint">{t('not found')}</div>
+      </div>
+    )
+  }
+
   const save = async (): Promise<void> => {
     if (editing === null || !formValid(editing)) return
     const id = editing.id.length > 0 ? editing.id : `db-${crypto.randomUUID().slice(0, 8)}`
@@ -125,7 +137,13 @@ function DbConnectionsEditor({
       const result = await window.piwright.dbConnectionSave(projectKey, entry, draftSecrets(editing))
       if (result.ok) {
         onChange(result.connections)
-        setEditing(null)
+        setTestResult(null)
+        if (editId !== undefined) {
+          const saved = result.connections.find((c) => c.id === id)
+          if (saved !== undefined) setEditing({ ...saved })
+        } else {
+          setEditing(null)
+        }
       } else {
         setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
       }
@@ -172,6 +190,7 @@ function DbConnectionsEditor({
 
   return (
     <div className="db-settings-tab">
+      {editing === null && (
       <section className="settings-section">
         <h3>{t('Database connections')}</h3>
         {connections.length === 0 && (
@@ -203,8 +222,9 @@ function DbConnectionsEditor({
         ))}
         <button className="ghost" onClick={() => { setEditing(emptyDraft()); setTestResult(null) }}>+ {t('Add connection')}</button>
       </section>
+      )}
       {editing !== null && (
-        <section className="settings-section ssh-edit">
+        <section className="settings-section ssh-edit db-conn-form">
           <h3>{editing.id.length > 0 ? t('Edit connection') : t('New connection')}</h3>
           <div className="ssh-form-grid">
             <label>
@@ -343,7 +363,16 @@ function DbConnectionsEditor({
               {t('Save connection')}
             </button>
             <button disabled={!formValid(editing) || busy} onClick={() => void test(editing)}>{t('Test connection')}</button>
-            <button className="ghost" onClick={() => setEditing(null)}>{t('Cancel')}</button>
+            <button
+              className="ghost"
+              onClick={() => {
+                setTestResult(null)
+                if (editId !== undefined && original !== undefined) setEditing({ ...original })
+                else setEditing(null)
+              }}
+            >
+              {t('Cancel')}
+            </button>
           </div>
         </section>
       )}
