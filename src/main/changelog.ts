@@ -15,13 +15,19 @@ export function parseGitHubRepo(updateUrl: string): string | null {
 }
 
 /** Убирает хэши коммитов из markdown-тела: « (1a2b3c4)», « (1a2b3c4, 829774b)»,
- *  «[1a2b3c4]», бэктик-хэши «`1a2b3c4`» (пустые скобки после них — тоже). */
+ *  «[1a2b3c4]», бэктик-хэши «`1a2b3c4`» — в том числе списками внутри одних скобок
+ *  «(`1a2b3c4`, `829774b`)» (пустые скобки после них — тоже). */
 export function stripCommitHashes(md: string): string {
   return md
-    .replace(/\s*\((?:[0-9a-f]{7,40})(?:\s*,\s*[0-9a-f]{7,40})*\)/gi, '')
-    .replace(/\s*\[(?:[0-9a-f]{7,40})(?:\s*,\s*[0-9a-f]{7,40})*\]/g, '')
+    .replace(/\s*\(`?(?:[0-9a-f]{7,40})`?(?:\s*,\s*`?[0-9a-f]{7,40}`?)*\)/gi, '')
+    .replace(/\s*\[(?:`?[0-9a-f]{7,40})`?(?:\s*,\s*`?[0-9a-f]{7,40}`?)*\]/g, '')
     .replace(/\s*`(?:[0-9a-f]{7,40})`/g, '')
     .replace(/\s*\(\s*\)/g, '')
+}
+
+/** Убирает заголовок «## v1.2.3 (2026-11-26)» — версию и дату рисует сама модалка. */
+export function stripReleaseHeading(md: string): string {
+  return md.replace(/^##\s+v?\d+\.\d+\.\d+\s+\(\d{4}-\d{2}-\d{2}\)\s*\n?/, '').trim()
 }
 
 /** Санитизация HTML из Atom-фида: коммит-ссылки (с хэшами) целиком, пустые скобки
@@ -29,6 +35,7 @@ export function stripCommitHashes(md: string): string {
 export function sanitizeReleaseHtml(html: string): string {
   return stripCommitHashes(
     html
+      .replace(/<h2>\s*v?\d+\.\d+\.\d+\s+\([^<]*\)\s*<\/h2>/i, '')
       .replace(/<a class="commit-link"[^>]*>[\s\S]*?<\/a>/gi, '')
       .replace(/<(code|tt)>\s*[0-9a-f]{7,40}\s*<\/\1>/gi, '')
       .replace(/\s*\(\s*\)/g, '')
@@ -113,7 +120,7 @@ function toRelease(r: GhRelease): ChangelogRelease | null {
   if (typeof r.tag_name !== 'string' || r.tag_name.length === 0) return null
   const version = r.tag_name.replace(/^v/, '')
   const date = typeof r.published_at === 'string' ? r.published_at.slice(0, 10) : ''
-  const body = typeof r.body === 'string' ? stripCommitHashes(r.body).trim() : ''
+  const body = typeof r.body === 'string' ? stripReleaseHeading(stripCommitHashes(r.body)) : ''
   return { version, date, body }
 }
 
@@ -148,7 +155,7 @@ async function fetchViaAtom(repo: string): Promise<ChangelogRelease[]> {
 function normalizeReleases(releases: ChangelogRelease[]): ChangelogRelease[] {
   return releases.map((r) => ({
     ...r,
-    body: stripCommitHashes(r.body),
+    body: stripReleaseHeading(stripCommitHashes(r.body)),
     bodyHtml: r.bodyHtml !== undefined ? sanitizeReleaseHtml(r.bodyHtml) : undefined
   }))
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fetchChangelog, parseGitHubRepo, parseReleasesAtom, sanitizeReleaseHtml, stripCommitHashes } from '../src/main/changelog'
+import { fetchChangelog, parseGitHubRepo, parseReleasesAtom, sanitizeReleaseHtml, stripCommitHashes, stripReleaseHeading } from '../src/main/changelog'
 import { consumeUpdateInfo } from '../src/main/update-state'
 
 describe('parseGitHubRepo', () => {
@@ -39,6 +39,11 @@ describe('stripCommitHashes', () => {
     expect(stripCommitHashes('keeps `session:<sessionId>` token')).toBe('keeps `session:<sessionId>` token')
   })
 
+  it('removes backtick hash lists inside one pair of parens', () => {
+    expect(stripCommitHashes('loop flags (`515e945`, `d6bd9f7`, `9e27bd2`)')).toBe('loop flags')
+    expect(stripCommitHashes('mixed (abe382a, `27bc4db`)')).toBe('mixed')
+  })
+
   it('removes bracketed hashes and keeps non-hash parens', () => {
     expect(stripCommitHashes('see [a1b2c3d] notes')).toBe('see notes')
     expect(stripCommitHashes('call foo(bar) and v0.4.1 (2026-11-25)')).toBe('call foo(bar) and v0.4.1 (2026-11-25)')
@@ -47,6 +52,14 @@ describe('stripCommitHashes', () => {
   it('keeps session tokens and hex-looking words inside backticks', () => {
     const md = 'token is now `session:<sessionId>` instead of `kanban:session:<sessionId>`'
     expect(stripCommitHashes(md)).toBe(md)
+  })
+})
+
+describe('stripReleaseHeading', () => {
+  it('removes the version/date heading the modal renders itself', () => {
+    expect(stripReleaseHeading('## v0.6.0 (2026-11-26)\n### Added\n- x')).toBe('### Added\n- x')
+    expect(stripReleaseHeading('# v0.6.0 — 2026-11-26\n- x')).toBe('# v0.6.0 — 2026-11-26\n- x')
+    expect(stripReleaseHeading('## v0.6.0 (2026-11-26)')).toBe('')
   })
 })
 
@@ -108,6 +121,10 @@ describe('sanitizeReleaseHtml', () => {
     expect(sanitizeReleaseHtml('<p>v0.4.1 (2026-11-25)</p>')).toBe('<p>v0.4.1 (2026-11-25)</p>')
   })
 
+  it('removes the version/date h2 heading', () => {
+    expect(sanitizeReleaseHtml('<h2>v0.6.0 (2026-11-26)</h2><h2>Added</h2><p>x</p>')).toBe('<h2>Added</h2><p>x</p>')
+  })
+
   it('removes code/tt elements holding a bare hash', () => {
     expect(sanitizeReleaseHtml('<li>tabs (<code>2fefa4d</code>)</li>')).toBe('<li>tabs</li>')
     expect(sanitizeReleaseHtml('<li>tabs (<tt>2fefa4d</tt>)</li>')).toBe('<li>tabs</li>')
@@ -161,10 +178,10 @@ describe('fetchChangelog', () => {
     published_at: '2026-11-25T07:30:05Z',
     draft: false,
     prerelease: false,
-    body: '## Added\n- New tab (032e4af)\n- Another (a972283)'
+    body: '## v0.4.1 (2026-11-25)\n### Added\n- New tab (032e4af)\n- Loop flags (`515e945`, `d6bd9f7`)\n- Another (a972283)'
   }
 
-  it('fetches releases, strips hashes, sorts newest first, writes cache', async () => {
+  it('fetches releases, strips hashes and heading, sorts newest first, writes cache', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -177,7 +194,7 @@ describe('fetchChangelog', () => {
     expect(result.stale).toBe(false)
     expect(result.releases.map((r) => r.version)).toEqual(['0.4.1', '0.4.0'])
     expect(result.releases[0].date).toBe('2026-11-25')
-    expect(result.releases[0].body).toBe('## Added\n- New tab\n- Another')
+    expect(result.releases[0].body).toBe('### Added\n- New tab\n- Loop flags\n- Another')
     const cache = JSON.parse(readFileSync(join(dir, 'changelog-cache.json'), 'utf8'))
     expect(cache.releases).toHaveLength(2)
   })
