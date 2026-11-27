@@ -2,10 +2,11 @@
  *  тест реального коннекта, удаление. Подключения хранятся на проект
  *  (settings.projectDbConnections[projectKey]); пароли (БД и SSH) не попадают в settings.json —
  *  только в зашифрованный db-secrets.json через db:connection-save. */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { useSessionsStore } from '../../stores/sessions'
 import { parentTabKey } from '../../stores/tabs'
+import { useDbStore } from '../../stores/db'
 import type {
   DbAuthType,
   DbConnectionEntry,
@@ -97,9 +98,22 @@ function DbConnectionsEditor({
   onChange: (connections: DbConnectionEntry[]) => void
 }): React.JSX.Element {
   const t = useT()
-  const [editing, setEditing] = useState<DraftConnection | null>(null)
+  // Кнопка «+» панели БД открывает эту вкладку сразу с формой нового подключения:
+  // флаг читается при монтировании (вкладка была закрыта) и по подписке (вкладка уже открыта).
+  const [editing, setEditing] = useState<DraftConnection | null>(() =>
+    useDbStore.getState().addEditorPending ? emptyDraft() : null
+  )
   const [testResult, setTestResult] = useState<{ connectionId: string; ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    useDbStore.getState().clearAddEditor()
+    return useDbStore.subscribe((s, prev) => {
+      if (!s.addEditorPending || prev.addEditorPending) return
+      setEditing(emptyDraft())
+      setTestResult(null)
+    })
+  }, [])
 
   const save = async (): Promise<void> => {
     if (editing === null || !formValid(editing)) return

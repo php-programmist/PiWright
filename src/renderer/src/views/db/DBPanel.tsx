@@ -200,6 +200,18 @@ export function DBPanel(): React.JSX.Element {
         <span className="spacer" />
         <button
           className="icon"
+          title={t('Add connection')}
+          disabled={project === null}
+          onClick={() => {
+            if (project === null) return
+            useDbStore.getState().requestAddEditor()
+            useTabsStore.getState().openTab(project, { kind: 'db-settings' })
+          }}
+        >
+          +
+        </button>
+        <button
+          className="icon"
           title={t('Refresh')}
           disabled={key === null}
           onClick={() => {
@@ -223,7 +235,7 @@ export function DBPanel(): React.JSX.Element {
       <div className="git-body">
         {!loaded && loading && <div className="panel-hint">{t('loading…')}</div>}
         {loaded && connections.length === 0 && (
-          <div className="panel-hint">{t('No connections yet — add one via the + button in the projects panel')}</div>
+          <div className="panel-hint">{t('No connections yet — add one with the + button above')}</div>
         )}
         {connections.map((connection) => (
           <ConnectionNode key={connection.id} connection={connection} />

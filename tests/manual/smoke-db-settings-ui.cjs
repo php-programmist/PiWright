@@ -1,6 +1,6 @@
-/* UI smoke DB settings per project: sidebar "+" (DB icon) opens a per-project Databases tab,
- * connections stored in settings.projectDbConnections[projectKey], isolation between projects,
- * secrets kept out of settings.json, Settings modal no longer has a Databases screen.
+/* UI smoke DB settings per project: "+" on the Databases side panel opens a per-project Databases tab
+ * with the add-connection form, connections stored in settings.projectDbConnections[projectKey],
+ * isolation between projects, secrets kept out of settings.json, Settings modal has no Databases screen.
  * Run: node tests/manual/smoke-db-settings-ui.cjs  (expects smoke instance on 9223) */
 const { chromium } = require('playwright-core')
 const fs = require('node:fs')
@@ -66,9 +66,21 @@ async function main() {
     if (!ok) throw new Error(`input not found: ${list.join('/')}`)
     await page.waitForTimeout(150)
   }
-  const openDbTabViaSidebar = async () => {
-    const ok = await clickTitle(['Databases', 'Базы данных'])
-    if (!ok) throw new Error('sidebar DB button not found')
+  const openDbTabViaPanel = async () => {
+    const panelOpen = await page.evaluate(() => document.querySelector('.db-panel') !== null)
+    if (!panelOpen) {
+      await page.click('[data-testid="db-toggle"]')
+      await page.waitForSelector('.db-panel', { timeout: 5000 })
+    }
+    const ok = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('.db-panel .git-head button')].find(
+        (b) => b.title === 'Add connection' || b.title === 'Добавить подключение'
+      )
+      if (!btn) return false
+      btn.click()
+      return true
+    })
+    if (!ok) throw new Error('db panel + button not found')
     await page.waitForSelector('.db-settings-tab', { timeout: 5000 })
   }
   const clickProject = async (dirPart) => {
@@ -104,9 +116,16 @@ async function main() {
   await page.waitForSelector('.sessions-panel', { timeout: 30000 })
   await page.waitForTimeout(500)
 
-  // 1. Sidebar header has the DB icon; click opens the per-project Databases tab.
-  check('sidebar DB button exists', await clickTitle(['Databases', 'Базы данных']))
-  await page.waitForSelector('.db-settings-tab', { timeout: 5000 })
+  // 1. Databases panel header has the "+" button; click opens the per-project tab with the add form.
+  let dbTabOpened = true
+  try {
+    await openDbTabViaPanel()
+  } catch {
+    dbTabOpened = false
+  }
+  check('db panel + opens Databases tab', dbTabOpened)
+  const addFormOpen = await page.evaluate(() => document.querySelector('.db-settings-tab .ssh-edit') !== null)
+  check('+ opens add-connection form', addFormOpen)
   const tabLabel = await page.evaluate(() => {
     const tabs = [...document.querySelectorAll('.tab-bar .tab, .tabs .tab')]
     return tabs.map((t) => t.textContent?.trim() ?? '').join('|')
@@ -207,7 +226,7 @@ async function main() {
 
   // 8. Per-project isolation: switch to the other project -> its Databases tab is empty.
   await clickProject('smoke-db-other')
-  await openDbTabViaSidebar()
+  await openDbTabViaPanel()
   const otherRows = await page.evaluate(() => document.querySelectorAll('.db-settings-tab .ssh-server-row').length)
   check('other project has no connections', otherRows === 0, String(otherRows))
   const otherState = await page.evaluate(async (otherKey) => {
@@ -218,7 +237,7 @@ async function main() {
 
   // 9. Switch back: connection is still there (per-project storage, not global).
   await clickProject('smoke-db-proj')
-  await openDbTabViaSidebar()
+  await openDbTabViaPanel()
   await page.waitForSelector('.db-settings-tab .ssh-server-row', { timeout: 5000 })
   const backRows = await page.evaluate(() => document.querySelectorAll('.db-settings-tab .ssh-server-row').length)
   check('first project still has its connection', backRows === 1, String(backRows))

@@ -34,6 +34,10 @@ interface DbState {
   /** История запросов консоли per connectionId (в памяти, не персистится, новые сверху). */
   queryHistory: Record<string, string[]>
   pushQueryHistory: (connectionId: string, sql: string) => void
+  /** Кнопка «+» панели БД просит открыть форму нового подключения во вкладке db-settings. */
+  addEditorPending: boolean
+  requestAddEditor: () => void
+  clearAddEditor: () => void
   /** Загрузить подключения проекта (повторный вызов с тем же ключом — no-op). */
   load: (projectKey: string) => Promise<void>
   /** Перечитать подключения проекта и сбросить кэши схем/таблиц; раскрытые узлы перезагружаются. */
@@ -88,6 +92,10 @@ export const useDbStore = create<DbState>((set, get) => ({
       queryHistory: { ...state.queryHistory, [connectionId]: [sql, ...state.queryHistory[connectionId]?.filter((q) => q !== sql) ?? []].slice(0, 50) }
     }))
   },
+
+  addEditorPending: false,
+  requestAddEditor: () => set({ addEditorPending: true }),
+  clearAddEditor: () => set({ addEditorPending: false }),
 
   load: async (projectKey) => {
     if (get().connectionsProjectKey === projectKey && (get().connectionsLoaded || get().connectionsLoading)) return

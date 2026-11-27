@@ -252,7 +252,7 @@ const RU: Record<string, string> = {
   'Pick a session to see its git status': 'Выберите сессию, чтобы увидеть её git-статус',
 
   // DB-панель
-  'No connections yet — add one via the + button in the projects panel': 'Пока нет подключений — добавьте через кнопку «+» в шапке панели проектов',
+  'No connections yet — add one with the + button above': 'Пока нет подключений — добавьте через кнопку «+» выше',
   'no schemas': 'нет схем',
   'no tables': 'нет таблиц',
   'Show schema in the tree': 'Показывать схему в дереве',
