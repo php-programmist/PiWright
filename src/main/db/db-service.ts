@@ -2,6 +2,7 @@
  *  драйверы pg/mysql2 за узким интерфейсом DbDriver, SSH-туннели через SshService.forwardOut.
  *  Секреты — DbSecretsStore (не settings.json). Все публичные методы — *Result-формы. */
 import type { Duplex } from 'node:stream'
+import { Socket } from 'node:net'
 import pg from 'pg'
 import { createConnection, type Connection as MysqlConnection, type ConnectionOptions as MysqlConnectionOptions } from 'mysql2/promise'
 import type {
@@ -33,17 +34,27 @@ const COUNT_TIMEOUT_MS = 3000
  *  не эмитит — без эмуляции соединение виснет навсегда). 'connect' отдаётся первому
  *  подписчику через микротаску: подписка всегда происходит при создании клиента, канал
  *  к этому моменту уже установлен. destroy(err) у Channel глотает ошибку — оборачиваем,
- *  чтобы таймаут pg дошёл до клиента как 'error'. */
+ *  чтобы таймаут pg дошёл до клиента как 'error'.
+ *  Реальный net.Socket не адаптируется: он сам эмитит 'connect', а перехват сломал бы
+ *  внутреннюю отложенную запись Node (once('connect') на запись до коннекта). */
 export function preparePgTunnelStream(stream: Duplex): Duplex {
+  if (stream instanceof Socket) return stream
   const s = stream as Duplex & {
     setNoDelay?: () => void
     connect?: (...args: unknown[]) => void
+    ref?: () => void
+    unref?: () => void
     destroy: (err?: Error) => unknown
     on: (ev: string | symbol, listener: (...args: never[]) => void) => unknown
     once: (ev: string | symbol, listener: (...args: never[]) => void) => unknown
   }
   if (typeof s.setNoDelay !== 'function') s.setNoDelay = () => {}
   if (typeof s.connect !== 'function') s.connect = () => {}
+  // pg-pool при возврате idle-клиента в работу дёргает client.ref() → stream.ref() — у канала
+  // их нет, и TypeError внутри _pulseQueue оставляет вынутый из idle клиент без колбэка:
+  // пул навсегда «полон», все дальнейшие запросы падают с «timeout exceeded when trying to connect».
+  if (typeof s.ref !== 'function') s.ref = () => {}
+  if (typeof s.unref !== 'function') s.unref = () => {}
   const originalDestroy = s.destroy.bind(s)
   s.destroy = (err?: Error) => {
     const result = originalDestroy()
@@ -117,6 +128,15 @@ function rowsToArrays(rows: Record<string, unknown>[], columns: string[]): unkno
   return rows.map((row) => columns.map((column) => row[column] ?? null))
 }
 
+/** Серверная ошибка SQL (pg — 5-значный code вроде 42601, mysql2 — число errno + sqlState):
+ *  соединение живо, драйвер вымывать не нужно. Остальное (обрыв, таймаут, refused) — connection-level. */
+function isServerSideError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  if (typeof code === 'string' && /^\d{5}$/.test(code)) return true
+  const e = err as { errno?: unknown; sqlState?: unknown } | null
+  return typeof e?.errno === 'number' && typeof e?.sqlState === 'string'
+}
+
 async function countWithTimeout(query: () => Promise<number>): Promise<number | null> {
   const work = query().catch(() => null)
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -133,9 +153,14 @@ export class PgDriver implements DbDriver {
   readonly kind = 'postgres' as const
   private readonly pool: pg.Pool
 
-  constructor(config: pg.ClientConfig, socket: Duplex | null = null) {
+  constructor(config: pg.PoolConfig, socket: Duplex | null = null) {
     const poolConfig: pg.PoolConfig = { ...config, max: socket !== null ? 1 : 4 }
-    if (socket !== null) (poolConfig as Record<string, unknown>)['stream'] = preparePgTunnelStream(socket)
+    if (socket !== null) {
+      // Единственный клиент владеет общим туннельным каналом: idle-таймаут пула (дефолт 10с)
+      // вызвал бы client.end() и закрыл канал — следующий запрос зависал на мёртвом стриме.
+      poolConfig.idleTimeoutMillis = 0
+      ;(poolConfig as Record<string, unknown>)['stream'] = preparePgTunnelStream(socket)
+    }
     this.pool = new pg.Pool(poolConfig)
     // Ошибка idle-клиента не должна ронять процесс — соединение вымется из пула само.
     this.pool.on('error', () => {})
@@ -411,6 +436,19 @@ export class DbService {
     return created
   }
 
+  /** Вымыть кэшированный драйвер при сбое соединения (умер канал, отравлен пул) — close без ожидания,
+   *  следующий запрос откроет свежий драйвер и новый туннельный канал. */
+  private evictDriver(connectionId: string): void {
+    const pending = this.drivers.get(connectionId)
+    if (pending === undefined) return
+    this.drivers.delete(connectionId)
+    pending
+      .then((driver) => driver.close())
+      .catch(() => {
+        // драйвер мог упасть ещё при открытии
+      })
+  }
+
   async test(entry: DbConnectionEntry, draft?: DbSecretInput | null): Promise<DbTestResult> {
     let driver: DbDriver | null = null
     try {
@@ -434,6 +472,7 @@ export class DbService {
       const driver = await this.driverFor(this.entry(connectionId), null)
       return { ok: true, error: null, schemas: await driver.listSchemas() }
     } catch (err) {
+      if (!isServerSideError(err)) this.evictDriver(connectionId)
       return { ok: false, error: errorMessage(err), schemas: [] }
     }
   }
@@ -443,6 +482,7 @@ export class DbService {
       const driver = await this.driverFor(this.entry(connectionId), null)
       return { ok: true, error: null, tables: await driver.listTables(schema) }
     } catch (err) {
+      if (!isServerSideError(err)) this.evictDriver(connectionId)
       return { ok: false, error: errorMessage(err), tables: [] }
     }
   }
@@ -458,6 +498,7 @@ export class DbService {
       })
       return { ok: true, error: null, columns: result.columns, rows: result.rows, total: result.total }
     } catch (err) {
+      if (!isServerSideError(err)) this.evictDriver(input.connectionId)
       return { ok: false, error: errorMessage(err), columns: [], rows: [], total: null }
     }
   }
@@ -467,6 +508,7 @@ export class DbService {
       const driver = await this.driverFor(this.entry(connectionId), null)
       return { ok: true, error: null, ...(await driver.query(sql)) }
     } catch (err) {
+      if (!isServerSideError(err)) this.evictDriver(connectionId)
       return { ok: false, error: errorMessage(err), columns: [], rows: [], rowsAffected: null, isSelect: false }
     }
   }

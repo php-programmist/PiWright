@@ -60,7 +60,8 @@ export interface DbConnectionEntry {
   authType: DbAuthType
   /** Не задан/undefined — прямое соединение. */
   ssh?: DbSshTunnel | null
-  /** Схемы, выбранные чекбоксами в дереве (пусто/undefined — все). */
+  /** Выбранные схемы: undefined — все; непустой массив — только они; пустой массив — ни одной
+   *  (панель показывает подключение с подсказкой). */
   selectedSchemas?: string[]
 }
 

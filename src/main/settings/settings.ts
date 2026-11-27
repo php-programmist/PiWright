@@ -319,8 +319,9 @@ export function mergeDbConnections(value: unknown): DbConnectionEntry[] {
     if (ssh !== null) entry.ssh = ssh
     const selected = raw['selectedSchemas']
     if (Array.isArray(selected)) {
+      // Пустой массив валиден — «ни одной схемы» (панель скрывает все); отсутствует/undefined — все схемы.
       const schemas = selected.filter((s): s is string => typeof s === 'string' && s.length > 0 && s.length <= 64).slice(0, 50)
-      if (schemas.length > 0) entry.selectedSchemas = schemas
+      entry.selectedSchemas = schemas
     }
     seen.add(id)
     out.push(entry)
