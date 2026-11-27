@@ -25,8 +25,9 @@ const RU: Record<string, string> = {
   'PiWright updated to {version}': 'PiWright обновлён до {version}',
   'Click the version to see what changed': 'Нажмите на версию, чтобы посмотреть историю изменений',
   'Update available to version {version}': 'Доступно обновление до версии {version}',
-  'Download and install': 'Скачать и установить',
+  'Download': 'Скачать',
   'Downloading…': 'Скачивание…',
+  'Restart to update': 'Перезапустить, чтобы обновить',
   "Don't suggest this version": 'Не предлагать эту версию',
   'Hide until the next version is released': 'Скрыть до выхода следующей версии',
   'Failed to load changelog': 'Не удалось загрузить историю изменений',
@@ -599,6 +600,7 @@ const RU: Record<string, string> = {
 
   // Субагенты (транскрипт)
   'Back to parent session': '← назад к родителю',
+  'Open in chat': 'Открыть в чате',
   'Subagent sessions': 'Сессии субагентов',
   'Subagents': 'Субагенты',
   'Transcript failed to load': 'Не удалось загрузить транскрипт',

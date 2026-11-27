@@ -173,11 +173,12 @@ describe('sound upload (web mode)', () => {
 })
 
 describe('updater guards in node host (electron undefined)', () => {
-  it('download/emit are no-ops without electron app', async () => {
+  it('download/install/emit are no-ops without electron app', async () => {
     updater.app = undefined
     const mod = await import('../src/main/updater')
     expect(mod.getUpdateStatus()).toEqual({ availableVersion: null, phase: 'idle' })
     expect(mod.downloadUpdate()).toEqual({ availableVersion: null, phase: 'idle' })
+    expect(mod.installUpdate()).toEqual({ availableVersion: null, phase: 'idle' })
     expect(mod.emitDevUpdate('1.2.3', { get: () => ({ dismissedUpdateVersion: null }) } as never)).toEqual({
       availableVersion: null,
       phase: 'idle'

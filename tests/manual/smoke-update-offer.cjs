@@ -34,11 +34,28 @@ async function main() {
   const text = await page.locator('.update-offer-text').innerText()
   check('banner text has version', /9\.9\.9/.test(text))
 
-  // 2. Кнопки
+  // 2. Кнопки: двухшаговый флоу — «Download», затем (после загрузки) «Restart to update»
   const install = page.locator('.update-offer-install')
   const dismiss = page.locator('.update-offer-dismiss')
-  check('install button', (await install.innerText()) === 'Download and install' && await install.isEnabled())
+  check('download button', (await install.innerText()) === 'Download' && await install.isEnabled())
   check('dismiss button', (await dismiss.innerText()) === "Don't suggest this version" && await dismiss.isEnabled())
+
+  // 2a. Клик Download в dev ничего не скачивает (не packaged) — кнопка остаётся «Download»
+  await install.click()
+  await page.waitForTimeout(300)
+  check('dev download is no-op', (await install.innerText()) === 'Download' && await install.isEnabled())
+
+  // 2b. Эмуляция завершённой загрузки → кнопка «Restart to update»
+  const stD = await page.evaluate(() => window.piwright.updateDevEmit('9.9.9', 'downloaded'))
+  check('downloaded phase pushed', stD.phase === 'downloaded')
+  await page.waitForFunction(() => document.querySelector('.update-offer-install')?.textContent === 'Restart to update', { timeout: 10000 })
+  check('restart button shown', true)
+  await page.locator('.update-offer-install').click()
+  await page.waitForTimeout(300)
+  check('dev install is no-op (window alive)', (await page.locator('.update-offer-install').innerText()) === 'Restart to update')
+  await page.evaluate(() => window.piwright.updateDevEmit('9.9.9'))
+  await page.waitForFunction(() => document.querySelector('.update-offer-install')?.textContent === 'Download', { timeout: 10000 })
+  check('back to download phase', true)
 
   // 3. Layout: баннер в пределах окна, текст не обрезан, не наезжает на версию
   const vp = await page.evaluate(() => ({ w: document.documentElement.clientWidth, h: document.documentElement.clientHeight }))

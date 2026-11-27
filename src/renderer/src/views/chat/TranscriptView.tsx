@@ -5,7 +5,8 @@ import { EntryView } from './ChatView'
 import { useFeedWindow } from './useFeedWindow'
 import { transcriptEntries } from '../../stores/chat'
 import type { Entry } from '../../stores/chat'
-import { tabId, useTabsStore } from '../../stores/tabs'
+import { tabId, useTabsStore, parentTabKey } from '../../stores/tabs'
+import { useSessionsStore } from '../../stores/sessions'
 import { useLang, useT } from '../../lib/i18n'
 import type { ProjectEntry, SessionSummary } from '../../../../shared/ipc-contracts'
 
@@ -16,6 +17,16 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
   const lang = useLang()
   const closeTranscript = (): void => {
     useTabsStore.getState().closeTab(project, tabId({ kind: 'transcript', path: summary.path }))
+  }
+  const openChat = async (): Promise<void> => {
+    const result = await window.piwright.openSession(project, summary.path)
+    if (!result.ok) {
+      if (result.error !== null) window.alert(result.error)
+      return
+    }
+    useTabsStore.getState().setActiveProject(parentTabKey(project))
+    useTabsStore.getState().activateSession(project)
+    useSessionsStore.getState().setActive(result.hostId)
   }
   const [entries, setEntries] = useState<Entry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -51,6 +62,11 @@ export function TranscriptView({ project, summary }: { project: ProjectEntry; su
     <>
       <header className="header">
         <button className="icon" title={t('Back to parent session')} onClick={closeTranscript}>←</button>
+        <button className="icon" title={t('Open in chat')} onClick={() => void openChat()}>
+          <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 4.5v15l13-7.5z" fill="currentColor" />
+          </svg>
+        </button>
         <span className="state">{summary.title}</span>
         <span className="ext-status">
           {new Date(summary.lastActivityEpochMs).toLocaleString(lang === 'ru' ? 'ru-RU' : 'en-US', {
