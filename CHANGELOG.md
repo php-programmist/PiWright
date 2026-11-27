@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.1 (2026-11-27)
+
+### Fix
+- Linux AppImage failed to start on most distributions: node-pty was compiled against glibc 2.42 on the CI runner, now the Linux release build is pinned to ubuntu-24.04 (glibc 2.39 baseline) (44dec74)
+
 ## v0.6.0 (2026-11-26)
 
 ### Added
