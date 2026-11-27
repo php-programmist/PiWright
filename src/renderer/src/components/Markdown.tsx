@@ -42,10 +42,17 @@ function CheckIcon(): React.JSX.Element {
   )
 }
 
+/** Готовый html подсветки: remount CodeBlock (правка блока, возврат на вкладку)
+ *  восстанавливает его мгновенно, без вспышки plain до ответа Shiki. */
+const codeHtmlCache = new Map<string, string>()
+const CODE_HTML_CACHE_MAX = 300
+
 function CodeBlock({ code, language }: { code: string; language: string | null }): React.JSX.Element {
   const theme = useSessionsStore((s) => s.settings?.theme ?? 'dark')
   const t = useT()
-  const [html, setHtml] = useState<string | null>(null)
+  const [html, setHtml] = useState<string | null>(
+    () => codeHtmlCache.get(`${theme}\u0000${language ?? ''}\u0000${code}`) ?? null
+  )
   const [copied, setCopied] = useState(false)
 
   const copy = (): void => {
@@ -57,9 +64,15 @@ function CodeBlock({ code, language }: { code: string; language: string | null }
 
   useEffect(() => {
     let cancelled = false
+    const cacheKey = `${theme}\u0000${language ?? ''}\u0000${code}`
     highlightCode(code, shikiLanguage(language), theme)
       .then((result) => {
-        if (!cancelled) setHtml(result)
+        if (cancelled) return
+        if (result !== null) {
+          if (codeHtmlCache.size >= CODE_HTML_CACHE_MAX) codeHtmlCache.clear()
+          codeHtmlCache.set(cacheKey, result)
+        }
+        setHtml(result)
       })
     return () => {
       cancelled = true
@@ -104,6 +117,16 @@ interface MarkdownProps {
 /** У input-ноды GFM нет position, строку берём из li.task-list-item. */
 const CheckboxLineContext = createContext<number | undefined>(undefined)
 
+/** Env markdown-рендера через контекст: типы компонентов react-markdown обязаны быть
+ *  модульными константами — новая функция в components при каждом рендере remountит
+ *  поддерево, CodeBlock теряет готовый html и блок мигает plain→highlighted. */
+interface MarkdownEnv {
+  project?: ProjectEntry | null
+  imageBase?: string
+  onToggleCheckbox?: (line: number) => void
+}
+const MarkdownEnvContext = createContext<MarkdownEnv>({})
+
 interface HastNodeProp {
   node?: {
     position?: { start?: { line?: number } }
@@ -114,10 +137,10 @@ interface HastNodeProp {
 /** Чекбокс GFM-задачи: отдельный компонент, чтобы useContext звать в теле компонента, а не в render-prop. */
 function TaskCheckbox({
   checked,
-  onToggleCheckbox,
   ...rest
-}: React.JSX.IntrinsicElements['input'] & HastNodeProp & { onToggleCheckbox?: (line: number) => void }): React.JSX.Element {
+}: React.JSX.IntrinsicElements['input'] & HastNodeProp): React.JSX.Element {
   const line = useContext(CheckboxLineContext)
+  const onToggleCheckbox = useContext(MarkdownEnvContext).onToggleCheckbox
   const canToggle = onToggleCheckbox !== undefined && typeof line === 'number'
   return (
     <input
@@ -168,17 +191,17 @@ interface MdImageProps extends HastNodeProp {
   src?: string
   alt?: string
   title?: string
-  project: ProjectEntry | null
-  imageBase: string
 }
 
 /** Картинка в markdown: путь файла проекта (относительный — от каталога md-файла)
  *  грузится через filesReadImage как data URL; data:/http(s) — как есть.
  *  Клик — просмотр в Lightbox. */
-function MdImage({ src, alt, title, project: projectProp, imageBase }: MdImageProps): React.JSX.Element {
+function MdImage({ src, alt, title }: MdImageProps): React.JSX.Element {
+  const env = useContext(MarkdownEnvContext)
   const activeHostId = useSessionsStore((s) => s.activeHostId)
   const storeProject = useSessionsStore((s) => s.active.find((r) => r.hostId === activeHostId)?.project ?? null)
-  const project = projectProp !== undefined ? projectProp : storeProject
+  const project = env.project !== undefined ? env.project : storeProject
+  const imageBase = env.imageBase ?? ''
   const resolved = src !== undefined && project !== null ? resolveMarkdownImage(project.dir, imageBase, src) : null
   const cacheKey = resolved !== null && project !== null ? `${project.kind}\u0000${project.dir}\u0000${resolved}` : null
   const [state, setState] = useState<{ status: 'loading' | 'ok' | 'error'; url: string }>(() =>
@@ -233,6 +256,39 @@ function MdImage({ src, alt, title, project: projectProp, imageBase }: MdImagePr
   )
 }
 
+function MdPre({ children }: { children?: React.ReactNode }): React.JSX.Element {
+  const extracted = extractCode(children)
+  if (extracted !== null) {
+    return <CodeBlock key={`${extracted.language}:${extracted.code}`} code={extracted.code} language={extracted.language} />
+  }
+  return <pre>{children}</pre>
+}
+
+function MdLi({ node, children, ...rest }: React.JSX.IntrinsicElements['li'] & HastNodeProp): React.JSX.Element {
+  const className = node?.properties?.className
+  const isTask = Array.isArray(className) && className.includes('task-list-item')
+  const line = node?.position?.start?.line
+  if (!isTask || typeof line !== 'number') return <li {...rest}>{children}</li>
+  return (
+    <li {...rest}>
+      <CheckboxLineContext.Provider value={line}>{children}</CheckboxLineContext.Provider>
+    </li>
+  )
+}
+
+function MdInput(props: React.JSX.IntrinsicElements['input'] & HastNodeProp): React.JSX.Element {
+  return <TaskCheckbox {...props} />
+}
+
+const MD_PLUGINS = [remarkGfm]
+const MD_COMPONENTS = {
+  pre: MdPre,
+  li: MdLi,
+  input: MdInput,
+  a: MdLink,
+  img: MdImage
+}
+
 /** Markdown ассистента: GFM, fenced-блоки — через Shiki. */
 export function Markdown({
   text,
@@ -242,38 +298,9 @@ export function Markdown({
 }: MarkdownProps & { project?: ProjectEntry | null; imageBase?: string }): React.JSX.Element {
   return (
     <div className="markdown">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          pre: ({ children }) => {
-            const extracted = extractCode(children)
-            if (extracted !== null) {
-              return <CodeBlock key={`${extracted.language}:${extracted.code}`} code={extracted.code} language={extracted.language} />
-            }
-            return <pre>{children}</pre>
-          },
-          li: ({ node, children, ...rest }: React.JSX.IntrinsicElements['li'] & HastNodeProp) => {
-            const className = node?.properties?.className
-            const isTask = Array.isArray(className) && className.includes('task-list-item')
-            const line = node?.position?.start?.line
-            if (!isTask || typeof line !== 'number') return <li {...rest}>{children}</li>
-            return (
-              <li {...rest}>
-                <CheckboxLineContext.Provider value={line}>{children}</CheckboxLineContext.Provider>
-              </li>
-            )
-          },
-          input: (props: React.JSX.IntrinsicElements['input'] & HastNodeProp) => (
-            <TaskCheckbox {...props} onToggleCheckbox={onToggleCheckbox} />
-          ),
-          a: (props: React.JSX.IntrinsicElements['a']) => <MdLink {...props} />,
-          img: (props: React.JSX.IntrinsicElements['img'] & HastNodeProp) => (
-            <MdImage {...props} project={project ?? null} imageBase={imageBase} />
-          )
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+      <MarkdownEnvContext.Provider value={{ project, imageBase, onToggleCheckbox }}>
+        <ReactMarkdown remarkPlugins={MD_PLUGINS} components={MD_COMPONENTS}>{text}</ReactMarkdown>
+      </MarkdownEnvContext.Provider>
     </div>
   )
 }
