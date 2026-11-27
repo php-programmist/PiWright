@@ -166,3 +166,22 @@
 - Branch list no longer disappears when opening submenu (`f5eb44f`)
 - Renaming edits the clicked session, not the active one (`9977dea`)
 - `realpathSync.native` for 8.3 short paths in tests (`9c7ef15`)
+
+## v0.1.1 (2026-11-21)
+
+### Added
+- Chat with the pi agent: markdown rendering with thinking and tool blocks (collapsible, nested, single-line mode), image paste and file attachments, todo widget panel, LSP status chips, context-percentage indicator with cache tooltip, sticky scroll, hide-tools toggle, theme and chat font size settings, soft-wrap (db336c0, 5264c48, 359b7ad, 553ab36)
+- Sessions panel: live status dots (pulsing blue while streaming, yellow when an answer is needed), session rename, history restore on close and delete from disk, LLM-generated 2–3 word session titles (e473b40, 249524c, 3c0c5d8, 06cd066)
+- Model and thinking-level pickers available before the first prompt; Steer button and prompt queue panel with per-item remove (c85d92e, 5769651)
+- Backends: native Windows and WSL with per-backend pi paths; settings screen with General/Models tabs and autosave (7adc337, a87c1a1)
+- Git panel: backend-side git CLI, Monaco diff overlay, AI commit message generation, branch select and create (12070af, 553ab36)
+- File browser: lazy tree panel, tabbed Monaco viewer and editor, live file watching, file links in tool blocks open tabs, file names colored by git status (4685f4e, 4ca43c2)
+- Obsidian-style live preview for markdown files with editing (f6dc95d)
+- Terminal: node-pty panel with xterm.js tabs, PowerShell/cmd/WSL profiles, bottom dock mode, tab rename with persistence (3fd1370, 9fac5a1, 8256a28)
+- Remote mode: control PiWright from a phone browser — full remote bridge, dialog answers synced between PC and phone, unread indicators, configurable port (c26339a, e8d2025, 2bcf132)
+- Notifications: sounds and Telegram notifications with a per-session toggle (c26339a, 8256a28)
+- MCP servers and Skills panels (c26339a)
+- Worktree sessions (2bcf132)
+- ask_question dialog with a note field (04f2dc7)
+- Localization: English and Russian UI (9fac5a1)
+- Packaging: NSIS installer, auto-update via the GitHub Releases feed, release CI workflow on tags, app icon, dark splash, window size and maximized state persistence (65b409b, 5c7aabe, 460c0d3, 583fd22, 7f56dd3, 93b4471, 6c7a84c)
