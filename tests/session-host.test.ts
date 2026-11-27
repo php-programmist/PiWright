@@ -1026,6 +1026,104 @@ it('resume from history keeps the persisted session name, not the first prompt',
     host.dispose()
   })
 
+  it('setModel restores the thinking level remembered for the new model', async () => {
+    let switched = false
+    let level = 'off'
+    const child = new ScriptedChild((type, fields) => {
+      if (type === 'get_state') return { ...handshakeData('C:\\proj\\.pi\\sessions\\d.jsonl'), thinkingLevel: level }
+      if (type === 'get_available_models') {
+        return {
+          models: [
+            { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+            { provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] }
+          ]
+        }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: switched ? ['off', 'low', 'high'] : ['off', 'low'] }
+      if (type === 'set_model') {
+        switched = true
+        return null
+      }
+      if (type === 'set_thinking_level') {
+        level = String(fields['level'])
+        return null
+      }
+      return null
+    })
+    currentChild = child
+    const settings = { ...SETTINGS, thinkingLevelByModel: { 'p/m2': 'high' } }
+    const { host, statuses } = makeHost([child], settings)
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'ready')).toBe(true)
+    })
+    const result = await host.setModel('p/m2')
+    expect(result.ok).toBe(true)
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.model === 'p/m2' && s.thinkingLevel === 'high')).toBe(true)
+    })
+    expect(child.sent.some((c) => c['type'] === 'set_thinking_level' && c['level'] === 'high')).toBe(true)
+    host.dispose()
+  })
+
+  it('setModel keeps the clamped level when nothing is remembered for the new model', async () => {
+    let switched = false
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\e.jsonl')
+      if (type === 'get_available_models') {
+        return {
+          models: [
+            { provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] },
+            { provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] }
+          ]
+        }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: switched ? ['off', 'low', 'high'] : ['off', 'low'] }
+      if (type === 'set_model') {
+        switched = true
+        return null
+      }
+      return null
+    })
+    currentChild = child
+    const { host, statuses } = makeHost([child], SETTINGS)
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'ready')).toBe(true)
+    })
+    const result = await host.setModel('p/m2')
+    expect(result.ok).toBe(true)
+    expect(child.sent.some((c) => c['type'] === 'set_thinking_level')).toBe(false)
+    host.dispose()
+  })
+
+  it('setThinkingLevel reports the chosen level for the current model', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\f.jsonl')
+      if (type === 'get_available_models') {
+        return { models: [{ provider: 'p', id: 'm', name: 'm', contextWindow: 1000, reasoning: true, input: ['text'] }] }
+      }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'low'] }
+      return null
+    })
+    currentChild = child
+    const chosen: Array<[string, string]> = []
+    const { host, statuses } = makeHost([child], SETTINGS, {
+      onThinkingLevelChosen: (modelKey, level) => chosen.push([modelKey, level])
+    })
+    await host.prompt('go')
+    await vi.waitFor(() => {
+      expect(statuses.some((s) => s.state === 'ready')).toBe(true)
+    })
+    const result = await host.setThinkingLevel('low')
+    expect(result.ok).toBe(true)
+    expect(chosen).toContainEqual(['p/m', 'low'])
+    host.dispose()
+  })
+
   it('prompt with behavior sends steer/follow_up during the turn and prompt when idle', async () => {
     const child = new ScriptedChild((type) => {
       if (type === 'get_state') return handshakeData('C:\\proj\\.pi\\sessions\\a.jsonl')

@@ -41,7 +41,10 @@ function scriptedChild(sessionFile: string): ScriptedChild {
   })
 }
 
-function makePiHost(children: ScriptedChild[]): {
+function makePiHost(
+  children: ScriptedChild[],
+  persistThinkingLevels?: (byModel: Record<string, string>) => void
+): {
   piHost: PiHost
   events: PiEventMessage[]
   statuses: PiStatus[]
@@ -64,7 +67,12 @@ function makePiHost(children: ScriptedChild[]): {
       onEvent: (m) => events.push(m)
     },
     async () => created,
-    async () => []
+    async () => [],
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    persistThinkingLevels
   )
   return { piHost, events, statuses }
 }
@@ -235,6 +243,53 @@ describe('PiHost', () => {
     resumed.dispose()
     SETTINGS.lastModel = null
     SETTINGS.lastThinkingLevel = null
+  })
+
+  it('thinkingLevelByModel wins over lastThinkingLevel when seeding a new session', async () => {
+    const child = new ScriptedChild((type) => {
+      if (type === 'get_state') {
+        return {
+          sessionId: 's-1',
+          sessionFile: 'C:\\proj\\seed.jsonl',
+          model: { provider: 'p', id: 'm2', name: 'm2', contextWindow: 1000, reasoning: true, input: ['text'] },
+          thinkingLevel: 'off',
+          autoCompactionEnabled: false
+        }
+      }
+      if (type === 'get_available_models') return { models: [] }
+      if (type === 'get_commands') return { commands: [] }
+      if (type === 'get_available_thinking_levels') return { levels: ['off', 'high'] }
+      return null
+    })
+    currentChild = child
+    SETTINGS.lastModel = 'p/m2'
+    SETTINGS.lastThinkingLevel = 'low'
+    SETTINGS.thinkingLevelByModel = { 'p/m2': 'high' }
+    const { piHost } = makePiHost([child])
+    const fresh = piHost.create(PROJECT)
+    expect(fresh.lastStatus()?.thinkingLevel).toBe('high')
+    fresh.dispose()
+    SETTINGS.lastModel = null
+    SETTINGS.lastThinkingLevel = null
+    SETTINGS.thinkingLevelByModel = {}
+  })
+
+  it('thinking level choice is persisted per model via persistThinkingLevels', async () => {
+    const child = scriptedChild('C:\\proj\\persist.jsonl')
+    currentChild = child
+    let persisted: Record<string, string> | null = null
+    const { piHost } = makePiHost([child], (byModel) => {
+      persisted = byModel
+    })
+    const host = piHost.create(PROJECT)
+    await host.prompt('ping')
+    await vi.waitFor(() => {
+      expect(child.sent.some((c) => c['type'] === 'set_model' || c['type'] === 'prompt')).toBe(true)
+    })
+    const result = await host.setThinkingLevel('low')
+    expect(result.ok).toBe(true)
+    expect(persisted).toEqual({ 'p/m': 'low' })
+    host.dispose()
   })
 
   it('createFork: new host inherits parent session file, name gets (fork), events carry new hostId', async () => {

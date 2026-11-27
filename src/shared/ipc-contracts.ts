@@ -140,6 +140,9 @@ export interface Settings {
   lastModel: string | null
   /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
   lastThinkingLevel: string | null
+  /** Запомненный уровень thinking по модели (ключ provider/id) — при переключении модели
+   *  восстанавливается уровень, ранее выбранный для неё; пишет только main. */
+  thinkingLevelByModel: Record<string, string>
   projects: ProjectEntry[]
   /** Подключения БД на проект (ключ projectKey; секреты — в db-secrets.json). */
   projectDbConnections: Record<string, DbConnectionEntry[]>

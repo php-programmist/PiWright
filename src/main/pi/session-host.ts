@@ -128,6 +128,8 @@ export interface SessionHostOptions {
   /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления.
    *  sessionKey — ключ ребёнка в демоне (null — локальный спавн); по нему чистятся отвязанные вкладки. */
   onSessionFile?: (sessionFile: string, sessionKey: string | null) => void
+  /** Пользователь выбрал уровень thinking для модели (ключ provider/id) — персист в настройки (thinkingLevelByModel). */
+  onThinkingLevelChosen?: (modelKey: string, level: string) => void
 }
 
 export class SessionHost {
@@ -186,6 +188,8 @@ export class SessionHost {
   /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — реестр вкладок восстановления.
    *  sessionKey — ключ ребёнка в демоне (null — локальный спавн); по нему чистятся отвязанные вкладки. */
   private readonly onSessionFile: ((sessionFile: string, sessionKey: string | null) => void) | null
+  /** Персист выбранного уровня thinking по модели (thinkingLevelByModel в настройках). */
+  private readonly onThinkingLevelChosen: ((modelKey: string, level: string) => void) | null
   private checkpointsMap = new Map<number, { sha: string; ts: number }>()
   private checkpointsLoaded: Promise<void> | null = null
   /** Слот следующего промпта (= число user-промптов активной ветки); null — не синхронизировано. */
@@ -209,6 +213,7 @@ export class SessionHost {
     this.forkSpec = opts.forkSpec
     this.checkpoints = opts.checkpoints ?? null
     this.onSessionFile = opts.onSessionFile ?? null
+    this.onThinkingLevelChosen = opts.onThinkingLevelChosen ?? null
     this.status('idle')
   }
 
@@ -894,6 +899,17 @@ export class SessionHost {
         if (this.translator !== null) this.translator.contextWindow = model.contextWindow
       }
       await this.refreshThinkingState()
+      // pi при смене модели клампит уровень — возвращаем уровень, ранее выбранный для этой модели.
+      const remembered = this.getSettings().thinkingLevelByModel?.[key]
+      if (
+        this.handshake !== null &&
+        typeof remembered === 'string' &&
+        remembered.length > 0 &&
+        this.handshake.thinkingLevels.includes(remembered) &&
+        this.handshake.thinkingLevel !== remembered
+      ) {
+        await this.setThinkingLevel(remembered)
+      }
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -905,6 +921,7 @@ export class SessionHost {
     this.desiredThinkingLevel = level
     const conn = this.conn
     if (conn === null || !conn.running) {
+      this.rememberThinkingLevel(level)
       this.status(this.lastState)
       return { ok: true, error: null }
     }
@@ -914,11 +931,18 @@ export class SessionHost {
         return { ok: false, error: `set_thinking_level failed: ${response.error ?? 'no details'}` }
       }
       if (this.handshake !== null) this.handshake = { ...this.handshake, thinkingLevel: level }
+      this.rememberThinkingLevel(level)
       await this.refreshThinkingState()
       return { ok: true, error: null }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  }
+
+  /** Запомнить выбор уровня thinking за текущей моделью (до подъёма процесса — за желаемой). */
+  private rememberThinkingLevel(level: string): void {
+    const key = this.handshake !== null ? modelKey(this.handshake.model) : this.desiredModel
+    if (key !== null) this.onThinkingLevelChosen?.(key, level)
   }
 
   /** Перечитать каталог моделей — после ручной правки models.json. pi держит каталог в памяти:

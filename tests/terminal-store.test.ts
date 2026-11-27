@@ -41,6 +41,7 @@ const baseSettings: Settings = {
   lastProjectKey: null,
   lastModel: null,
   lastThinkingLevel: null,
+  thinkingLevelByModel: {},
   notifications: {
     sounds: { completion: '', await: '', error: '' },
     telegram: { chatId: '', events: { turnEnd: true, permission: true, question: true, error: true, loopEnd: false } },

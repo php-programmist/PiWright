@@ -169,6 +169,10 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
     // Файл сессии итерации петли стал известен (хендшейк/форк) — обновить ключ персиста петли.
     (created, sessionFile) => {
       loopController?.noteSessionFile(created.id, sessionFile)
+    },
+    // Персист запомненных уровней thinking по моделям — восстановление при переключении модели.
+    (byModel) => {
+      settings.set({ thinkingLevelByModel: byModel })
     }
   )
   loopController = new LoopController(piHost, (hostId, event) => {

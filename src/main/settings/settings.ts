@@ -53,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: DEFAULT_NOTIFICATIONS,
   lastModel: null,
   lastThinkingLevel: null,
+  thinkingLevelByModel: {},
   projects: [],
   sshServers: [],
   projectDbConnections: {}
@@ -248,6 +249,17 @@ export function mergeSshServers(value: unknown): SshServerEntry[] {
   return out
 }
 
+/** thinkingLevelByModel из файла/settings:set: строковые ключи (provider/id) и непустые строковые уровни. */
+export function mergeThinkingLevelByModel(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key.length === 0 || typeof raw !== 'string' || raw.length === 0) continue
+    out[key] = raw
+  }
+  return out
+}
+
 /** Лимит подключений БД в настройках. */
 export const DB_CONNECTIONS_MAX = 20
 
@@ -412,6 +424,7 @@ export class SettingsService {
       merged.sessionToggles = mergeSessionToggles((raw as Partial<Settings>)['sessionToggles'])
       merged.loops = mergeLoops((raw as Partial<Settings>)['loops'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
+      merged.thinkingLevelByModel = mergeThinkingLevelByModel((raw as Partial<Settings>)['thinkingLevelByModel'])
       merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
       merged.projectDbConnections = mergeProjectDbConnections((raw as Partial<Settings>)['projectDbConnections'])
       // Глобальные dbConnections (до per-project) больше не поддерживаются — выбрасываем.

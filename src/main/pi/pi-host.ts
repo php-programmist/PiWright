@@ -34,7 +34,9 @@ export class PiHost {
     /** Восстановление тогглов сессии (telegram/shared) по файлу — при открытии существующей сессии. */
     private readonly restoreToggles?: (host: SessionHost, sessionFile: string) => void,
     /** Файл сессии стал известен/изменился (хендшейк новой сессии, fork) — подписка вне реестра вкладок. */
-    private readonly onSessionFileKnown?: (host: SessionHost, sessionFile: string) => void
+    private readonly onSessionFileKnown?: (host: SessionHost, sessionFile: string) => void,
+    /** Персист запомненных уровней thinking по моделям (settings.thinkingLevelByModel). */
+    private readonly persistThinkingLevels?: (byModel: Record<string, string>) => void
   ) {}
 
   /** Переопределение последнего выбора пользователя — петля копирует модель/уровень родителя. */
@@ -57,7 +59,18 @@ export class PiHost {
       seedThinkingLevels: seed?.thinkingLevels,
       // Возобновлённая сессия несёт свою модель/уровень в файле сессии — последний выбор только для новых.
       initialModel: sessionFile == null ? overrides?.model ?? settings.lastModel : null,
-      initialThinkingLevel: sessionFile == null ? overrides?.thinkingLevel ?? settings.lastThinkingLevel : null,
+      // Уровень — из явного override, затем из запомненного за этой моделью, затем глобальный последний.
+      initialThinkingLevel:
+        sessionFile == null
+          ? overrides?.thinkingLevel ??
+            settings.thinkingLevelByModel[overrides?.model ?? settings.lastModel ?? ''] ??
+            settings.lastThinkingLevel
+          : null,
+      onThinkingLevelChosen: (modelKey, level) => {
+        const byModel = this.getSettings().thinkingLevelByModel
+        if (byModel[modelKey] === level) return
+        this.persistThinkingLevels?.({ ...byModel, [modelKey]: level })
+      },
       onSessionFile: (file, sessionKey) => {
         if (sessionKey !== null) this.detachedTabs.delete(sessionKey)
         this.trackOpenTab(host.id, project, file)
