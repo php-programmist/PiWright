@@ -28,6 +28,42 @@ import type { DbSecretsStore } from './db-secrets'
 /** Таймаут count(*) — на больших таблицах дорог; по таймауту отдаём total = null (UI: «≥ N»). */
 const COUNT_TIMEOUT_MS = 3000
 
+/** Адаптация ssh2-канала (direct-tcpip) под ожидания pg: pg вызывает setNoDelay/connect
+ *  (у канала их нет) и шлёт startup только после события 'connect' на потоке (канал его
+ *  не эмитит — без эмуляции соединение виснет навсегда). 'connect' отдаётся первому
+ *  подписчику через микротаску: подписка всегда происходит при создании клиента, канал
+ *  к этому моменту уже установлен. destroy(err) у Channel глотает ошибку — оборачиваем,
+ *  чтобы таймаут pg дошёл до клиента как 'error'. */
+export function preparePgTunnelStream(stream: Duplex): Duplex {
+  const s = stream as Duplex & {
+    setNoDelay?: () => void
+    connect?: (...args: unknown[]) => void
+    destroy: (err?: Error) => unknown
+    on: (ev: string | symbol, listener: (...args: never[]) => void) => unknown
+    once: (ev: string | symbol, listener: (...args: never[]) => void) => unknown
+  }
+  if (typeof s.setNoDelay !== 'function') s.setNoDelay = () => {}
+  if (typeof s.connect !== 'function') s.connect = () => {}
+  const originalDestroy = s.destroy.bind(s)
+  s.destroy = (err?: Error) => {
+    const result = originalDestroy()
+    if (err !== undefined) s.emit('error', err)
+    return result
+  }
+  const hookConnect = (subscribe: (ev: string | symbol, listener: (...args: never[]) => void) => unknown) => {
+    return (ev: string | symbol, listener: (...args: never[]) => void): unknown => {
+      if (ev === 'connect') {
+        queueMicrotask(() => listener())
+        return s
+      }
+      return subscribe(ev, listener)
+    }
+  }
+  s.on = hookConnect(s.on.bind(s)) as typeof s.on
+  s.once = hookConnect(s.once.bind(s)) as typeof s.once
+  return s
+}
+
 export interface DbDriver {
   readonly kind: DbConnectionEntry['kind']
   version(): Promise<string>
@@ -91,14 +127,15 @@ async function countWithTimeout(query: () => Promise<number>): Promise<number | 
   return await Promise.race([work, timeout])
 }
 
-/** Драйвер PostgreSQL: пул pg поверх прямого сокета или SSH-туннеля (опция stream). */
+/** Драйвер PostgreSQL: пул pg поверх прямого сокета или SSH-туннеля (опция stream).
+ *  Туннельный канал один на драйвер — пул max 1, иначе клиенты смешают протокол в одном канале. */
 export class PgDriver implements DbDriver {
   readonly kind = 'postgres' as const
   private readonly pool: pg.Pool
 
   constructor(config: pg.ClientConfig, socket: Duplex | null = null) {
-    const poolConfig: pg.PoolConfig = { ...config, max: 4 }
-    if (socket !== null) (poolConfig as Record<string, unknown>)['stream'] = socket
+    const poolConfig: pg.PoolConfig = { ...config, max: socket !== null ? 1 : 4 }
+    if (socket !== null) (poolConfig as Record<string, unknown>)['stream'] = preparePgTunnelStream(socket)
     this.pool = new pg.Pool(poolConfig)
     // Ошибка idle-клиента не должна ронять процесс — соединение вымется из пула само.
     this.pool.on('error', () => {})

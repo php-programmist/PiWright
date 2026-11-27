@@ -6,10 +6,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { Duplex } from 'node:stream'
 import { Server as SshServer } from 'ssh2'
 import { SshService } from '../src/main/ssh/ssh-service'
 import { SshKnownHosts } from '../src/main/ssh/known-hosts'
 import { SshSecretsService } from '../src/main/ssh/secrets'
+import { preparePgTunnelStream } from '../src/main/db/db-service'
 import type { SshServerEntry } from '../src/shared/ipc-contracts'
 
 const USER = 'tester'
@@ -155,5 +157,48 @@ describe('SshService.forwardOut (in-process ssh2 server)', () => {
   it('bad credentials reject forwardOut (РґСЂСѓРіРѕР№ user вЂ” РґСЂСѓРіРѕР№ РєР»СЋС‡ РїСѓР»Р°, СЂРµР°Р»СЊРЅР°СЏ Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ)', async () => {
     const bad: SshServerEntry = { ...entry, user: 'wrong-user' }
     await expect(ssh.forwardOut(bad, '127.0.0.1', echoPort)).rejects.toThrow()
+  })
+
+  it('preparePgTunnelStream: pg-контракт поверх канала — setNoDelay/connect, эмуляция connect, данные ходят', async () => {
+    const raw = await ssh.forwardOut(entry, '127.0.0.1', echoPort)
+    const patched = preparePgTunnelStream(raw) as Duplex & { setNoDelay: () => void; connect: () => void }
+    expect(typeof patched.setNoDelay).toBe('function')
+    expect(typeof patched.connect).toBe('function')
+    const connected = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("pg 'connect' event not emitted")), 3000)
+      patched.once('connect', () => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+    const received = new Promise<string>((resolve, reject) => {
+      let text = ''
+      patched.on('data', (chunk: Buffer) => {
+        text += chunk.toString('utf8')
+        if (text.includes('startup-packet')) resolve(text)
+      })
+      patched.on('error', reject)
+    })
+    patched.write('startup-packet')
+    expect(await connected).toBeUndefined()
+    expect(await received).toContain('startup-packet')
+    patched.destroy()
+  })
+
+  it('preparePgTunnelStream: destroy(err) доносит ошибку (ssh2 Channel.destroy её глотает)', async () => {
+    const raw = await ssh.forwardOut(entry, '127.0.0.1', echoPort)
+    raw.on('data', () => {})
+    const patched = preparePgTunnelStream(raw)
+    patched.on('data', () => {})
+    const failure = new Error('timeout expired')
+    const errored = new Promise<Error>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('destroy(err) did not emit error')), 3000)
+      patched.once('error', (err: Error) => {
+        clearTimeout(timer)
+        resolve(err)
+      })
+    })
+    patched.destroy(failure)
+    expect(await errored).toBe(failure)
   })
 })

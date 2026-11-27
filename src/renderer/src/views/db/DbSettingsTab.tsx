@@ -121,13 +121,16 @@ function DbConnectionsEditor({
     const entry = draftEntry({ ...editing, id })
     entry.name = editing.name.trim() || entry.database
     setBusy(true)
-    const result = await window.piwright.dbConnectionSave(projectKey, entry, draftSecrets(editing))
-    setBusy(false)
-    if (result.ok) {
-      onChange(result.connections)
-      setEditing(null)
-    } else {
-      setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
+    try {
+      const result = await window.piwright.dbConnectionSave(projectKey, entry, draftSecrets(editing))
+      if (result.ok) {
+        onChange(result.connections)
+        setEditing(null)
+      } else {
+        setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -141,10 +144,15 @@ function DbConnectionsEditor({
     const id = draftConnection.id.length > 0 ? draftConnection.id : 'draft'
     setBusy(true)
     setTestResult(null)
-    const result = await window.piwright.dbConnectionTest(draftEntry(draftConnection), draftSecrets(draftConnection))
-    setBusy(false)
-    const text = result.ok ? `${t('Connected')} · ${result.serverVersion ?? ''}` : (result.error ?? t('Connection failed'))
-    setTestResult({ connectionId: id, ok: result.ok, text })
+    try {
+      const result = await window.piwright.dbConnectionTest(draftEntry(draftConnection), draftSecrets(draftConnection))
+      const text = result.ok ? `${t('Connected')} · ${result.serverVersion ?? ''}` : (result.error ?? t('Connection failed'))
+      setTestResult({ connectionId: id, ok: result.ok, text })
+    } catch (err) {
+      setTestResult({ connectionId: id, ok: false, text: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBusy(false)
+    }
   }
 
   const toggleSsh = (on: boolean): void => {

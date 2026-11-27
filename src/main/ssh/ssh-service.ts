@@ -237,11 +237,15 @@ export class SshService {
   }
 
   /** direct-tcpip канал к dstHost:dstPort через соединение пула (SSH-туннель для БД).
-   *  Поток живёт пока живо соединение пула; client.end()/обрыв закрывают его. */
+   *  Поток живёт пока живо соединение пула; client.end()/обрыв закрывают его.
+   *  Таймаут — защита от серверов, которые не отвечают на открытие канала (иначе вечное зависание). */
   async forwardOut(server: SshServerEntry, dstHost: string, dstPort: number, explicitSecret?: SshSecret | null): Promise<Duplex> {
     const client = await this.pooled(server, this.resolveSecret(server, explicitSecret))
     return new Promise<Duplex>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Tunnel to ${dstHost}:${dstPort} timed out`)), SSH_CONNECT_TIMEOUT_MS)
+      timer.unref()
       client.forwardOut('127.0.0.1', 0, dstHost, dstPort, (err, stream) => {
+        clearTimeout(timer)
         if (err) reject(err)
         else resolve(stream)
       })
