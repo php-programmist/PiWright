@@ -77,6 +77,19 @@ export function projectKey(project: ProjectEntry): string {
   return `${project.kind}\u0000${normalizeDir(project.dir)}`
 }
 
+/** Полный ProjectEntry по ключу набора вкладок: из списка проектов или активных сессий
+ *  (с serverId и исходным dir); реконструкция {kind, dir} по ключу — только если проект
+ *  нигде не найден (ключ не кодирует serverId, для ssh-проектов реконструкция невалидна). */
+export function projectForKey(key: string): ProjectEntry {
+  const st = useSessionsStore.getState()
+  const known =
+    st.projects.find((p) => projectKey(p.project) === key)?.project ??
+    st.active.find((r) => parentTabKey(r.project) === key)?.project
+  if (known !== undefined) return known
+  const [kind, dir] = key.split('\u0000')
+  return { kind: kind as ProjectEntry['kind'], dir }
+}
+
 /** Активировать предыдущую вкладку/сессию проекта после ухода активной сессии: MRU → первая
  *  не-фоновая сессия проекта → первая вкладка проекта → первая не-фоновая сессия. Фоновые
  *  сессии (вкладка закрыта) не подхватываются — их открывает только явный клик/play. */

@@ -5,7 +5,7 @@ import { create } from 'zustand'
 import type { ProjectEntry, SessionSummary } from '../../../shared/ipc-contracts'
 import type { ProjectTabKind, SavedProjectTab } from '../../../shared/project-tabs'
 import { setProjectTabs } from '../../../shared/project-tabs'
-import { projectKey, useSessionsStore } from './sessions'
+import { projectKey, projectForKey, useSessionsStore } from './sessions'
 import { splitWorktreeHostDir } from '../../../shared/worktree'
 
 /** Проект центрального контента: активная сессия, иначе проект активной вкладки
@@ -22,14 +22,14 @@ export function useCenterProject(): ProjectEntry | null {
   const tab = entry !== undefined ? entry.tabs.find((t) => tabId(t) === entry.activeId) : undefined
   // Fallback — только проект активного набора вкладок: чужая активная сессия (другого
   // проекта) сюда попадать не должна, иначе панели центра показывают не тот проект.
-  // Реальный entry из списка проектов — у него исходный dir (UNC для WSL); projectForKey
-  // восстанавливает нормализованный dir (POSIX), с которым падает спавн процессов.
+  // real — из списка проектов/активных сессий: у него исходный dir (UNC для WSL) и serverId;
+  // tab?.project у восстановленных из settings вкладок реконструирован по ключу и неполон.
   if (activeProjectKey === null) return null
   const real =
     projects.find((p) => projectKey(p.project) === activeProjectKey)?.project ??
     active.find((r) => parentTabKey(r.project) === activeProjectKey)?.project ??
     null
-  return tab?.project ?? real ?? projectForKey(activeProjectKey)
+  return real ?? tab?.project ?? projectForKey(activeProjectKey)
 }
 
 export type TabKind =
@@ -107,11 +107,6 @@ export function tabId(tab: Pick<ProjectTab, 'kind' | 'path' | 'hash' | 'boardId'
 export function parentTabKey(project: ProjectEntry): string {
   const wt = splitWorktreeHostDir(project.dir)
   return projectKey(wt !== null ? { kind: project.kind, dir: wt.root } : project)
-}
-
-function projectForKey(key: string): ProjectEntry {
-  const [kind, dir] = key.split('\u0000')
-  return { kind: kind as ProjectEntry['kind'], dir }
 }
 
 let persistChain: Promise<void> = Promise.resolve()

@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import type { FileEntry, ProjectEntry } from '../../../shared/ipc-contracts'
 import { isImageFilePath } from '../../../shared/attachments'
-import { projectKey } from './sessions'
+import { projectKey, projectForKey } from './sessions'
 import { useTabsStore } from './tabs'
 
 interface FilesData {
@@ -58,11 +58,6 @@ function resetState(): FilesData {
   }
 }
 
-function projectFromKey(key: string): ProjectEntry {
-  const [kind, dir] = key.split('\u0000')
-  return { kind: kind as ProjectEntry['kind'], dir }
-}
-
 function watchedPaths(state: FilesData): string[] {
   return [...Object.keys(state.contents), ...Object.keys(state.images)]
 }
@@ -77,7 +72,7 @@ export const useFilesStore = create<FilesState>((set, get) => ({
     const key = project === null ? null : projectKey(project)
     if (get().projectKey === key) return
     const previousKey = get().projectKey
-    if (previousKey !== null) void window.piwright.filesWatch(projectFromKey(previousKey), [])
+    if (previousKey !== null) void window.piwright.filesWatch(projectForKey(previousKey), [])
     set({ ...resetState(), projectKey: key })
     if (project !== null) void get().loadDir(project, '')
   },
