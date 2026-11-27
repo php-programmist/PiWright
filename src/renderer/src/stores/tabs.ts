@@ -35,6 +35,7 @@ export function useCenterProject(): ProjectEntry | null {
 export type TabKind =
   | 'file'
   | 'diff'
+  | 'tool-diff'
   | 'mcp'
   | 'skills'
   | 'kanban'
@@ -47,7 +48,7 @@ export type TabKind =
 export interface ProjectTab {
   kind: TabKind
   project: ProjectEntry
-  /** file/diff/transcript — путь; mcp/skills — вкладка одна на проект. */
+  /** file/diff/transcript/tool-diff — путь; mcp/skills — вкладка одна на проект. */
   path?: string
   /** diff — хеш коммита (дифф файла в коммите из истории Git). */
   hash?: string
@@ -117,7 +118,7 @@ function persist(key: string, tabs: ProjectTab[], activeId: string | null): void
       const settings = useSessionsStore.getState().settings
       if (settings === null) return
       const saved: SavedProjectTab[] = tabs
-        .filter((t) => t.kind !== 'transcript')
+        .filter((t) => t.kind !== 'transcript' && t.kind !== 'tool-diff')
         .map((t): SavedProjectTab => {
           const savedTab: SavedProjectTab =
             t.path !== undefined ? { kind: t.kind as ProjectTabKind, path: t.path } : { kind: t.kind as ProjectTabKind }

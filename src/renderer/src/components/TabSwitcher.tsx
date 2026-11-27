@@ -35,7 +35,7 @@ function dirName(dir: string): string {
 }
 
 function tabTitle(tab: ProjectTab, t: T): string {
-  if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
+  if (tab.kind === 'file' || tab.kind === 'diff' || tab.kind === 'tool-diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
   if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
   if (tab.kind === 'task') return tab.title ?? t('Task')

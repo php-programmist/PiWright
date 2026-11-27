@@ -30,6 +30,7 @@
     "src/renderer/src/stores/kanban.ts",
     "src/renderer/src/stores/db.ts",
     "src/renderer/src/stores/tabs.ts",
+    "src/renderer/src/stores/tool-diff.ts",
     "src/renderer/src/lib/background-watchdog.ts",
     "src/renderer/src/lib/bg-sessions.ts",
     "src/renderer/src/lib/git-file-class.ts",

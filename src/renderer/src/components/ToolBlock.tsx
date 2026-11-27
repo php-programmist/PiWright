@@ -1,6 +1,6 @@
 import { editTexts, fullCommand, toolHeader } from '../lib/tool-blocks'
 import { useFilesStore } from '../stores/files'
-import { useGitStore } from '../stores/git'
+import { openToolDiff } from '../stores/tool-diff'
 import { useSessionsStore } from '../stores/sessions'
 import { useTabsStore } from '../stores/tabs'
 import { useT } from '../lib/i18n'
@@ -20,11 +20,18 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
   const openFile = useFilesStore((s) => s.openFile)
   const rawPath = typeof call.args['path'] === 'string' ? call.args['path'] : null
   const relPath = rawPath !== null && project !== null ? toProjectRelative(project.dir, rawPath) : null
+  const isEdit = call.name === 'edit' && edits !== null && !result?.isError
   const isWrite = call.name === 'write' && typeof call.args['content'] === 'string' && !result?.isError
-  const openDiff = (): void => {
+  const showDiff = (): void => {
     if (project === null || relPath === null || relPath.length === 0) return
-    useTabsStore.getState().openTab(project, { kind: 'diff', path: relPath })
-    void useGitStore.getState().openFile(project, relPath)
+    if (isEdit && edits !== null) {
+      openToolDiff(project, relPath, edits[0], edits[1])
+      return
+    }
+    const content = typeof call.args['content'] === 'string' ? call.args['content'] : ''
+    void window.piwright.gitFileDiff(project, relPath).then((r) => {
+      openToolDiff(project, relPath, r.ok ? r.original : '', content)
+    })
   }
   return (
     <details className={`tool-block single ${result?.isError ? 'error' : ''}`}>
@@ -48,14 +55,22 @@ export function ToolBlock({ call, partial, result, subTools = [] }: { call: Tool
           ) : (
             <span className="tool-detail">{header.detail}</span>
           ))}
-        <span className={`tool-status ${status}`}>{t(status)}</span>
-      </summary>
-      <div className="tool-body">
-        {isWrite && relPath !== null && relPath.length > 0 && (
-          <button className="tool-diff-btn" title={t('View diff')} onClick={openDiff}>
+        {(isEdit || isWrite) && project !== null && relPath !== null && relPath.length > 0 && (
+          <button
+            className="tool-diff-btn"
+            title={t('View diff')}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              showDiff()
+            }}
+          >
             {t('View diff')}
           </button>
         )}
+        <span className={`tool-status ${status}`}>{t(status)}</span>
+      </summary>
+      <div className="tool-body">
         {command !== null && <pre className="tool-command">{command}</pre>}
         {edits !== null && (
           <div className="edit-texts">

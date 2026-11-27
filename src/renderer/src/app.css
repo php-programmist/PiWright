@@ -2193,6 +2193,17 @@ pre.code-block {
   border-color: var(--text-2);
 }
 
+/* Кнопка в шапке блока (видна без разворачивания): прижата к бейджу статуса. */
+.tool-block > summary .tool-diff-btn {
+  margin-bottom: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tool-block > summary .tool-diff-btn + .tool-status {
+  margin-left: 0;
+}
+
 .tool-patch {
   color: var(--patch);
 }

@@ -56,6 +56,13 @@ export const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
       <path d="M3.8 8h2.4M10.8 6.8v2.4M9.6 8h2.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   ),
+  'tool-diff': (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2 2.5h12v11H2Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M8 2.5v11" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M3.8 8h2.4M10.8 6.8v2.4M9.6 8h2.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  ),
   kanban: (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.5 2.5v9M8 2.5v5.5M12.5 2.5v11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -120,7 +127,7 @@ export const TAB_ICONS: Record<TabKind, React.JSX.Element> = {
 }
 
 function tabLabel(tab: ProjectTab, t: T): string {
-  if (tab.kind === 'file' || tab.kind === 'diff') return baseName(tab.path ?? '')
+  if (tab.kind === 'file' || tab.kind === 'diff' || tab.kind === 'tool-diff') return baseName(tab.path ?? '')
   if (tab.kind === 'transcript') return tab.title ?? baseName(tab.path ?? '')
   if (tab.kind === 'kanban') return tab.title ?? t('Kanban')
   if (tab.kind === 'task') return tab.title ?? t('Task')
@@ -135,6 +142,7 @@ function typeLabel(kind: MenuState['kind'], t: T): string {
     case 'session': return t('Sessions')
     case 'file': return t('Files')
     case 'diff': return t('Diffs')
+    case 'tool-diff': return t('Diffs')
     case 'mcp': return t('MCP servers')
     case 'skills': return t('Skills')
     case 'kanban': return t('Kanban')

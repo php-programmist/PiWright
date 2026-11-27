@@ -4,6 +4,7 @@ import { TabBar } from './components/TabBar'
 import { AppHeader } from './components/AppHeader'
 import { GitPanel } from './views/git/GitPanel'
 import { DiffOverlay } from './views/git/DiffOverlay'
+import { ToolDiffOverlay } from './views/chat/ToolDiffOverlay'
 import { FilesPanel } from './views/files/FilesPanel'
 import { FileViewer } from './views/files/FileViewer'
 import { TerminalPanel } from './views/terminal/TerminalPanel'
@@ -360,6 +361,8 @@ export function App(): React.JSX.Element {
                   <FileViewer key={activeTab.path} tab={activeTab} />
                 ) : activeTab.kind === 'diff' ? (
                   <DiffOverlay key={tabId(activeTab)} tab={activeTab} />
+                ) : activeTab.kind === 'tool-diff' ? (
+                  <ToolDiffOverlay key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'kanban' ? (
                   <BoardView key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'task' ? (
