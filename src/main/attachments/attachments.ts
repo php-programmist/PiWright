@@ -8,6 +8,7 @@ import { attachmentRef, imageMimeTypeForExtension, sanitizeAttachmentName } from
 import { splitWorktreeHostDir } from '../../shared/worktree'
 import { getProjectFs, hostProjectFs, type ProjectFs } from '../fs/project-fs'
 import type { AttachmentResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import { errorMessage } from '../../shared/errors'
 
 const GITIGNORE_ENTRY = '.pi/attachments/'
 
@@ -82,7 +83,7 @@ export async function putAttachment(project: ProjectEntry, settings: Settings, s
     await ensureGitignore(pfs, project)
     return await result(pfs, project, dir, name)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '', dataUrl: '' }
+    return { ok: false, error: errorMessage(err), name: '', isImage: false, ref: '', dataUrl: '' }
   }
 }
 
@@ -106,7 +107,7 @@ export async function chooseAttachment(project: ProjectEntry, settings: Settings
     await ensureGitignore(pfs, project)
     return await result(pfs, project, dir, name)
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err), name: '', isImage: false, ref: '', dataUrl: '' }
+    return { ok: false, error: errorMessage(err), name: '', isImage: false, ref: '', dataUrl: '' }
   }
 }
 

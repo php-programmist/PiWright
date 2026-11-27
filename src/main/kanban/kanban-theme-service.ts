@@ -7,11 +7,12 @@ import { dirname, extname } from 'node:path'
 import type { KanbanThemeExportDataResult, KanbanThemeExportResult, KanbanThemeImportResult, KanbanThemeListResult } from '../../shared/ipc-contracts'
 import { findKanbanTheme, isBuiltinKanbanThemeId, parseKanbanThemeDoc, serializeKanbanThemeDoc } from '../../shared/kanban-theme'
 import type { KanbanTheme } from '../../shared/kanban-theme'
+import { errorMessage } from '../../shared/errors'
 
 const MAX_THEME_FILE_BYTES = 512 * 1024
 
 function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return errorMessage(err)
 }
 
 /** Чтение списка тем из JSON-файла (main и тесты); битый файл — пустой список. */

@@ -44,6 +44,7 @@ import {
   worktreeBranchFor,
   worktreePathFor
 } from '../../shared/worktree'
+import { errorMessage } from '../../shared/errors'
 
 const GIT_TIMEOUT_MS = 30_000
 const CHECKPOINT_TIMEOUT_MS = 60_000
@@ -185,7 +186,7 @@ export class GitService {
     try {
       return await this.exec(project, args, timeoutMs, cwd, env)
     } catch (err) {
-      return { code: -1, stdout: '', stderr: err instanceof Error ? err.message : String(err) }
+      return { code: -1, stdout: '', stderr: errorMessage(err) }
     }
   }
 
@@ -999,7 +1000,7 @@ export class GitService {
           const response = await conn.request('prompt', { message: buildCommitPrompt(combined) })
           if (!response.success) finish({ ok: false, error: `prompt failed: ${response.error ?? 'no details'}`, message: '' })
         } catch (err) {
-          finish({ ok: false, error: err instanceof Error ? err.message : String(err), message: '' })
+          finish({ ok: false, error: errorMessage(err), message: '' })
         }
       })()
     })

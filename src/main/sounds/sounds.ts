@@ -4,6 +4,7 @@ import { dialog } from 'electron'
 import { promises as fs } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import type { SoundReadResult } from '../../shared/ipc-contracts'
+import { errorMessage } from '../../shared/errors'
 
 const MAX_SOUND_BYTES = 2 * 1024 * 1024
 
@@ -29,7 +30,7 @@ export async function readSoundFile(path: string): Promise<SoundReadResult> {
     const buffer = await fs.readFile(path)
     return { ok: true, error: null, mime: EXT_MIME[extname(path).toLowerCase()], base64: buffer.toString('base64') }
   } catch (err) {
-    return { ...empty, error: err instanceof Error ? err.message : String(err) }
+    return { ...empty, error: errorMessage(err) }
   }
 }
 
@@ -61,6 +62,6 @@ export async function saveSoundFile(
     await fs.writeFile(target, buffer)
     return { ok: true, error: null, path: target }
   } catch (err) {
-    return { ...failed, error: err instanceof Error ? err.message : String(err) }
+    return { ...failed, error: errorMessage(err) }
   }
 }

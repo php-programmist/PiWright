@@ -9,6 +9,7 @@ import type { McpOpResult, ProjectEntry, Settings, SkillEntry } from '../../shar
 import { stripWslUncPrefix } from '../pi/backends/shell'
 import { resolveWslHome } from '../pi/backends/wsl'
 import { getProjectFs, hostProjectFs, resolveBackendHome, type ProjectFs } from '../fs/project-fs'
+import { errorMessage } from '../../shared/errors'
 
 const MAX_SCAN_DEPTH = 3
 
@@ -179,7 +180,7 @@ export async function toggleSkillIn(settingsFile: string, key: string, enabled: 
     await pfs.renameOverwrite(tmp, settingsFile)
     return { ok: true, error: null }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: errorMessage(err) }
   }
 }
 
@@ -199,7 +200,7 @@ export async function revealSkillsFolder(project: ProjectEntry, settings: Settin
   try {
     await fs.mkdir(dir, { recursive: true })
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: errorMessage(err) }
   }
   const error = await openPath(dir)
   return error.length > 0 ? { ok: false, error } : { ok: true, error: null }

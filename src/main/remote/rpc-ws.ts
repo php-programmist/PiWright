@@ -7,6 +7,7 @@ import type { RpcEventFrame, RpcHelloFrame, RpcPlatform, RpcResultFrame } from '
 import type { EventBroadcaster } from '../ipc/events'
 import type { RpcRouter } from '../ipc/router'
 import { WsConnection } from './ws'
+import { errorMessage } from '../../shared/errors'
 
 /** Лимит кадра запроса: вложения канбан/промптов уходят base64 (2 МиБ ws.ts мало). */
 export const RPC_MAX_MESSAGE_BYTES = 64 * 1024 * 1024
@@ -82,7 +83,7 @@ export function attachRpcWs(options: RpcWsOptions): RpcWsAttachment {
         t: 'result',
         id,
         ok: false,
-        error: err instanceof Error ? err.message : String(err)
+        error: errorMessage(err)
       }
       connection.send(JSON.stringify(result))
     }

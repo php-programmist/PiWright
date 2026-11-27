@@ -9,6 +9,7 @@ import { buildWslUncPath, parseWslUnc } from '../pi/backends/shell'
 import { getProjectFs, type ProjectFs } from '../fs/project-fs'
 import { imageMimeTypeForExtension } from '../../shared/attachments'
 import type { FileListResult, FileReadImageResult, FileReadResult, FileRenameResult, FilesSearchResult, FileWriteResult, ProjectEntry, Settings } from '../../shared/ipc-contracts'
+import { errorMessage } from '../../shared/errors'
 
 const MAX_READ_BYTES = 2 * 1024 * 1024
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024
@@ -121,7 +122,7 @@ export class FileService {
       entries.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'dir' ? -1 : 1))
       return { ok: true, error: null, entries }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), entries: [] }
+      return { ok: false, error: errorMessage(err), entries: [] }
     }
   }
 
@@ -168,7 +169,7 @@ export class FileService {
       const buffer = await pfs.readFile(abs)
       return { ok: true, error: null, content: buffer.includes(0) ? BINARY_PLACEHOLDER : buffer.toString('utf8') }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), content: '' }
+      return { ok: false, error: errorMessage(err), content: '' }
     }
   }
 
@@ -187,7 +188,7 @@ export class FileService {
       const buffer = await pfs.readFile(abs)
       return { ok: true, error: null, dataUrl: `data:${mime};base64,${buffer.toString('base64')}` }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), dataUrl: '' }
+      return { ok: false, error: errorMessage(err), dataUrl: '' }
     }
   }
 
@@ -200,7 +201,7 @@ export class FileService {
       await pfs.writeFile(abs, content)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -219,7 +220,7 @@ export class FileService {
       await pfs.rename(abs, target)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -232,7 +233,7 @@ export class FileService {
       await pfs.rm(abs)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -248,7 +249,7 @@ export class FileService {
       await pfs.mkdir(abs, { recursive: true })
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 

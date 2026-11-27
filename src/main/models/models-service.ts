@@ -10,6 +10,7 @@ import type { BackendMode, ModelsListResult, ModelsOpResult, Settings } from '..
 import { listWslDistros, resolveWslHome } from '../pi/backends/wsl'
 import { getSshService } from '../ssh/ssh-service'
 import { getProjectFs, hostProjectFs, type ProjectFs } from '../fs/project-fs'
+import { errorMessage } from '../../shared/errors'
 
 /** Цель операций models.json: ФС бэкенда + путь файла. */
 export interface ModelsTarget {
@@ -88,7 +89,7 @@ export async function saveModelsIn(target: ModelsTarget, doc: unknown): Promise<
     await target.pfs.renameOverwrite(tmp, target.file)
     return { ok: true, error: null }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: errorMessage(err) }
   }
 }
 
@@ -104,7 +105,7 @@ export async function revealModelsFile(backend: BackendMode, settings: Settings,
       await fs.mkdir(dirname(file), { recursive: true })
       await fs.writeFile(file, JSON.stringify({ providers: {} }, null, 2) + '\n', 'utf8')
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
   const error = await openPath(file)

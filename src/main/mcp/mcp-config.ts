@@ -8,6 +8,7 @@ import type { McpListResult, McpOpResult, McpProbeResult, McpScope, McpServerEnt
 import { resolveWslHome } from '../pi/backends/wsl'
 import { getProjectFs, resolveBackendHome, hostProjectFs, type ProjectFs } from '../fs/project-fs'
 import { probeMcp } from './mcp-probe'
+import { errorMessage } from '../../shared/errors'
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]+$/
 
@@ -107,7 +108,7 @@ export async function saveMcpServers(
     await target.pfs.renameOverwrite(tmp, file)
     return { ok: true, error: null }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: errorMessage(err) }
   }
 }
 
@@ -123,7 +124,7 @@ export async function revealMcpFile(project: ProjectEntry, scope: McpScope, sett
       await fs.mkdir(dirname(file), { recursive: true })
       await fs.writeFile(file, JSON.stringify({ mcpServers: {} }, null, 2) + '\n', 'utf8')
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
   const error = await openPath(file)

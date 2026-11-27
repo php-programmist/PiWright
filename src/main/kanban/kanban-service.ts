@@ -53,6 +53,7 @@ import { buildBashCommand, buildWslSpawnArgs } from '../pi/backends/shell'
 import { listWslDistros, wslPathFor } from '../pi/backends/wsl'
 import { getSshService } from '../ssh/ssh-service'
 import { getProjectFs, type ProjectFs } from '../fs/project-fs'
+import { errorMessage } from '../../shared/errors'
 
 const GITIGNORE_ENTRY = '.pi/kanban/attachments/'
 const GIT_TIMEOUT_MS = 10_000
@@ -65,7 +66,7 @@ interface ExecResult {
 }
 
 function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return errorMessage(err)
 }
 
 const LOCK_TIMEOUT_MS = 10_000

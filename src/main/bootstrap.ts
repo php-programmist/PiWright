@@ -42,6 +42,7 @@ import { RemoteAuth, generatePin, isValidStaticPin } from './remote/auth'
 import { RemoteBridge } from './remote/bridge'
 import { initDaemonClient, getDaemonClient } from './daemon/client'
 import type { UpdateInfo } from '../shared/ipc-contracts'
+import { errorMessage } from '../shared/errors'
 
 /** Хостовые различия между Electron-приложением и headless-сервером. */
 export interface AppHost {
@@ -252,7 +253,7 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
     try {
       return { ok: true, stopped: await client.killBackground(), error: null }
     } catch (err) {
-      return { ok: false, stopped: 0, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, stopped: 0, error: errorMessage(err) }
     }
   })
   router.handle(DAEMON_RESOLVE_SKEW_CHANNEL, (stop: unknown) => {

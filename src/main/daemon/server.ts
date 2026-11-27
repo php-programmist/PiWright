@@ -25,6 +25,7 @@ import {
 } from './protocol'
 import { ensureDaemonToken } from './token'
 import { playSoundFile, projectLabel, readDaemonSettings } from './notify'
+import { errorMessage } from '../../shared/errors'
 
 export interface DaemonServerOptions {
   userDataDir: string
@@ -350,7 +351,7 @@ export class DaemonServer {
           this.cancelGrace(record)
           this.respond(conn, id, { sessionKey: record.key, attached: true, streaming: record.streaming })
         } catch (err) {
-          this.respondError(conn, id, err instanceof Error ? err.message : String(err))
+          this.respondError(conn, id, errorMessage(err))
         }
         return
       }
@@ -386,7 +387,7 @@ export class DaemonServer {
       const record = await promise
       this.respond(conn, id, { sessionKey: record.key, attached: false })
     } catch (err) {
-      this.respondError(conn, id, err instanceof Error ? err.message : String(err))
+      this.respondError(conn, id, errorMessage(err))
     } finally {
       if (sessionFile !== null) this.pendingSpawns.delete(sessionFile)
     }

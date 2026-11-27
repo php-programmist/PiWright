@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import type { PiJsonObject } from '../../shared/protocol-types'
 import type { McpProbeResult } from '../../shared/ipc-contracts'
+import { errorMessage } from '../../shared/errors'
 
 const PROBE_TIMEOUT_MS = 10_000
 const PROTOCOL_VERSION = '2025-06-18'
@@ -39,7 +40,7 @@ export async function probeMcp(config: Record<string, unknown>, wsl: WslOptions 
     }
     return { ok: false, error: 'Server has neither command nor url', toolCount: 0, serverError: null }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err), toolCount: 0, serverError: null }
+    return { ok: false, error: errorMessage(err), toolCount: 0, serverError: null }
   }
 }
 
@@ -211,7 +212,7 @@ async function probeHttp(config: Record<string, unknown>): Promise<McpProbeResul
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
       })
     } catch (err) {
-      return { json: null, error: err instanceof Error ? err.message : String(err) }
+      return { json: null, error: errorMessage(err) }
     }
     const sid = response.headers.get('mcp-session-id')
     if (sid !== null) sessionId = sid

@@ -9,6 +9,7 @@ import type { SshSecret, SshSecretsStore } from '../ssh/secrets'
 import { spawnFromSpec } from '../pi/backends/spawn'
 import type { PiChildProcess, PiSpawnSpec } from '../pi/backends/types'
 import { DaemonServer } from './server'
+import { errorMessage } from '../../shared/errors'
 
 const LOG_MAX_BYTES = 1024 * 1024
 
@@ -106,7 +107,7 @@ function main(): void {
       log(`daemon pid ${process.pid}`)
     })
     .catch((err: unknown) => {
-      log(`failed to start: ${err instanceof Error ? err.message : String(err)}`)
+      log(`failed to start: ${errorMessage(err)}`)
       process.exit(1)
     })
 }

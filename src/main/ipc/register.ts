@@ -4,6 +4,7 @@
 import { homedir } from 'node:os'
 import { win32, join } from 'node:path'
 import type { RpcRouter } from './router'
+import { errorMessage } from '../../shared/errors'
 import {
   ATTACHMENTS_CHOOSE_CHANNEL,
   ATTACHMENTS_PUT_CHANNEL,
@@ -598,7 +599,7 @@ export function registerIpc(
     try {
       return await getSshService().test(server, secret as SshSecretInput | null)
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), fingerprint: null, home: null, piPath: null }
+      return { ok: false, error: errorMessage(err), fingerprint: null, home: null, piPath: null }
     }
   })
 
@@ -614,7 +615,7 @@ export function registerIpc(
         .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1))
       return { ok: true, error: null, path, entries: sorted }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), path, entries: [] }
+      return { ok: false, error: errorMessage(err), path, entries: [] }
     }
   })
 
@@ -640,7 +641,7 @@ export function registerIpc(
       getSshService().setSecret(serverId, clean)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   })
 
@@ -650,7 +651,7 @@ export function registerIpc(
       getSshService().forgetHostKey(server)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   })
 
@@ -833,7 +834,7 @@ export function registerIpc(
     try {
       return { ok: true, error: null, events: await readSessionTranscript(pfs, checked.path) }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), events: [] }
+      return { ok: false, error: errorMessage(err), events: [] }
     }
   })
 
@@ -936,7 +937,7 @@ export function registerIpc(
       await forked.ensureStarted()
     } catch (err) {
       piHost.close(forked.id)
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
     return { ok: true, error: null, hostId: forked.id }
   })
@@ -1353,7 +1354,7 @@ export function registerIpc(
       await ipc.openExternal(url.trim())
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   })
 

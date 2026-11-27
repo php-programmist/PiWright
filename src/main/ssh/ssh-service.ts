@@ -12,6 +12,7 @@ import { SshKnownHosts } from './known-hosts'
 import { SshSecretsService, type SshSecret, type SshSecretsStore } from './secrets'
 import { SshChildProcess } from './ssh-child'
 import { buildRemoteCommand, loginShellCommand } from './remote-command'
+import { errorMessage } from '../../shared/errors'
 
 export interface SshExecResult {
   code: number | null
@@ -96,7 +97,7 @@ export class SshService {
           config.agent = process.env['SSH_AUTH_SOCK'] ?? '\\\\.\\pipe\\openssh-ssh-agent'
         }
       } catch (err) {
-        reject(new Error(`Failed to read private key: ${err instanceof Error ? err.message : String(err)}`))
+        reject(new Error(`Failed to read private key: ${errorMessage(err)}`))
         return
       }
       client.on('ready', () => resolve(client))
@@ -260,7 +261,7 @@ export class SshService {
       )
       return { ok: true, error: null, fingerprint, home, piPath: pi }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), fingerprint: null, home: null, piPath: null }
+      return { ok: false, error: errorMessage(err), fingerprint: null, home: null, piPath: null }
     }
   }
 

@@ -8,6 +8,7 @@ import type { PiBackend } from './types'
 import { buildNativeSpec, resolveNativePi } from './native'
 import { buildWslSpec, listWslDistros, resolveWslPi } from './wsl'
 import { buildSshSpec, resolveSshPi } from './ssh'
+import { errorMessage } from '../../../shared/errors'
 import { createDaemonSpawner } from '../../daemon/spawner'
 import { getSshService } from '../../ssh/ssh-service'
 
@@ -56,7 +57,7 @@ export async function createPiBackend(project: ProjectEntry, settings: Settings)
         error: null
       }
     } catch (err) {
-      return { backend: null, error: err instanceof Error ? err.message : String(err) }
+      return { backend: null, error: errorMessage(err) }
     }
   }
   if (process.platform !== 'win32') {

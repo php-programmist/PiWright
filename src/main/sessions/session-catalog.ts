@@ -9,6 +9,7 @@ import type { PiJsonObject } from '../../shared/protocol-types'
 import { contentText, str } from '../pi/event-translator'
 import { listWslDistros, resolveWslHome, wslPathFor } from '../pi/backends/wsl'
 import { getProjectFs, hostProjectFs, resolveBackendHome, type ProjectFs } from '../fs/project-fs'
+import { errorMessage } from '../../shared/errors'
 
 const MAX_SUMMARY_TITLE_CHARS = 120
 const SESSION_FILE_MAX_BYTES = 64 * 1024 * 1024
@@ -196,7 +197,7 @@ export async function deleteSessionFile(
     await pfs.rm(normalized)
     return { ok: true, error: null }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    return { ok: false, error: errorMessage(err) }
   }
 }
 

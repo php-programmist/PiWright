@@ -3,6 +3,7 @@
 import { promises as fs } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
+import { errorMessage } from '../../shared/errors'
 
 export interface HostDirListResult {
   ok: boolean
@@ -33,7 +34,7 @@ export async function listHostDir(rawPath: string): Promise<HostDirListResult> {
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
     return { ok: true, error: null, path: target, parent: parentOf(target), dirs }
   } catch (err) {
-    return { ...failed, error: err instanceof Error ? err.message : String(err) }
+    return { ...failed, error: errorMessage(err) }
   }
 }
 

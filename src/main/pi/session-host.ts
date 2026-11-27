@@ -28,6 +28,7 @@ import { sessionStatus } from './session-status'
 import { piArgs, splitArgs } from './pi-args'
 import { estimateContextBreakdown } from './context-breakdown'
 import { getDaemonClient } from '../daemon/client'
+import { errorMessage } from '../../shared/errors'
 
 export interface SessionHostListener {
   onStatus(status: PiStatus): void
@@ -322,7 +323,7 @@ export class SessionHost {
     if (this.startPromise !== null) return this.startPromise
     this.startPromise = this.start()
       .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err)
+        const message = errorMessage(err)
         this.conn = null
         this.status('error', message)
         throw err
@@ -711,7 +712,7 @@ export class SessionHost {
       this.status(this.lastState)
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -725,7 +726,7 @@ export class SessionHost {
       await conn.request('abort')
       return { ok: true, error: null, cleared }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -737,7 +738,7 @@ export class SessionHost {
       const cleared = await this.clearQueue(conn)
       return { ok: true, error: null, cleared }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -756,7 +757,7 @@ export class SessionHost {
         cleared: { steering: failed, followUp: [] }
       }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -775,7 +776,7 @@ export class SessionHost {
         cleared: { steering: [...failed, ...(kind === 'steering' ? [removed] : [])], followUp: kind === 'followUp' ? [removed] : [] }
       }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -791,7 +792,7 @@ export class SessionHost {
       if (!(await this.requeue(conn, toKind === 'steering' ? 'steer' : 'follow_up', removed))) failed.push(removed)
       return { ok: true, error: null, cleared: { steering: failed, followUp: [] } }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -866,7 +867,7 @@ export class SessionHost {
       const messages = Array.isArray(data['messages']) ? (data['messages'] as unknown[]) : []
       return { ok: true, error: null, breakdown: estimateContextBreakdown(messages) }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err), breakdown: null }
+      return { ok: false, error: errorMessage(err), breakdown: null }
     }
   }
 
@@ -912,7 +913,7 @@ export class SessionHost {
       }
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -935,7 +936,7 @@ export class SessionHost {
       await this.refreshThinkingState()
       return { ok: true, error: null }
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      return { ok: false, error: errorMessage(err) }
     }
   }
 
@@ -1044,7 +1045,7 @@ export class SessionHost {
       await this.maybeGenerateTitle(text)
       return await this.sendPrompt(text, images, behavior)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       return { ok: false, error: message }
     }
   }
@@ -1075,7 +1076,7 @@ export class SessionHost {
       await this.applyForkedState(conn)
       return await this.sendPrompt(newText, [])
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       return { ok: false, error: message }
     }
   }
@@ -1125,7 +1126,7 @@ export class SessionHost {
       this.persistCheckpoints()
       return { ok: true, error: null, codeRestored }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       return { ok: false, error: message, codeRestored: null }
     }
   }
