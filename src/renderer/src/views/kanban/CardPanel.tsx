@@ -6,6 +6,7 @@ import { useGitLogStore } from '../../stores/gitlog'
 import { useTabsStore } from '../../stores/tabs'
 import { useTerminalStore } from '../../stores/terminal'
 import { persistPanel } from '../../stores/panels-prefs'
+import { projectKey } from '../../stores/sessions'
 import { useLang, useT } from '../../lib/i18n'
 import { confirmDialog } from '../../components/ConfirmDialog'
 import { Lightbox } from '../../components/Lightbox'
@@ -89,7 +90,8 @@ export function CardPanel({
   const card = board.cards.find((item) => item.id === cardId)
   const [title, setTitle] = useState(card?.title ?? '')
   const [description, setDescription] = useState(card?.description ?? '')
-  const [comment, setComment] = useState('')
+  const commentDraftKey = `piwright.comment-draft.${projectKey(project)}.${board.id}.${cardId}`
+  const [comment, setComment] = useState(() => localStorage.getItem(commentDraftKey) ?? '')
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editCommentText, setEditCommentText] = useState('')
   const [pendingImages, setPendingImages] = useState<{ name: string; path: string }[]>([])
@@ -100,6 +102,11 @@ export function CardPanel({
   const commentFileRef = useRef<HTMLInputElement | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const scrollOnCommentRef = useRef(false)
+  const detailsRef = useRef({ title, description, card, board })
+  const saveTimerRef = useRef<number | null>(null)
+  useEffect(() => {
+    detailsRef.current = { title, description, card, board }
+  })
 
   useEffect(() => {
     if (!scrollOnCommentRef.current) return
@@ -124,6 +131,50 @@ export function CardPanel({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onRequestClose])
+
+  /** Сохранение по актуальным значениям из detailsRef — можно вызывать из таймера и при размонтировании. */
+  const saveDetailsNow = async (): Promise<void> => {
+    const { title, description, card, board } = detailsRef.current
+    if (card === undefined) return
+    const nextTitle = title.trim()
+    if (nextTitle === card.title && description === card.description) return
+    const result = await window.piwright.kanbanCardUpdate(project, board.id, {
+      id: card.id,
+      ...(nextTitle.length > 0 && nextTitle !== card.title ? { title: nextTitle } : {}),
+      ...(description !== card.description ? { description } : {}),
+      rev: board.rev,
+    })
+    apply(result)
+  }
+
+  const cancelDetailsSave = (): void => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+  }
+
+  /** Автосохранение при вводе (debounce 2 с). */
+  const scheduleDetailsSave = (): void => {
+    cancelDetailsSave()
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null
+      void saveDetailsNow()
+    }, 2000)
+  }
+
+  const saveDetails = async (): Promise<void> => {
+    cancelDetailsSave()
+    await saveDetailsNow()
+  }
+
+  // Ctrl+Tab и закрытие вкладки размонтируют панель без blur — сохраняем черновик при размонтировании.
+  useEffect(() => {
+    return () => {
+      cancelDetailsSave()
+      void saveDetailsNow()
+    }
+  }, [])
 
   if (card === undefined) return <></>
 
@@ -176,22 +227,11 @@ export function CardPanel({
     else addCardImages(files)
   }
 
-  const saveDetails = async (): Promise<void> => {
-    const nextTitle = title.trim()
-    if (nextTitle === card.title && description === card.description) return
-    const result = await window.piwright.kanbanCardUpdate(project, board.id, {
-      id: card.id,
-      ...(nextTitle.length > 0 && nextTitle !== card.title ? { title: nextTitle } : {}),
-      ...(description !== card.description ? { description } : {}),
-      rev: board.rev,
-    })
-    apply(result)
-  }
-
   const addComment = async (): Promise<void> => {
     const text = comment.trim()
     if (text.length === 0 && pendingImages.length === 0) return
     setComment('')
+    localStorage.removeItem(commentDraftKey)
     const images = pendingImages.map((item) => item.path)
     setPendingImages([])
     scrollOnCommentRef.current = true
@@ -201,10 +241,11 @@ export function CardPanel({
 
   const startEditComment = (item: { id: string; text: string }): void => {
     setEditingCommentId(item.id)
-    setEditCommentText(item.text)
+    setEditCommentText(localStorage.getItem(`${commentDraftKey}:edit:${item.id}`) ?? item.text)
   }
 
   const cancelEditComment = (): void => {
+    if (editingCommentId !== null) localStorage.removeItem(`${commentDraftKey}:edit:${editingCommentId}`)
     setEditingCommentId(null)
     setEditCommentText('')
   }
@@ -257,7 +298,10 @@ export function CardPanel({
         <input
           className="board-modal-title"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            scheduleDetailsSave()
+          }}
           onBlur={() => void saveDetails()}
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
@@ -278,7 +322,10 @@ export function CardPanel({
             project={project}
             placeholder={t('Description')}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value)
+              scheduleDetailsSave()
+            }}
             onBlur={() => void saveDetails()}
           />
           <div className="board-section-label">
@@ -312,7 +359,12 @@ export function CardPanel({
                         project={project}
                         value={editCommentText}
                         autoFocus
-                        onChange={(e) => setEditCommentText(e.target.value)}
+                        onChange={(e) => {
+                          setEditCommentText(e.target.value)
+                          if (editingCommentId !== null) {
+                            localStorage.setItem(`${commentDraftKey}:edit:${editingCommentId}`, e.target.value)
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.ctrlKey && e.key === 'Enter') void saveEditComment()
                           if (e.key === 'Escape') cancelEditComment()
@@ -426,7 +478,10 @@ export function CardPanel({
           project={project}
           placeholder={t('Add comment')}
           value={comment}
-          onChange={(e) => setComment(e.target.value)}
+          onChange={(e) => {
+            setComment(e.target.value)
+            localStorage.setItem(commentDraftKey, e.target.value)
+          }}
           onKeyDown={(e) => {
             if (e.ctrlKey && e.key === 'Enter') void addComment()
           }}
