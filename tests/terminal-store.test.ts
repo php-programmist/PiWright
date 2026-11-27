@@ -47,7 +47,7 @@ const baseSettings: Settings = {
     remote: { enabled: false, port: 7690, staticPin: '' },
     backgroundGraceMinutes: 10
   },
-  projects: [], piPathSsh: '', sshServers: []
+  projects: [], piPathSsh: '', sshServers: [], dbConnections: []
 }
 
 function seedState(settings: Settings | null): void {

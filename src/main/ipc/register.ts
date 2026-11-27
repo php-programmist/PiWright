@@ -134,6 +134,15 @@ import {
   SETTINGS_SET_CHANNEL,
   SETTINGS_REVEAL_CHANNEL,
   SSH_FORGET_HOST_KEY_CHANNEL,
+  DB_CONNECTIONS_LIST_CHANNEL,
+  DB_CONNECTION_SAVE_CHANNEL,
+  DB_CONNECTION_DELETE_CHANNEL,
+  DB_CONNECTION_TEST_CHANNEL,
+  DB_SCHEMAS_CHANNEL,
+  DB_TABLES_CHANNEL,
+  DB_TABLE_DATA_CHANNEL,
+  DB_QUERY_CHANNEL,
+  DB_DISCONNECT_CHANNEL,
   SSH_LIST_DIR_CHANNEL,
   SSH_SECRET_STATUS_CHANNEL,
   SSH_SET_SECRET_CHANNEL,
@@ -176,7 +185,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeExpandedProjects, mergeLoops, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeDbConnections, mergeExpandedProjects, mergeLoops, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -184,6 +193,8 @@ import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { getSshService } from '../ssh/ssh-service'
 import { SshProjectFs } from '../fs/project-fs'
 import type { SshSecretInput, SshSecretStatus, SshServerEntry, SshListDirResult, SshOpResult, SshTestResult } from '../../shared/ipc-contracts'
+import type { DbConnectionsResult, DbConnectionEntry, DbOpResult, DbQueryResult, DbSchemasResult, DbSecretInput, DbTablesResult, DbTableDataInput, DbTableDataResult, DbTestResult } from '../../shared/ipc-contracts'
+import type { DbService } from '../db/db-service'
 import { chooseSoundFile, readSoundFile, saveSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
 import type { TelegramTokenStore } from '../notifications/token-store'
@@ -256,6 +267,57 @@ function isSshSecretInput(value: unknown): value is SshSecretInput {
   const raw = value as Record<string, unknown>
   return (raw['password'] === undefined || typeof raw['password'] === 'string') &&
     (raw['keyPassphrase'] === undefined || typeof raw['keyPassphrase'] === 'string')
+}
+
+function isDbConnectionEntry(value: unknown): value is DbConnectionEntry {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  if (typeof raw['id'] !== 'string' || typeof raw['host'] !== 'string' || typeof raw['user'] !== 'string' || typeof raw['database'] !== 'string') return false
+  if (raw['host'].length === 0 || raw['user'].length === 0 || raw['database'].length === 0) return false
+  if (typeof raw['port'] !== 'number' || !Number.isFinite(raw['port'])) return false
+  if (raw['kind'] !== 'postgres' && raw['kind'] !== 'mysql') return false
+  if (raw['authType'] !== 'password' && raw['authType'] !== 'none') return false
+  if (raw['name'] !== undefined && typeof raw['name'] !== 'string') return false
+  if (raw['ssh'] !== undefined && raw['ssh'] !== null) {
+    if (typeof raw['ssh'] !== 'object' || Array.isArray(raw['ssh'])) return false
+    const ssh = raw['ssh'] as Record<string, unknown>
+    if (typeof ssh['host'] !== 'string' || typeof ssh['user'] !== 'string' || typeof ssh['port'] !== 'number') return false
+    if (ssh['auth'] !== 'password' && ssh['auth'] !== 'key' && ssh['auth'] !== 'agent') return false
+    if (ssh['keyPath'] !== undefined && typeof ssh['keyPath'] !== 'string') return false
+  }
+  return true
+}
+
+function isDbSecretInput(value: unknown): value is DbSecretInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  return (raw['password'] === undefined || typeof raw['password'] === 'string') &&
+    (raw['sshPassword'] === undefined || typeof raw['sshPassword'] === 'string') &&
+    (raw['sshKeyPassphrase'] === undefined || typeof raw['sshKeyPassphrase'] === 'string')
+}
+
+function isDbTableDataInput(value: unknown): value is DbTableDataInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  if (typeof raw['connectionId'] !== 'string' || raw['connectionId'].length === 0) return false
+  if (typeof raw['schema'] !== 'string' || raw['schema'].length === 0) return false
+  if (typeof raw['table'] !== 'string' || raw['table'].length === 0) return false
+  if (typeof raw['limit'] !== 'number' || !Number.isInteger(raw['limit']) || raw['limit'] < 1 || raw['limit'] > 1000) return false
+  if (typeof raw['offset'] !== 'number' || !Number.isInteger(raw['offset']) || raw['offset'] < 0) return false
+  if (raw['orderBy'] !== undefined && raw['orderBy'] !== null) {
+    if (typeof raw['orderBy'] !== 'object' || Array.isArray(raw['orderBy'])) return false
+    const order = raw['orderBy'] as Record<string, unknown>
+    if (typeof order['column'] !== 'string' || order['column'].length === 0 || typeof order['desc'] !== 'boolean') return false
+  }
+  if (raw['filters'] !== undefined && raw['filters'] !== null) {
+    if (!Array.isArray(raw['filters'])) return false
+    for (const filter of raw['filters']) {
+      if (filter === null || typeof filter !== 'object' || Array.isArray(filter)) return false
+      const f = filter as Record<string, unknown>
+      if (typeof f['column'] !== 'string' || f['column'].length === 0 || typeof f['value'] !== 'string') return false
+    }
+  }
+  return true
 }
 
 function host(piHost: PiHost, hostId: unknown): SessionHost | null {
@@ -352,6 +414,7 @@ export function registerIpc(
   loops: LoopController,
   kanban: KanbanService,
   kanbanThemes: KanbanThemeService,
+  db: DbService,
   ipc: IpcHost,
   notifications?: NotificationServices,
   scheduled?: ScheduleService,
@@ -461,6 +524,9 @@ export function registerIpc(
       if (raw['sshServers'] !== undefined) {
         safe.sshServers = mergeSshServers(raw['sshServers'])
       }
+      if (raw['dbConnections'] !== undefined) {
+        safe.dbConnections = mergeDbConnections(raw['dbConnections'])
+      }
       if (raw['notifications'] !== null && typeof raw['notifications'] === 'object' && !Array.isArray(raw['notifications'])) {
         safe.notifications = mergeNotifications(raw['notifications'])
       }
@@ -508,6 +574,13 @@ export function registerIpc(
       for (const id of ssh.removedServerIds(known)) ssh.deleteSecret(id)
     } catch {
       // ssh-сервис мог не инициализироваться
+    }
+    // Секреты и открытые соединения удалённых подключений БД — то же самое.
+    try {
+      const known = new Set(next.dbConnections.map((c) => c.id))
+      for (const id of db.removedConnectionIds(known)) db.deleteSecrets(id)
+    } catch {
+      // db-сервис мог не инициализироваться
     }
     return next
   })
@@ -572,6 +645,76 @@ export function registerIpc(
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+
+  router.handle(DB_CONNECTIONS_LIST_CHANNEL, (): DbConnectionsResult => {
+    return { ok: true, error: null, connections: settings.get().dbConnections }
+  })
+
+  router.handle(DB_CONNECTION_SAVE_CHANNEL, (entry: unknown, secrets: unknown): Promise<DbConnectionsResult> => {
+    if (!isDbConnectionEntry(entry)) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: settings.get().dbConnections })
+    const clean = mergeDbConnections([entry])
+    if (clean.length === 0) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: settings.get().dbConnections })
+    const saved = clean[0]
+    const next = settings.set({ dbConnections: [...settings.get().dbConnections.filter((c) => c.id !== saved.id), saved] })
+    if (isDbSecretInput(secrets)) {
+      const patch: { password?: string | null; sshPassword?: string | null; sshKeyPassphrase?: string | null } = {}
+      const raw = secrets as Record<string, unknown>
+      if (raw['password'] === null || typeof raw['password'] === 'string') patch.password = raw['password'] as string | null
+      if (raw['sshPassword'] === null || typeof raw['sshPassword'] === 'string') patch.sshPassword = raw['sshPassword'] as string | null
+      if (raw['sshKeyPassphrase'] === null || typeof raw['sshKeyPassphrase'] === 'string') patch.sshKeyPassphrase = raw['sshKeyPassphrase'] as string | null
+      db.setSecrets(saved.id, patch)
+    }
+    // Конфиг мог измениться — старый пул закрываем, следующий запрос переподключится.
+    void db.disconnect(saved.id)
+    return Promise.resolve({ ok: true, error: null, connections: next.dbConnections })
+  })
+
+  router.handle(DB_CONNECTION_DELETE_CHANNEL, (connectionId: unknown): Promise<DbConnectionsResult> => {
+    if (typeof connectionId !== 'string' || connectionId.length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', connections: settings.get().dbConnections })
+    }
+    const next = settings.set({ dbConnections: settings.get().dbConnections.filter((c) => c.id !== connectionId) })
+    db.deleteSecrets(connectionId)
+    void db.disconnect(connectionId)
+    return Promise.resolve({ ok: true, error: null, connections: next.dbConnections })
+  })
+
+  router.handle(DB_CONNECTION_TEST_CHANNEL, async (entry: unknown, secrets: unknown): Promise<DbTestResult> => {
+    if (!isDbConnectionEntry(entry)) return { ok: false, error: 'Invalid connection', serverVersion: null }
+    const draft = isDbSecretInput(secrets) ? (secrets as DbSecretInput) : null
+    return await db.test(entry, draft)
+  })
+
+  router.handle(DB_SCHEMAS_CHANNEL, (connectionId: unknown): Promise<DbSchemasResult> => {
+    if (typeof connectionId !== 'string' || connectionId.length === 0) return Promise.resolve({ ok: false, error: 'Invalid request', schemas: [] })
+    return db.schemas(connectionId)
+  })
+
+  router.handle(DB_TABLES_CHANNEL, (connectionId: unknown, schema: unknown): Promise<DbTablesResult> => {
+    if (typeof connectionId !== 'string' || connectionId.length === 0 || typeof schema !== 'string' || schema.length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', tables: [] })
+    }
+    return db.tables(connectionId, schema)
+  })
+
+  router.handle(DB_TABLE_DATA_CHANNEL, (input: unknown): Promise<DbTableDataResult> => {
+    if (!isDbTableDataInput(input)) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', columns: [], rows: [], total: null })
+    }
+    return db.tableData(input)
+  })
+
+  router.handle(DB_QUERY_CHANNEL, (connectionId: unknown, sql: unknown): Promise<DbQueryResult> => {
+    if (typeof connectionId !== 'string' || connectionId.length === 0 || typeof sql !== 'string' || sql.trim().length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', columns: [], rows: [], rowsAffected: null, isSelect: false })
+    }
+    return db.query(connectionId, sql)
+  })
+
+  router.handle(DB_DISCONNECT_CHANNEL, (connectionId: unknown): Promise<DbOpResult> => {
+    if (typeof connectionId !== 'string' || connectionId.length === 0) return Promise.resolve({ ok: false, error: 'Invalid request' })
+    return db.disconnect(connectionId)
   })
 
   router.handle(SESSIONS_LIST_CHANNEL, () => {

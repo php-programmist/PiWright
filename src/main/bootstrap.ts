@@ -28,6 +28,8 @@ import { KanbanService } from './kanban/kanban-service'
 import { KanbanThemeService } from './kanban/kanban-theme-service'
 import { TerminalService, createSshPty } from './terminal/terminal-service'
 import { getSshService, initSshService } from './ssh/ssh-service'
+import { DbSecretsService } from './db/db-secrets'
+import { DbService } from './db/db-service'
 import { PiHost } from './pi/pi-host'
 import { LoopController } from './pi/loop-controller'
 import { ScheduleService } from './schedule/schedule-service'
@@ -85,6 +87,15 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
     host.userDataPath,
     (value) => secretCodec.encrypt(value),
     (buffer) => secretCodec.decrypt(buffer)
+  )
+  const dbService = new DbService(
+    () => settings.get(),
+    new DbSecretsService(
+      join(host.userDataPath, 'db-secrets.json'),
+      (value) => secretCodec.encrypt(value),
+      (buffer) => secretCodec.decrypt(buffer)
+    ),
+    getSshService()
   )
   const kanbanThemes = new KanbanThemeService(join(host.userDataPath, 'kanban-themes.json'))
   const gitService = new GitService(() => settings.get())
@@ -198,7 +209,7 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
     onData: (id, data) => events.emit(TERM_DATA_CHANNEL, { id, data }),
     onExit: (id, code) => events.emit(TERM_EXIT_CHANNEL, { id, code })
   }, undefined, (server, cwd) => createSshPty(getSshService(), server, cwd))
-  registerIpc(router, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, host.ipc, {
+  registerIpc(router, settings, piHost, gitService, fileService, terminalService, loopController, kanbanService, kanbanThemes, dbService, host.ipc, {
     tokenStore,
     bridge,
     onSettingsChanged: (next) => {
@@ -300,6 +311,11 @@ export async function createAppContext(host: AppHost): Promise<AppContext> {
         getSshService().closeAll()
       } catch {
         // ssh-сервис мог не инициализироваться (ранний выход)
+      }
+      try {
+        await dbService.disposeAll()
+      } catch {
+        // db-сервис мог не инициализироваться (ранний выход)
       }
       // Ждём закрытия сокета: записи (rekey и т.п.) асинхронны и без флеша теряются при выходе.
       const client = getDaemonClient()

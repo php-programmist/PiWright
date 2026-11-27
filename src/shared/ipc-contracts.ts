@@ -30,6 +30,40 @@ export interface SshServerEntry {
   keyPath?: string
 }
 
+/** Тип СУБД подключения панели DB. */
+export type DbKind = 'postgres' | 'mysql'
+
+/** Способ аутентификации подключения БД: пароль (в db-secrets.json) или без пароля (trust/сокет). */
+export type DbAuthType = 'password' | 'none'
+
+/** SSH-туннель конкретного подключения БД (per-connection, как дата-сорсы в PHPStorm);
+ *  секреты туннеля — в db-secrets.json рядом с паролем БД. */
+export interface DbSshTunnel {
+  host: string
+  port: number
+  user: string
+  auth: SshAuthType
+  /** Путь к приватному ключу (auth = 'key'). */
+  keyPath?: string
+}
+
+/** Подключение БД из настроек; пароли (БД и SSH) — в зашифрованном db-secrets.json, не здесь. */
+export interface DbConnectionEntry {
+  id: string
+  /** Отображаемое имя. */
+  name: string
+  kind: DbKind
+  host: string
+  port: number
+  database: string
+  user: string
+  authType: DbAuthType
+  /** Не задан/undefined — прямое соединение. */
+  ssh?: DbSshTunnel | null
+  /** Схемы, выбранные чекбоксами в дереве (пусто/undefined — все). */
+  selectedSchemas?: string[]
+}
+
 export interface ProjectEntry {
   kind: BackendMode
   /** native — каталог Windows; wsl — UNC `\\wsl.localhost\<distro>\…`; ssh — POSIX-путь на сервере. */
@@ -107,6 +141,8 @@ export interface Settings {
   /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
   lastThinkingLevel: string | null
   projects: ProjectEntry[]
+  /** Подключения БД панели DB (секреты — в db-secrets.json). */
+  dbConnections: DbConnectionEntry[]
 }
 
 /** Зелёная точка на задаче после закрытия сессии: sessions — pi session id с непрочитанным
@@ -711,6 +747,87 @@ export interface SshOpResult {
   error: string | null
 }
 
+/** Явные секреты подключения БД для test/save несохранённого черновика из UI. */
+export interface DbSecretInput {
+  password?: string
+  sshPassword?: string
+  sshKeyPassphrase?: string
+}
+
+export interface DbTestResult {
+  ok: boolean
+  error: string | null
+  /** Строка version() сервера при успехе. */
+  serverVersion: string | null
+}
+
+export interface DbColumn {
+  name: string
+  type: string | null
+}
+
+export interface DbSchemasResult {
+  ok: boolean
+  error: string | null
+  schemas: string[]
+}
+
+export interface DbTablesResult {
+  ok: boolean
+  error: string | null
+  tables: string[]
+}
+
+/** Фильтр колонки таблицы: значение уходит только параметром запроса. */
+export interface DbTableFilter {
+  column: string
+  value: string
+}
+
+export interface DbTableOrder {
+  column: string
+  desc: boolean
+}
+
+export interface DbTableDataInput {
+  connectionId: string
+  schema: string
+  table: string
+  limit: number
+  offset: number
+  orderBy?: DbTableOrder | null
+  filters?: DbTableFilter[]
+}
+
+export interface DbTableDataResult {
+  ok: boolean
+  error: string | null
+  columns: DbColumn[]
+  rows: unknown[][]
+  /** count(*) с таймаутом; null — не успели посчитать (UI показывает «≥ N»). */
+  total: number | null
+}
+
+export interface DbQueryResult {
+  ok: boolean
+  error: string | null
+  columns: DbColumn[]
+  rows: unknown[][]
+  rowsAffected: number | null
+  isSelect: boolean
+}
+
+export interface DbConnectionsResult {
+  ok: boolean
+  error: string | null
+  connections: DbConnectionEntry[]
+}
+
+export interface DbOpResult {
+  ok: boolean
+  error: string | null
+}
+
 export interface TerminalCreateResult {
   ok: boolean
   error: string | null
@@ -979,6 +1096,21 @@ export interface PiWrightApi {
   /** Частичная запись секрета; null — удалить поле. */
   sshSetSecret(serverId: string, patch: { password?: string | null; keyPassphrase?: string | null }): Promise<SshOpResult>
   sshForgetHostKey(server: SshServerEntry): Promise<SshOpResult>
+  /** Список подключений БД (из settings.dbConnections). */
+  dbConnectionsList(): Promise<DbConnectionsResult>
+  /** Сохранить подключение (секреты — отдельным аргументом, в settings не попадают). */
+  dbConnectionSave(entry: DbConnectionEntry, secrets?: DbSecretInput | null): Promise<DbConnectionsResult>
+  /** Удалить подключение и его секреты; открытые соединения закрываются. */
+  dbConnectionDelete(connectionId: string): Promise<DbConnectionsResult>
+  /** Проверка подключения: коннект (+туннель), version(); secrets — черновик из UI. */
+  dbConnectionTest(entry: DbConnectionEntry, secrets?: DbSecretInput | null): Promise<DbTestResult>
+  dbSchemas(connectionId: string): Promise<DbSchemasResult>
+  dbTables(connectionId: string, schema: string): Promise<DbTablesResult>
+  dbTableData(input: DbTableDataInput): Promise<DbTableDataResult>
+  /** SQL в консоли запросов; SELECT возвращает грид, прочее — rowsAffected. */
+  dbQuery(connectionId: string, sql: string): Promise<DbQueryResult>
+  /** Закрыть пул соединений подключения (после правки конфига или вручную). */
+  dbDisconnect(connectionId: string): Promise<DbOpResult>
   /** Показать каталог проекта в проводнике (WSL POSIX-путь конвертируется в UNC). */
   revealProject(project: ProjectEntry): Promise<{ ok: boolean; error: string | null }>
   prompt(hostId: string, text: string, images?: string[], behavior?: PromptBehavior): Promise<PromptResult>
@@ -1208,6 +1340,15 @@ export const SSH_LIST_DIR_CHANNEL = 'ssh:list-dir'
 export const SSH_SECRET_STATUS_CHANNEL = 'ssh:secret-status'
 export const SSH_SET_SECRET_CHANNEL = 'ssh:set-secret'
 export const SSH_FORGET_HOST_KEY_CHANNEL = 'ssh:forget-host-key'
+export const DB_CONNECTIONS_LIST_CHANNEL = 'db:connections-list'
+export const DB_CONNECTION_SAVE_CHANNEL = 'db:connection-save'
+export const DB_CONNECTION_DELETE_CHANNEL = 'db:connection-delete'
+export const DB_CONNECTION_TEST_CHANNEL = 'db:connection-test'
+export const DB_SCHEMAS_CHANNEL = 'db:schemas'
+export const DB_TABLES_CHANNEL = 'db:tables'
+export const DB_TABLE_DATA_CHANNEL = 'db:table-data'
+export const DB_QUERY_CHANNEL = 'db:query'
+export const DB_DISCONNECT_CHANNEL = 'db:disconnect'
 export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'
 export const SESSION_PROMPT_CHANNEL = 'session:prompt'
 export const SESSION_EDIT_PROMPT_CHANNEL = 'session:edit-prompt'

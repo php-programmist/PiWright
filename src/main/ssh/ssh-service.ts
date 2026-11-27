@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from 'ssh2'
+import type { Duplex } from 'node:stream'
 import type { SshServerEntry } from '../../shared/ipc-contracts'
 import type { PiChildProcess } from '../pi/backends/types'
 import { SshKnownHosts } from './known-hosts'
@@ -228,6 +229,18 @@ export class SshService {
     const client = await this.pooled(server, this.resolveSecret(server))
     return new Promise<ClientChannel>((resolve, reject) => {
       client.shell({ term: opts.term ?? 'xterm-256color', cols: opts.cols, rows: opts.rows }, (err, stream) => {
+        if (err) reject(err)
+        else resolve(stream)
+      })
+    })
+  }
+
+  /** direct-tcpip канал к dstHost:dstPort через соединение пула (SSH-туннель для БД).
+   *  Поток живёт пока живо соединение пула; client.end()/обрыв закрывают его. */
+  async forwardOut(server: SshServerEntry, dstHost: string, dstPort: number, explicitSecret?: SshSecret | null): Promise<Duplex> {
+    const client = await this.pooled(server, this.resolveSecret(server, explicitSecret))
+    return new Promise<Duplex>((resolve, reject) => {
+      client.forwardOut('127.0.0.1', 0, dstHost, dstPort, (err, stream) => {
         if (err) reject(err)
         else resolve(stream)
       })
