@@ -107,6 +107,7 @@ function DbConnectionsEditor({
     original !== undefined ? { ...original } : (useDbStore.getState().addEditorPending ? emptyDraft() : null)
   )
   const [testResult, setTestResult] = useState<{ connectionId: string; ok: boolean; text: string } | null>(null)
+  const [savedFlash, setSavedFlash] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -115,6 +116,7 @@ function DbConnectionsEditor({
       if (!s.addEditorPending || prev.addEditorPending) return
       setEditing(emptyDraft())
       setTestResult(null)
+      setSavedFlash(false)
     })
   }, [])
 
@@ -138,12 +140,9 @@ function DbConnectionsEditor({
       if (result.ok) {
         onChange(result.connections)
         setTestResult(null)
-        if (editId !== undefined) {
-          const saved = result.connections.find((c) => c.id === id)
-          if (saved !== undefined) setEditing({ ...saved })
-        } else {
-          setEditing(null)
-        }
+        const saved = result.connections.find((c) => c.id === id)
+        if (saved !== undefined) setEditing({ ...saved })
+        setSavedFlash(true)
       } else {
         setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
       }
@@ -162,6 +161,7 @@ function DbConnectionsEditor({
     const id = draftConnection.id.length > 0 ? draftConnection.id : 'draft'
     setBusy(true)
     setTestResult(null)
+    setSavedFlash(false)
     try {
       const result = await window.piwright.dbConnectionTest(draftEntry(draftConnection), draftSecrets(draftConnection))
       const text = result.ok ? `${t('Connected')} · ${result.serverVersion ?? ''}` : (result.error ?? t('Connection failed'))
@@ -210,6 +210,7 @@ function DbConnectionsEditor({
               onClick={() => {
                 setEditing({ ...connection })
                 setTestResult(null)
+                setSavedFlash(false)
               }}
             >
               {t('Edit')}
@@ -220,7 +221,7 @@ function DbConnectionsEditor({
             )}
           </div>
         ))}
-        <button className="ghost" onClick={() => { setEditing(emptyDraft()); setTestResult(null) }}>+ {t('Add connection')}</button>
+        <button className="ghost" onClick={() => { setEditing(emptyDraft()); setTestResult(null); setSavedFlash(false) }}>+ {t('Add connection')}</button>
       </section>
       )}
       {editing !== null && (
@@ -358,6 +359,7 @@ function DbConnectionsEditor({
           {testResult !== null && (testResult.connectionId === 'draft' || testResult.connectionId === editing.id) && (
             <div className={`ssh-test-result ${testResult.ok ? 'ok' : 'err'}`}>{testResult.text}</div>
           )}
+          {savedFlash && <div className="ssh-test-result ok">{t('Connection saved')}</div>}
           <div className="ssh-edit-actions">
             <button className="primary" disabled={!formValid(editing) || busy} onClick={() => void save()}>
               {t('Save connection')}
@@ -367,6 +369,7 @@ function DbConnectionsEditor({
               className="ghost"
               onClick={() => {
                 setTestResult(null)
+                setSavedFlash(false)
                 if (editId !== undefined && original !== undefined) setEditing({ ...original })
                 else setEditing(null)
               }}

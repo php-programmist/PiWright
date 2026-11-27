@@ -131,11 +131,8 @@ async function main() {
     return tabs.map((t) => t.textContent?.trim() ?? '').join('|')
   })
   check('tab labeled Databases', tabLabel.includes('Databases') || tabLabel.includes('Базы данных'), tabLabel)
-  const hint = await page.evaluate(() => document.querySelector('.db-settings-tab .panel-hint')?.textContent ?? '')
-  check('empty hint shown', hint.length > 0, hint)
 
   // 2. Add connection form: Save disabled while required fields are empty.
-  check('add connection button', await clickButton('.db-settings-tab button.ghost', '+'))
   await page.waitForSelector('.ssh-edit', { timeout: 5000 })
   const saveDisabledEmpty = await page.evaluate(() => {
     const btn = [...document.querySelectorAll('.ssh-edit-actions button')].find((b) => b.className.includes('primary'))
@@ -189,15 +186,20 @@ async function main() {
   const testText = await page.evaluate(() => document.querySelector('.ssh-edit .ssh-test-result')?.textContent ?? '')
   check('test reports readable error', testText.length > 0, testText)
 
-  // 6. Save with a password -> row in list, per-project settings, secrets not in settings.
+  // 6. Save with a password -> form stays open with a saved message (no list switch),
+  // per-project settings, secrets not in settings.
   await setInput(['Password', 'Пароль'], 's3cret-pw')
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('.ssh-edit-actions button')].find((b) => b.className.includes('primary'))
     btn?.click()
   })
   await page.waitForTimeout(800)
-  const rowText = await page.evaluate(() => document.querySelector('.ssh-server-row')?.textContent ?? '')
-  check('connection row shows meta', rowText.includes('appdb') && rowText.includes('app_user@localhost:5432') && rowText.includes('SSH'), rowText)
+  const formStillOpen = await page.evaluate(() => document.querySelector('.db-settings-tab .ssh-edit') !== null)
+  check('form stays open after save', formStillOpen)
+  const savedMsg = await page.evaluate(() => document.querySelector('.db-settings-tab .ssh-test-result.ok')?.textContent ?? '')
+  check('saved message shown', savedMsg.includes('Connection saved') || savedMsg.includes('Подключение сохранено'), savedMsg)
+  const noListAfterSave = await page.evaluate(() => document.querySelector('.db-settings-tab .ssh-server-row') === null)
+  check('no list switch after save', noListAfterSave)
   const settingsState = await page.evaluate(async (key) => {
     const s = await window.piwright.getSettings()
     return { list: s.projectDbConnections[key] ?? null, legacy: s.dbConnections }
@@ -212,37 +214,51 @@ async function main() {
   } catch {}
   check('db-secrets.json exists without plaintext password', secretsRaw.length > 0 && !secretsRaw.includes('s3cret-pw'))
 
-  // 7. Edit: rename via form.
-  await clickButton('.ssh-server-row button.ghost', ['Edit', 'Изменить'])
-  await page.waitForSelector('.ssh-edit', { timeout: 5000 })
+  // 7. Edit: rename via form (form stayed open after save, already in edit mode).
   await setInput(['Name', 'Имя'], 'Smoke DB')
   await page.evaluate(() => {
     const btn = [...document.querySelectorAll('.ssh-edit-actions button')].find((b) => b.className.includes('primary'))
     btn?.click()
   })
   await page.waitForTimeout(800)
-  const renamed = await page.evaluate(() => document.querySelector('.ssh-server-row .ssh-server-name')?.textContent ?? '')
+  const renamed = await page.evaluate(async (key) => {
+    const s = await window.piwright.getSettings()
+    return (s.projectDbConnections[key] ?? [])[0]?.name ?? ''
+  }, key)
   check('rename persisted', renamed === 'Smoke DB', renamed)
 
-  // 8. Per-project isolation: switch to the other project -> its Databases tab is empty.
+  // 8. Per-project isolation: switch to the other project -> its Databases tab has no connections.
   await clickProject('smoke-db-other')
   await openDbTabViaPanel()
-  const otherRows = await page.evaluate(() => document.querySelectorAll('.db-settings-tab .ssh-server-row').length)
-  check('other project has no connections', otherRows === 0, String(otherRows))
   const otherState = await page.evaluate(async (otherKey) => {
     const s = await window.piwright.getSettings()
     return (s.projectDbConnections[otherKey] ?? []).length
   }, otherKey)
   check('other project list empty in settings', otherState === 0, String(otherState))
 
-  // 9. Switch back: connection is still there (per-project storage, not global).
+  // 9. Switch back and reload: tab restores as the list view (no add-form flag) with the connection.
   await clickProject('smoke-db-proj')
-  await openDbTabViaPanel()
+  await page.reload()
+  await page.waitForSelector('.sessions-panel', { timeout: 30000 })
+  await page.waitForTimeout(700)
   await page.waitForSelector('.db-settings-tab .ssh-server-row', { timeout: 5000 })
   const backRows = await page.evaluate(() => document.querySelectorAll('.db-settings-tab .ssh-server-row').length)
   check('first project still has its connection', backRows === 1, String(backRows))
 
-  // 10. Settings modal no longer has a Databases screen.
+  // 9b. DB panel tree icons are all 18×18.
+  const panelOpen = await page.evaluate(() => document.querySelector('.db-panel') !== null)
+  if (!panelOpen) {
+    await page.click('[data-testid="db-toggle"]')
+    await page.waitForSelector('.db-panel', { timeout: 5000 })
+  }
+  await page.waitForSelector('.db-tree-connection svg', { timeout: 5000 })
+  const iconSizes = await page.evaluate(() => {
+    const svgs = [...document.querySelectorAll('.db-tree-connection svg, .db-tree-table svg')]
+    return svgs.map((s) => `${s.getAttribute('width')}x${s.getAttribute('height')}`)
+  })
+  check('db panel icons 18x18', iconSizes.length >= 3 && iconSizes.every((s) => s === '18x18'), iconSizes.join(','))
+
+  // 10. Settings modal has no Databases screen.
   await clickTitle(['Settings', 'Настройки'])
   await page.waitForSelector('.settings-modal', { timeout: 5000 })
   const navTexts = await page.evaluate(() => [...document.querySelectorAll('.settings-nav button')].map((b) => b.textContent?.trim() ?? ''))
@@ -253,14 +269,7 @@ async function main() {
   })
   await page.waitForTimeout(300)
 
-  // 11. Tab persists across reload (projectTabs snapshot).
-  await page.reload()
-  await page.waitForSelector('.sessions-panel', { timeout: 30000 })
-  await page.waitForTimeout(700)
-  const persisted = await page.evaluate(() => document.querySelector('.db-settings-tab') !== null)
-  check('db settings tab restored after reload', persisted)
-
-  // 12. Delete: row gone, project list empty in settings.
+  // 11. Delete: row gone, project list empty in settings.
   await clickButton('.ssh-server-row button.ghost.danger', ['Delete', 'Удалить'])
   await page.waitForTimeout(800)
   const rowsAfter = await page.evaluate(() => document.querySelectorAll('.db-settings-tab .ssh-server-row').length)

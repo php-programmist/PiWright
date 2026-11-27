@@ -449,6 +449,7 @@ const RU: Record<string, string> = {
   'Connected': 'Подключено',
   'not found': 'не найден',
   'Connection failed': 'Не удалось подключиться',
+  'Connection saved': 'Подключение сохранено',
   'Add server': 'Добавить сервер',
   'Edit server': 'Изменить сервер',
   'New server': 'Новый сервер',

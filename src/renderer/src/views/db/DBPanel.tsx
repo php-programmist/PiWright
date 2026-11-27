@@ -66,7 +66,7 @@ function TableRows({ connectionId, schema }: { connectionId: string; schema: str
             })
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
             <rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
             <line x1="1.5" y1="6" x2="14.5" y2="6" stroke="currentColor" strokeWidth="1.2" />
             <line x1="6" y1="6" x2="6" y2="13.5" stroke="currentColor" strokeWidth="1.2" />
@@ -146,7 +146,7 @@ function ConnectionNode({ connection, onMenu }: {
         }}
       >
         <button className="db-tree-chevron">{expanded ? CHEVRON_OPEN : CHEVRON_CLOSED}</button>
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
           <ellipse cx="8" cy="3.8" rx="5.5" ry="2" fill="none" stroke="currentColor" strokeWidth="1.2" />
           <path d="M2.5 3.8v8.4c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V3.8" fill="none" stroke="currentColor" strokeWidth="1.2" />
           <path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" fill="none" stroke="currentColor" strokeWidth="1.2" />
@@ -167,7 +167,7 @@ function ConnectionNode({ connection, onMenu }: {
             })
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
               fill="none"
@@ -191,7 +191,7 @@ function ConnectionNode({ connection, onMenu }: {
             })
           }}
         >
-          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
             <rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor" strokeWidth="1.2" />
             <path d="M4 6l2.4 2L4 10M8 10.2h4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
