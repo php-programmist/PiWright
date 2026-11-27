@@ -141,8 +141,8 @@ export interface Settings {
   /** Последний выбранный уровень thinking — подставляется в новые сессии; пишет только main. */
   lastThinkingLevel: string | null
   projects: ProjectEntry[]
-  /** Подключения БД панели DB (секреты — в db-secrets.json). */
-  dbConnections: DbConnectionEntry[]
+  /** Подключения БД на проект (ключ projectKey; секреты — в db-secrets.json). */
+  projectDbConnections: Record<string, DbConnectionEntry[]>
 }
 
 /** Зелёная точка на задаче после закрытия сессии: sessions — pi session id с непрочитанным
@@ -1096,12 +1096,12 @@ export interface PiWrightApi {
   /** Частичная запись секрета; null — удалить поле. */
   sshSetSecret(serverId: string, patch: { password?: string | null; keyPassphrase?: string | null }): Promise<SshOpResult>
   sshForgetHostKey(server: SshServerEntry): Promise<SshOpResult>
-  /** Список подключений БД (из settings.dbConnections). */
-  dbConnectionsList(): Promise<DbConnectionsResult>
-  /** Сохранить подключение (секреты — отдельным аргументом, в settings не попадают). */
-  dbConnectionSave(entry: DbConnectionEntry, secrets?: DbSecretInput | null): Promise<DbConnectionsResult>
-  /** Удалить подключение и его секреты; открытые соединения закрываются. */
-  dbConnectionDelete(connectionId: string): Promise<DbConnectionsResult>
+  /** Список подключений БД проекта (из settings.projectDbConnections[projectKey]). */
+  dbConnectionsList(projectKey: string): Promise<DbConnectionsResult>
+  /** Сохранить подключение проекта (секреты — отдельным аргументом, в settings не попадают). */
+  dbConnectionSave(projectKey: string, entry: DbConnectionEntry, secrets?: DbSecretInput | null): Promise<DbConnectionsResult>
+  /** Удалить подключение проекта и его секреты; открытые соединения закрываются. */
+  dbConnectionDelete(projectKey: string, connectionId: string): Promise<DbConnectionsResult>
   /** Проверка подключения: коннект (+туннель), version(); secrets — черновик из UI. */
   dbConnectionTest(entry: DbConnectionEntry, secrets?: DbSecretInput | null): Promise<DbTestResult>
   dbSchemas(connectionId: string): Promise<DbSchemasResult>

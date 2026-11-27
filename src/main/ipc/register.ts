@@ -185,7 +185,7 @@ import type { SessionHost } from '../pi/session-host'
 import type { ScheduleService } from '../schedule/schedule-service'
 import type { TokenStatsService } from '../stats/stats-service'
 import type { SettingsService } from '../settings/settings'
-import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeDbConnections, mergeExpandedProjects, mergeLoops, mergeNotifications, mergeOpenSessionTabs, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
+import { CHAT_FONT_SIZE_MAX, CHAT_FONT_SIZE_MIN, mergeDbConnections, mergeExpandedProjects, mergeLoops, mergeNotifications, mergeOpenSessionTabs, mergeProjectDbConnections, mergeSessionToggles, mergeSshServers, mergeTerminalTabs, SESSION_TOGGLES_MAX } from '../settings/settings'
 import { mergeProjectTabs } from '../../shared/project-tabs'
 import { mergePinnedBranches } from '../../shared/pinned-branches'
 import { mergeKanbanCardAttention } from '../../shared/kanban'
@@ -524,8 +524,8 @@ export function registerIpc(
       if (raw['sshServers'] !== undefined) {
         safe.sshServers = mergeSshServers(raw['sshServers'])
       }
-      if (raw['dbConnections'] !== undefined) {
-        safe.dbConnections = mergeDbConnections(raw['dbConnections'])
+      if (raw['projectDbConnections'] !== null && typeof raw['projectDbConnections'] === 'object' && !Array.isArray(raw['projectDbConnections'])) {
+        safe.projectDbConnections = mergeProjectDbConnections(raw['projectDbConnections'])
       }
       if (raw['notifications'] !== null && typeof raw['notifications'] === 'object' && !Array.isArray(raw['notifications'])) {
         safe.notifications = mergeNotifications(raw['notifications'])
@@ -575,9 +575,9 @@ export function registerIpc(
     } catch {
       // ssh-сервис мог не инициализироваться
     }
-    // Секреты и открытые соединения удалённых подключений БД — то же самое.
+    // Секреты и открытые соединения удалённых подключений БД — то же самое (id ищем по всем проектам).
     try {
-      const known = new Set(next.dbConnections.map((c) => c.id))
+      const known = new Set(Object.values(next.projectDbConnections).flat().map((c) => c.id))
       for (const id of db.removedConnectionIds(known)) db.deleteSecrets(id)
     } catch {
       // db-сервис мог не инициализироваться
@@ -647,16 +647,24 @@ export function registerIpc(
     }
   })
 
-  router.handle(DB_CONNECTIONS_LIST_CHANNEL, (): DbConnectionsResult => {
-    return { ok: true, error: null, connections: settings.get().dbConnections }
+  router.handle(DB_CONNECTIONS_LIST_CHANNEL, (projectKey: unknown): DbConnectionsResult => {
+    if (typeof projectKey !== 'string' || projectKey.length === 0) return { ok: false, error: 'Invalid request', connections: [] }
+    return { ok: true, error: null, connections: settings.get().projectDbConnections[projectKey] ?? [] }
   })
 
-  router.handle(DB_CONNECTION_SAVE_CHANNEL, (entry: unknown, secrets: unknown): Promise<DbConnectionsResult> => {
-    if (!isDbConnectionEntry(entry)) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: settings.get().dbConnections })
+  router.handle(DB_CONNECTION_SAVE_CHANNEL, (projectKey: unknown, entry: unknown, secrets: unknown): Promise<DbConnectionsResult> => {
+    if (typeof projectKey !== 'string' || projectKey.length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', connections: [] })
+    }
+    const current = settings.get().projectDbConnections[projectKey] ?? []
+    if (!isDbConnectionEntry(entry)) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: current })
     const clean = mergeDbConnections([entry])
-    if (clean.length === 0) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: settings.get().dbConnections })
+    if (clean.length === 0) return Promise.resolve({ ok: false, error: 'Invalid connection', connections: current })
     const saved = clean[0]
-    const next = settings.set({ dbConnections: [...settings.get().dbConnections.filter((c) => c.id !== saved.id), saved] })
+    const map = settings.get().projectDbConnections
+    const next = settings.set({
+      projectDbConnections: { ...map, [projectKey]: [...(map[projectKey] ?? []).filter((c) => c.id !== saved.id), saved] }
+    })
     if (isDbSecretInput(secrets)) {
       const patch: { password?: string | null; sshPassword?: string | null; sshKeyPassphrase?: string | null } = {}
       const raw = secrets as Record<string, unknown>
@@ -667,17 +675,18 @@ export function registerIpc(
     }
     // Конфиг мог измениться — старый пул закрываем, следующий запрос переподключится.
     void db.disconnect(saved.id)
-    return Promise.resolve({ ok: true, error: null, connections: next.dbConnections })
+    return Promise.resolve({ ok: true, error: null, connections: next.projectDbConnections[projectKey] ?? [] })
   })
 
-  router.handle(DB_CONNECTION_DELETE_CHANNEL, (connectionId: unknown): Promise<DbConnectionsResult> => {
-    if (typeof connectionId !== 'string' || connectionId.length === 0) {
-      return Promise.resolve({ ok: false, error: 'Invalid request', connections: settings.get().dbConnections })
+  router.handle(DB_CONNECTION_DELETE_CHANNEL, (projectKey: unknown, connectionId: unknown): Promise<DbConnectionsResult> => {
+    if (typeof projectKey !== 'string' || projectKey.length === 0 || typeof connectionId !== 'string' || connectionId.length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', connections: [] })
     }
-    const next = settings.set({ dbConnections: settings.get().dbConnections.filter((c) => c.id !== connectionId) })
+    const map = settings.get().projectDbConnections
+    const next = settings.set({ projectDbConnections: { ...map, [projectKey]: (map[projectKey] ?? []).filter((c) => c.id !== connectionId) } })
     db.deleteSecrets(connectionId)
     void db.disconnect(connectionId)
-    return Promise.resolve({ ok: true, error: null, connections: next.dbConnections })
+    return Promise.resolve({ ok: true, error: null, connections: next.projectDbConnections[projectKey] ?? [] })
   })
 
   router.handle(DB_CONNECTION_TEST_CHANNEL, async (entry: unknown, secrets: unknown): Promise<DbTestResult> => {

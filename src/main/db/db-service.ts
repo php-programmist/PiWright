@@ -338,9 +338,11 @@ export class DbService {
   ) {}
 
   private entry(connectionId: string): DbConnectionEntry {
-    const entry = this.getSettings().dbConnections.find((c) => c.id === connectionId)
-    if (entry === undefined) throw new Error(`Unknown DB connection: ${connectionId}`)
-    return entry
+    for (const list of Object.values(this.getSettings().projectDbConnections)) {
+      const entry = list.find((c) => c.id === connectionId)
+      if (entry !== undefined) return entry
+    }
+    throw new Error(`Unknown DB connection: ${connectionId}`)
   }
 
   /** Открыть драйвер: пароль из черновика или хранилища; ssh-туннель — direct-tcpip поток. */

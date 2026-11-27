@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastThinkingLevel: null,
   projects: [],
   sshServers: [],
-  dbConnections: []
+  projectDbConnections: {}
 }
 
 /** Границы размера шрифта чата (санитайзер settings:set). */
@@ -316,6 +316,19 @@ export function mergeDbConnections(value: unknown): DbConnectionEntry[] {
   return out
 }
 
+/** projectDbConnections из файла/settings:set: непустые строковые ключи, значения — mergeDbConnections
+ *  (пустые списки не храним). */
+export function mergeProjectDbConnections(value: unknown): Record<string, DbConnectionEntry[]> {
+  const out: Record<string, DbConnectionEntry[]> = {}
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (key.length === 0 || key.length > 512) continue
+    const list = mergeDbConnections(raw)
+    if (list.length > 0) out[key] = list
+  }
+  return out
+}
+
 /** terminalTabs из файла/settings:set поверх дефолтов: строковые ключи, валидные profileId,
  *  опциональные строковые label, активный индекс в границах. */
 export function mergeTerminalTabs(value: unknown): Record<string, TerminalTabsSnapshot> {
@@ -400,7 +413,9 @@ export class SettingsService {
       merged.loops = mergeLoops((raw as Partial<Settings>)['loops'])
   merged.pinnedBranches = mergePinnedBranches((raw as Partial<Settings>)['pinnedBranches'])
       merged.sshServers = mergeSshServers((raw as Partial<Settings>)['sshServers'])
-      merged.dbConnections = mergeDbConnections((raw as Partial<Settings>)['dbConnections'])
+      merged.projectDbConnections = mergeProjectDbConnections((raw as Partial<Settings>)['projectDbConnections'])
+      // Глобальные dbConnections (до per-project) больше не поддерживаются — выбрасываем.
+      delete (merged as Record<string, unknown>)['dbConnections']
       if (typeof merged.lastModel !== 'string') merged.lastModel = null
       if (typeof merged.kanbanTheme !== 'string' || merged.kanbanTheme.trim().length === 0) merged.kanbanTheme = KANBAN_DEFAULT_THEME_ID
       if (typeof merged.lastThinkingLevel !== 'string') merged.lastThinkingLevel = null

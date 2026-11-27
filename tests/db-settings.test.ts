@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, mergeDbConnections, SettingsService } from '../src/main/settings/settings'
+import { DEFAULT_SETTINGS, mergeDbConnections, mergeProjectDbConnections, SettingsService } from '../src/main/settings/settings'
 import type { DbConnectionEntry } from '../src/shared/ipc-contracts'
 
 const valid: Record<string, unknown> = {
@@ -77,31 +77,60 @@ describe('mergeDbConnections', () => {
   })
 })
 
-describe('SettingsService dbConnections', () => {
-  it('DEFAULT_SETTINGS has empty dbConnections', () => {
-    expect(DEFAULT_SETTINGS.dbConnections).toEqual([])
+describe('mergeProjectDbConnections', () => {
+  it('non-object yields empty', () => {
+    expect(mergeProjectDbConnections(null)).toEqual({})
+    expect(mergeProjectDbConnections([['k', []]])).toEqual({})
   })
 
-  it('dbConnections loaded from file, secrets stripped on load', async () => {
+  it('valid keys sanitized through mergeDbConnections, empty lists dropped', () => {
+    const out = mergeProjectDbConnections({
+      'native\u0000C:\\proj': [valid],
+      'empty': [],
+      'junk': 'x',
+      '': [valid]
+    })
+    expect(out).toEqual({ 'native\u0000C:\\proj': [valid as unknown as DbConnectionEntry] })
+  })
+
+  it('overlong keys dropped', () => {
+    expect(mergeProjectDbConnections({ ['k'.repeat(513)]: [valid] })).toEqual({})
+  })
+})
+
+describe('SettingsService projectDbConnections', () => {
+  it('DEFAULT_SETTINGS has empty projectDbConnections', () => {
+    expect(DEFAULT_SETTINGS.projectDbConnections).toEqual({})
+  })
+
+  it('projectDbConnections loaded from file, secrets stripped on load, legacy dbConnections dropped', async () => {
     const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-db-settings-'))
     const file = join(dir, 'settings.json')
-    await fs.writeFile(file, JSON.stringify({ dbConnections: [{ ...valid, password: 'leak' }] }), 'utf8')
+    await fs.writeFile(
+      file,
+      JSON.stringify({
+        dbConnections: [{ ...valid, password: 'leak' }],
+        projectDbConnections: { 'native\u0000C:\\proj': [{ ...valid, password: 'leak' }] }
+      }),
+      'utf8'
+    )
     const service = new SettingsService(file)
-    expect(service.get().dbConnections).toEqual([valid as unknown as DbConnectionEntry])
-    // Файл переписывается только при set(): после него секрет-мусор из исходного JSON исчезает.
+    expect(service.get().projectDbConnections).toEqual({ 'native\u0000C:\\proj': [valid as unknown as DbConnectionEntry] })
+    // Файл переписывается только при set(): после него секрет-мусор и legacy-поле исчезают.
     service.set({})
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))
-    expect(raw.dbConnections[0].password).toBeUndefined()
+    expect(raw.projectDbConnections['native\u0000C:\\proj'][0].password).toBeUndefined()
+    expect(raw.dbConnections).toBeUndefined()
   })
 
   it('saved settings.json contains no password fields', async () => {
     const dir = await fs.mkdtemp(join(tmpdir(), 'piwright-db-settings-'))
     const file = join(dir, 'settings.json')
     const service = new SettingsService(file)
-    service.set({ dbConnections: mergeDbConnections([{ ...valid, password: 'leak' }]) })
+    service.set({ projectDbConnections: mergeProjectDbConnections({ k: [{ ...valid, password: 'leak' }] }) })
     const raw = JSON.parse(await fs.readFile(file, 'utf8'))
     const text = JSON.stringify(raw)
     expect(text.includes('leak')).toBe(false)
-    expect(text.includes('dbConnections')).toBe(true)
+    expect(text.includes('projectDbConnections')).toBe(true)
   })
 })

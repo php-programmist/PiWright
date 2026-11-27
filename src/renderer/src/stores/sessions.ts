@@ -236,12 +236,16 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   removeProject: async (project) => {
+    const key = projectKey(project)
     const settings = await window.piwright.setSettings({
-      projects: get().projects.map((p) => p.project).filter((p) => projectKey(p) !== projectKey(project))
+      projects: get().projects.map((p) => p.project).filter((p) => projectKey(p) !== key),
+      projectDbConnections: Object.fromEntries(
+        Object.entries(get().settings?.projectDbConnections ?? {}).filter(([k]) => k !== key)
+      )
     })
     set((state) => ({
       settings,
-      projects: state.projects.filter((p) => projectKey(p.project) !== projectKey(project))
+      projects: state.projects.filter((p) => projectKey(p.project) !== key)
     }))
   },
 

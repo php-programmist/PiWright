@@ -3,7 +3,7 @@
  *  DbConnectionEntry.selectedSchemas, пусто/undefined — все). Клик по таблице открывает
  *  центральную вкладку данных. */
 import { useEffect } from 'react'
-import { useCenterProject, useTabsStore } from '../../stores/tabs'
+import { useCenterProject, parentTabKey, useTabsStore } from '../../stores/tabs'
 import { dbTablesKey, useDbStore } from '../../stores/db'
 import { persistPanel } from '../../stores/panels-prefs'
 import { useT } from '../../lib/i18n'
@@ -169,10 +169,12 @@ export function DBPanel(): React.JSX.Element {
   const connections = useDbStore((s) => s.connections)
   const loaded = useDbStore((s) => s.connectionsLoaded)
   const loading = useDbStore((s) => s.connectionsLoading)
+  const project = useCenterProject()
+  const key = project !== null ? parentTabKey(project) : null
 
   useEffect(() => {
-    void useDbStore.getState().load()
-  }, [])
+    if (key !== null) void useDbStore.getState().load(key)
+  }, [key])
 
   const startResize = (down: React.MouseEvent): void => {
     down.preventDefault()
@@ -196,13 +198,22 @@ export function DBPanel(): React.JSX.Element {
       <div className="git-head">
         <span>{t('Databases')}</span>
         <span className="spacer" />
-        <button className="icon" title={t('Refresh')} onClick={() => void useDbStore.getState().refresh()}>⟲</button>
+        <button
+          className="icon"
+          title={t('Refresh')}
+          disabled={key === null}
+          onClick={() => {
+            if (key !== null) void useDbStore.getState().refresh(key)
+          }}
+        >
+          ⟲
+        </button>
       </div>
       <ErrorBanner />
       <div className="git-body">
         {!loaded && loading && <div className="panel-hint">{t('loading…')}</div>}
         {loaded && connections.length === 0 && (
-          <div className="panel-hint">{t('No connections yet — add one in Settings → Databases')}</div>
+          <div className="panel-hint">{t('No connections yet — add one via the + button in the projects panel')}</div>
         )}
         {connections.map((connection) => (
           <ConnectionNode key={connection.id} connection={connection} />

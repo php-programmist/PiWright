@@ -62,14 +62,19 @@ async function main() {
   }
 
   // 0. Clean slate: only the smoke connection, panels closed.
-  await page.evaluate(async (connection) => {
+  const projectKey = await page.evaluate(async (connection) => {
     const s = await window.piwright.getSettings()
-    await window.piwright.setSettings({ ...s, dbConnections: [], panels: { ...s.panels, git: { open: false }, files: { open: false }, kanban: { open: false }, db: { open: false } } })
-    await window.piwright.dbConnectionDelete(connection.id).catch(() => {})
+    const norm = (d) => d.replace(/\\/g, '/').replace(/\/+$/, '')
+    const p = s.projects[0]
+    if (p === undefined) return null
+    const key = `${p.kind}\u0000${norm(p.dir)}`
+    await window.piwright.setSettings({ ...s, projectDbConnections: {}, panels: { ...s.panels, git: { open: false }, files: { open: false }, kanban: { open: false }, db: { open: false } }, lastProjectKey: key })
+    await window.piwright.dbConnectionDelete(key, connection.id).catch(() => {})
+    return key
   }, CONNECTION)
-  const saved = await page.evaluate(async (connection) => {
-    return await window.piwright.dbConnectionSave(connection, { password: 'smoke' })
-  }, CONNECTION)
+  const saved = await page.evaluate(async ({ connection, projectKey }) => {
+    return await window.piwright.dbConnectionSave(projectKey, connection, { password: 'smoke' })
+  }, { connection: CONNECTION, projectKey })
   check('connection saved with secret', saved.ok === true && saved.connections.some((c) => c.id === CONNECTION.id), JSON.stringify(saved))
   await page.reload()
   await page.waitForSelector('.sessions-panel', { timeout: 30000 })

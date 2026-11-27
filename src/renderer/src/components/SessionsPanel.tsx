@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '../stores/chat'
 import { HISTORY_PREVIEW_LIMIT, projectKey, useSessionsStore } from '../stores/sessions'
-import { parentTabKey, useTabsStore } from '../stores/tabs'
+import { useCenterProject, parentTabKey, useTabsStore } from '../stores/tabs'
 import { useLang, useT } from '../lib/i18n'
 import { isWindows } from '../lib/platform'
 import { canReveal, isWeb } from '../api/web'
@@ -580,6 +580,7 @@ export function SessionsPanel(): React.JSX.Element {
   const busyCount = useMemo(() => activeAll.filter((r) => r.dot === 'busy').length, [activeAll])
   const attentionCount = useMemo(() => activeAll.filter((r) => r.dot === 'confirm' || r.dot === 'question').length, [activeAll])
   const t = useT()
+  const centerProject = useCenterProject()
   const [adding, setAdding] = useState(false)
   const [version, setVersion] = useState('')
   const [changelogOpen, setChangelogOpen] = useState(false)
@@ -781,6 +782,20 @@ export function SessionsPanel(): React.JSX.Element {
         <span>{t('Projects')}</span>
         <span className="spacer" />
         {adding ? <AddProjectControl onDone={() => setAdding(false)} /> : <button className="icon" title={t('Add project')} onClick={() => setAdding(true)}>+</button>}
+        <button
+          className="icon"
+          title={t('Databases')}
+          disabled={centerProject === null}
+          onClick={() => {
+            if (centerProject !== null) useTabsStore.getState().openTab(centerProject, { kind: 'db-settings' })
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+            <ellipse cx="8" cy="3.8" rx="5.5" ry="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M2.5 3.8v8.4c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V3.8" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+          </svg>
+        </button>
         <button className="icon" title={t('Collapse panel')} onClick={collapse}>−</button>
       </div>
       <div className="panel-search">

@@ -32,7 +32,17 @@ export function useCenterProject(): ProjectEntry | null {
   return tab?.project ?? real ?? projectForKey(activeProjectKey)
 }
 
-export type TabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'transcript' | 'db-table' | 'db-console'
+export type TabKind =
+  | 'file'
+  | 'diff'
+  | 'mcp'
+  | 'skills'
+  | 'kanban'
+  | 'task'
+  | 'transcript'
+  | 'db-table'
+  | 'db-console'
+  | 'db-settings'
 
 export interface ProjectTab {
   kind: TabKind

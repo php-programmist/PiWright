@@ -1,6 +1,7 @@
 /** Состояние DB-панели (правый рельс): дерево подключение → схемы → таблицы. Подключения —
- *  глобальные (settings.dbConnections), не зависят от проекта. Схемы и таблицы грузятся лениво
- *  при раскрытии узла; выбор схем (чекбоксы) персистится в DbConnectionEntry.selectedSchemas. */
+ *  на проект (settings.projectDbConnections[projectKey]); смена проекта перезагружает список.
+ *  Схемы и таблицы грузятся лениво при раскрытии узла; выбор схем (чекбоксы) персистится
+ *  в DbConnectionEntry.selectedSchemas. */
 import { create } from 'zustand'
 import type { DbConnectionEntry } from '../../../shared/ipc-contracts'
 import { useSessionsStore } from './sessions'
@@ -15,6 +16,8 @@ interface DbState {
   open: boolean
   /** Ширина панели, тянется за левую границу. */
   width: number
+  /** Ключ проекта, для которого загружен список connections (null — ещё не грузили). */
+  connectionsProjectKey: string | null
   connections: DbConnectionEntry[]
   connectionsLoaded: boolean
   connectionsLoading: boolean
@@ -31,9 +34,10 @@ interface DbState {
   /** История запросов консоли per connectionId (в памяти, не персистится, новые сверху). */
   queryHistory: Record<string, string[]>
   pushQueryHistory: (connectionId: string, sql: string) => void
-  load: () => Promise<void>
-  /** Перечитать подключения и сбросить кэши схем/таблиц; раскрытые узлы перезагружаются. */
-  refresh: () => Promise<void>
+  /** Загрузить подключения проекта (повторный вызов с тем же ключом — no-op). */
+  load: (projectKey: string) => Promise<void>
+  /** Перечитать подключения проекта и сбросить кэши схем/таблиц; раскрытые узлы перезагружаются. */
+  refresh: (projectKey: string) => Promise<void>
   toggleConnection: (id: string) => void
   toggleSchema: (connectionId: string, schema: string) => void
   /** Чекбоксы схем: список видимых схем подключения (undefined — все); персист в settings. */
@@ -45,13 +49,17 @@ interface DbState {
 
 let persistChain: Promise<void> = Promise.resolve()
 
-function persistSelectedSchemas(connectionId: string, selectedSchemas: string[] | undefined): void {
+function persistSelectedSchemas(projectKey: string, connectionId: string, selectedSchemas: string[] | undefined): void {
   persistChain = persistChain
     .then(async () => {
       const settings = useSessionsStore.getState().settings
       if (settings === null) return
+      const map = settings.projectDbConnections
       const patch = {
-        dbConnections: settings.dbConnections.map((c) => (c.id === connectionId ? { ...c, selectedSchemas } : c))
+        projectDbConnections: {
+          ...map,
+          [projectKey]: (map[projectKey] ?? []).map((c) => (c.id === connectionId ? { ...c, selectedSchemas } : c))
+        }
       }
       const saved = await window.piwright.setSettings(patch)
       useSessionsStore.getState().setSettings(saved)
@@ -62,6 +70,7 @@ function persistSelectedSchemas(connectionId: string, selectedSchemas: string[] 
 export const useDbStore = create<DbState>((set, get) => ({
   open: false,
   width: 340,
+  connectionsProjectKey: null,
   connections: [],
   connectionsLoaded: false,
   connectionsLoading: false,
@@ -80,25 +89,27 @@ export const useDbStore = create<DbState>((set, get) => ({
     }))
   },
 
-  load: async () => {
-    if (get().connectionsLoaded || get().connectionsLoading) return
+  load: async (projectKey) => {
+    if (get().connectionsProjectKey === projectKey && (get().connectionsLoaded || get().connectionsLoading)) return
     set({ connectionsLoading: true })
-    const result = await window.piwright.dbConnectionsList()
+    const result = await window.piwright.dbConnectionsList(projectKey)
     set((state) => ({
       connectionsLoading: false,
+      connectionsProjectKey: projectKey,
       connectionsLoaded: true,
       connections: result.ok ? result.connections : state.connections,
       error: result.ok ? state.error : result.error
     }))
   },
 
-  refresh: async () => {
-    const result = await window.piwright.dbConnectionsList()
+  refresh: async (projectKey) => {
+    const result = await window.piwright.dbConnectionsList(projectKey)
     if (!result.ok) {
       set({ error: result.error })
       return
     }
     set({
+      connectionsProjectKey: projectKey,
       connections: result.connections,
       schemasByConnection: {},
       tablesBySchema: {},
@@ -137,7 +148,8 @@ export const useDbStore = create<DbState>((set, get) => ({
     set((state) => ({
       connections: state.connections.map((c) => (c.id === connectionId ? { ...c, selectedSchemas } : c))
     }))
-    persistSelectedSchemas(connectionId, selectedSchemas)
+    const projectKey = get().connectionsProjectKey
+    if (projectKey !== null) persistSelectedSchemas(projectKey, connectionId, selectedSchemas)
   },
 
   setError: (error) => set({ error }),

@@ -2,7 +2,7 @@
  *  не сохраняются: сессии не возобновляются при открытии проекта (решение юзера). */
 import type { Settings } from './ipc-contracts'
 
-export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'db-table' | 'db-console'
+export type ProjectTabKind = 'file' | 'diff' | 'mcp' | 'skills' | 'kanban' | 'task' | 'db-table' | 'db-console' | 'db-settings'
 
 export interface SavedProjectTab {
   kind: ProjectTabKind
@@ -43,7 +43,7 @@ export function setProjectTabs(settings: Settings, key: string, snapshot: Projec
 export function mergeProjectTabs(value: unknown): Record<string, ProjectTabsSnapshot> {
   const out: Record<string, ProjectTabsSnapshot> = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return out
-  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task', 'db-table', 'db-console']
+  const kinds: ProjectTabKind[] = ['file', 'diff', 'mcp', 'skills', 'kanban', 'task', 'db-table', 'db-console', 'db-settings']
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (key.length === 0 || raw === null || typeof raw !== 'object' || Array.isArray(raw)) continue
     const rawTabs = (raw as Record<string, unknown>)['tabs']

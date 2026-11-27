@@ -33,7 +33,7 @@ const pgEntry: DbConnectionEntry = { id: 'pg1', name: 'PG', kind: 'postgres', ho
 const mysqlEntry: DbConnectionEntry = { id: 'my1', name: 'MY', kind: 'mysql', host: 'db', port: 3306, database: 'app', user: 'u', authType: 'password' }
 
 function settingsWith(entries: DbConnectionEntry[]): () => Settings {
-  return () => ({ ...DEFAULT_SETTINGS, dbConnections: entries })
+  return () => ({ ...DEFAULT_SETTINGS, projectDbConnections: { 'native\u0000C:\\proj': entries } })
 }
 
 interface FakeDriverState {

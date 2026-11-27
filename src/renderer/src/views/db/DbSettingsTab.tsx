@@ -1,15 +1,18 @@
-/** Вкладка Settings → DB: подключения к PostgreSQL/MySQL (с per-connection SSH-туннелем),
- *  тест реального коннекта, удаление. Пароли (БД и SSH) не попадают в settings.json —
+/** Вкладка «Базы данных» проекта: подключения к PostgreSQL/MySQL (с per-connection SSH-туннелем),
+ *  тест реального коннекта, удаление. Подключения хранятся на проект
+ *  (settings.projectDbConnections[projectKey]); пароли (БД и SSH) не попадают в settings.json —
  *  только в зашифрованный db-secrets.json через db:connection-save. */
 import { useState } from 'react'
 import { useT } from '../../lib/i18n'
+import { useSessionsStore } from '../../stores/sessions'
+import { parentTabKey } from '../../stores/tabs'
 import type {
   DbAuthType,
   DbConnectionEntry,
   DbKind,
   DbSecretInput,
   SshAuthType,
-  Settings
+  ProjectEntry
 } from '../../../../shared/ipc-contracts'
 
 const KIND_LABELS: Record<DbKind, string> = {
@@ -67,7 +70,32 @@ function formValid(draft: DraftConnection): boolean {
   return true
 }
 
-export function DbTab({ draft, update }: { draft: Settings; update: (patch: Partial<Settings>) => void }): React.JSX.Element {
+export function DbSettingsTab({ project }: { project: ProjectEntry }): React.JSX.Element {
+  const settings = useSessionsStore((s) => s.settings)
+  const key = parentTabKey(project)
+  const connections = settings?.projectDbConnections[key] ?? []
+
+  const onChange = (list: DbConnectionEntry[]): void => {
+    void (async () => {
+      const current = useSessionsStore.getState().settings
+      if (current === null) return
+      const next = await window.piwright.setSettings({ projectDbConnections: { ...current.projectDbConnections, [key]: list } })
+      useSessionsStore.getState().setSettings(next)
+    })()
+  }
+
+  return <DbConnectionsEditor projectKey={key} connections={connections} onChange={onChange} />
+}
+
+function DbConnectionsEditor({
+  projectKey,
+  connections,
+  onChange
+}: {
+  projectKey: string
+  connections: DbConnectionEntry[]
+  onChange: (connections: DbConnectionEntry[]) => void
+}): React.JSX.Element {
   const t = useT()
   const [editing, setEditing] = useState<DraftConnection | null>(null)
   const [testResult, setTestResult] = useState<{ connectionId: string; ok: boolean; text: string } | null>(null)
@@ -79,10 +107,10 @@ export function DbTab({ draft, update }: { draft: Settings; update: (patch: Part
     const entry = draftEntry({ ...editing, id })
     entry.name = editing.name.trim() || entry.database
     setBusy(true)
-    const result = await window.piwright.dbConnectionSave(entry, draftSecrets(editing))
+    const result = await window.piwright.dbConnectionSave(projectKey, entry, draftSecrets(editing))
     setBusy(false)
     if (result.ok) {
-      update({ dbConnections: result.connections })
+      onChange(result.connections)
       setEditing(null)
     } else {
       setTestResult({ connectionId: id, ok: false, text: result.error ?? t('Connection failed') })
@@ -90,8 +118,8 @@ export function DbTab({ draft, update }: { draft: Settings; update: (patch: Part
   }
 
   const remove = async (connection: DbConnectionEntry): Promise<void> => {
-    const result = await window.piwright.dbConnectionDelete(connection.id)
-    if (result.ok) update({ dbConnections: result.connections })
+    const result = await window.piwright.dbConnectionDelete(projectKey, connection.id)
+    if (result.ok) onChange(result.connections)
   }
 
   const test = async (draftConnection: DraftConnection): Promise<void> => {
@@ -121,13 +149,13 @@ export function DbTab({ draft, update }: { draft: Settings; update: (patch: Part
   }
 
   return (
-    <>
+    <div className="db-settings-tab">
       <section className="settings-section">
         <h3>{t('Database connections')}</h3>
-        {draft.dbConnections.length === 0 && (
+        {connections.length === 0 && (
           <div className="panel-hint">{t('No connections yet — add one to browse tables and run queries')}</div>
         )}
-        {draft.dbConnections.map((connection) => (
+        {connections.map((connection) => (
           <div key={connection.id} className="ssh-server-row">
             <span className="ssh-server-name">{connection.name}</span>
             <span className="ssh-server-meta">
@@ -297,6 +325,6 @@ export function DbTab({ draft, update }: { draft: Settings; update: (patch: Part
           </div>
         </section>
       )}
-    </>
+    </div>
   )
 }

@@ -14,6 +14,7 @@ import { TaskView } from './views/kanban/TaskView'
 import { DBPanel } from './views/db/DBPanel'
 import { DbTableTab } from './views/db/DbTableTab'
 import { DbConsoleTab } from './views/db/DbConsoleTab'
+import { DbSettingsTab } from './views/db/DbSettingsTab'
 import { termWrite, termWriteExit } from './views/terminal/term-registry'
 import { ChatView } from './views/chat/ChatView'
 import { TranscriptView } from './views/chat/TranscriptView'
@@ -371,6 +372,8 @@ export function App(): React.JSX.Element {
                   <DbTableTab key={tabId(activeTab)} tab={activeTab} />
                 ) : activeTab.kind === 'db-console' ? (
                   <DbConsoleTab key={tabId(activeTab)} tab={activeTab} />
+                ) : activeTab.kind === 'db-settings' ? (
+                  <DbSettingsTab key={tabId(activeTab)} project={activeTab.project} />
                 ) : (
                   <TranscriptView key={activeTab.path} project={activeTab.project} summary={activeTab.summary!} />
                 )}

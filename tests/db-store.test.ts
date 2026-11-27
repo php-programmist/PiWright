@@ -15,8 +15,10 @@ const connection = {
   authType: 'password' as const
 }
 
-function seedSettings(dbConnections: unknown[]): Settings {
-  return { dbConnections } as unknown as Settings
+const PROJECT_KEY = 'native\u0000C:\\proj'
+
+function seedSettings(projectDbConnections: Record<string, unknown[]>): Settings {
+  return { projectDbConnections } as unknown as Settings
 }
 
 const api = {
@@ -29,9 +31,10 @@ const api = {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('window', { piwright: api })
-  useSessionsStore.setState({ settings: seedSettings([connection]) })
+  useSessionsStore.setState({ settings: seedSettings({ [PROJECT_KEY]: [connection] }) })
   useDbStore.setState({
     open: false,
+    connectionsProjectKey: null,
     connections: [],
     connectionsLoaded: false,
     connectionsLoading: false,
@@ -46,18 +49,21 @@ beforeEach(() => {
 })
 
 describe('db store', () => {
-  it('load тянет подключения один раз', async () => {
+  it('load тянет подключения один раз, смена проекта перезагружает', async () => {
     api.dbConnectionsList.mockResolvedValue({ ok: true, error: null, connections: [connection] })
-    await useDbStore.getState().load()
-    await useDbStore.getState().load()
+    await useDbStore.getState().load(PROJECT_KEY)
+    await useDbStore.getState().load(PROJECT_KEY)
     expect(api.dbConnectionsList).toHaveBeenCalledTimes(1)
+    expect(api.dbConnectionsList).toHaveBeenCalledWith(PROJECT_KEY)
     expect(useDbStore.getState().connections).toEqual([connection])
     expect(useDbStore.getState().connectionsLoaded).toBe(true)
+    await useDbStore.getState().load('other\u0000key')
+    expect(api.dbConnectionsList).toHaveBeenCalledTimes(2)
   })
 
   it('раскрытие подключения лениво грузит схемы, повторный клик — кэш', async () => {
     api.dbSchemas.mockResolvedValue({ ok: true, error: null, schemas: ['public', 'sales'] })
-    await useDbStore.getState().load()
+    await useDbStore.getState().load(PROJECT_KEY)
     useDbStore.getState().toggleConnection(connection.id)
     await vi.waitFor(() => expect(useDbStore.getState().schemasByConnection[connection.id]).toEqual(['public', 'sales']))
     useDbStore.getState().toggleConnection(connection.id)
@@ -75,14 +81,16 @@ describe('db store', () => {
   it('чекбокс схемы пишет selectedSchemas и персистит патч в settings', async () => {
     api.dbSchemas.mockResolvedValue({ ok: true, error: null, schemas: ['public', 'sales'] })
     api.setSettings.mockImplementation(async (patch: Settings) => patch)
-    await useDbStore.getState().load()
+    await useDbStore.getState().load(PROJECT_KEY)
     useDbStore.getState().toggleConnection(connection.id)
     await vi.waitFor(() => expect(useDbStore.getState().schemasByConnection[connection.id]).toBeDefined())
     useDbStore.getState().setSelectedSchemas(connection.id, ['public'])
     expect(useDbStore.getState().connections[0].selectedSchemas).toEqual(['public'])
     await vi.waitFor(() => expect(api.setSettings).toHaveBeenCalledTimes(1))
     const patch = api.setSettings.mock.calls[0][0] as Settings
-    expect(patch.dbConnections).toEqual([{ ...connection, selectedSchemas: ['public'] }])
+    expect(patch.projectDbConnections).toEqual({
+      [PROJECT_KEY]: [{ ...connection, selectedSchemas: ['public'] }]
+    })
   })
 
   it('ошибка загрузки схем попадает в error', async () => {
