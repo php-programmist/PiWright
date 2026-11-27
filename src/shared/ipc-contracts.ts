@@ -1042,8 +1042,9 @@ export interface UpdateInfo {
 export interface UpdateStatus {
   /** Доступная новая версия (null — обновления не найдено или версия скрыта пользователем). */
   availableVersion: string | null
-  /** idle — ждёт решения пользователя; downloading — идёт загрузка; error — загрузка не удалась. */
-  phase: 'idle' | 'downloading' | 'error'
+  /** idle — ждёт решения пользователя; downloading — идёт загрузка; downloaded — скачано,
+   *  ждёт «Перезапустить, чтобы обновить»; error — загрузка не удалась. */
+  phase: 'idle' | 'downloading' | 'downloaded' | 'error'
 }
 
 export interface PiWrightApi {
@@ -1067,12 +1068,14 @@ export interface PiWrightApi {
   updateStatus(): Promise<UpdateStatus>
   /** Push статуса обновлений (найдена новая версия, фазы загрузки). */
   onUpdateEvent(cb: (status: UpdateStatus) => void): () => void
-  /** Скачать и установить найденное обновление (после загрузки приложение перезапустится). */
+  /** Скачать найденное обновление (после загрузки появится кнопка перезапуска). */
   downloadUpdate(): Promise<UpdateStatus>
+  /** Перезапустить приложение и установить скачанное обновление (фаза downloaded). */
+  installUpdate(): Promise<UpdateStatus>
   /** «Не предлагать эту версию»: скрыть баннер до выхода более новой версии. */
   dismissUpdate(): Promise<UpdateStatus>
-  /** Только dev (smoke): эмулировать найденное обновление (null — сбросить). */
-  updateDevEmit(version: string | null): Promise<UpdateStatus>
+  /** Только dev (smoke): эмулировать найденное обновление (null — сбросить; phase — эмуляция завершённой загрузки). */
+  updateDevEmit(version: string | null, phase?: 'idle' | 'downloaded'): Promise<UpdateStatus>
   listSessions(): Promise<SessionsSnapshot>
   sessionHistory(project: ProjectEntry): Promise<SessionSummary[]>
   /** Транскрипт сессии без запуска pi: UiEvent-ы из JSONL (для просмотра сессии субагента). */
@@ -1323,6 +1326,7 @@ export const APP_UPDATE_INFO_CHANNEL = 'app:update-info'
 export const APP_UPDATE_STATUS_CHANNEL = 'app:update-status'
 export const APP_UPDATE_EVENT_CHANNEL = 'app:update-event'
 export const APP_UPDATE_DOWNLOAD_CHANNEL = 'app:update-download'
+export const APP_UPDATE_INSTALL_CHANNEL = 'app:update-install'
 export const APP_UPDATE_DISMISS_CHANNEL = 'app:update-dismiss'
 export const APP_UPDATE_DEV_EMIT_CHANNEL = 'app:update-dev-emit'
 export const SESSIONS_LIST_CHANNEL = 'sessions:list'

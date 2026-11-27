@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.2 (2026-11-27)
+
+### Fix
+- Update flow split into two explicit steps: "Download" fetches the update, then "Restart to update" installs it and relaunches the app — the app no longer quits on its own right after downloading (update is never installed without an explicit user click)
+- Forked and subagent sessions can be opened in chat again after their tab is closed: play button on child rows in the sessions panel and "Open in chat" in the transcript view attach a live session to any child transcript (previously they were read-only transcripts forever)
+
+## v0.6.1 (2026-11-27)
+
+### Fix
+- Linux AppImage failed to start on most distributions: node-pty was compiled against glibc 2.42 on the CI runner, now the Linux release build is pinned to ubuntu-24.04 (glibc 2.39 baseline) (44dec74)
+
 ## v0.6.0 (2026-11-26)
 
 ### Added

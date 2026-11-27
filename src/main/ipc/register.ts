@@ -128,6 +128,7 @@ import {
   APP_UPDATE_INFO_CHANNEL,
   APP_UPDATE_STATUS_CHANNEL,
   APP_UPDATE_DOWNLOAD_CHANNEL,
+  APP_UPDATE_INSTALL_CHANNEL,
   APP_UPDATE_DISMISS_CHANNEL,
   APP_UPDATE_DEV_EMIT_CHANNEL,
   SETTINGS_GET_CHANNEL,
@@ -169,7 +170,7 @@ import {
 import type { DialogAnswer } from '../../shared/agent-events'
 import type { BackendMode, ChangelogResult, GitLogFilter, KanbanCardCreateInput, KanbanCardMoveInput, KanbanCardUpdateInput, KanbanColumnCardsMoveInput, KanbanCommentInput, KanbanCommentUpdateInput, PanelPrefs, ProjectEntry, SchedulePromptInput, ScheduledTrigger, Settings, StatsQuery, TerminalProfileId, UpdateInfo, UpdateStatus } from '../../shared/ipc-contracts'
 import { fetchChangelog } from '../changelog'
-import { getUpdateStatus, downloadUpdate, dismissUpdate, emitDevUpdate } from '../updater'
+import { getUpdateStatus, downloadUpdate, installUpdate, dismissUpdate, emitDevUpdate } from '../updater'
 import type { GitService } from '../git/git-service'
 import type { FileService } from '../files/file-service'
 import { resolveWithinRootHost } from '../files/file-service'
@@ -452,11 +453,17 @@ export function registerIpc(
 
   router.handle(APP_UPDATE_DOWNLOAD_CHANNEL, (): UpdateStatus => downloadUpdate())
 
+  router.handle(APP_UPDATE_INSTALL_CHANNEL, (): UpdateStatus => installUpdate())
+
   router.handle(APP_UPDATE_DISMISS_CHANNEL, (): UpdateStatus => dismissUpdate(settings))
 
   // Только dev (smoke): эмуляция найденного обновления; в упакованном приложении emitDevUpdate — no-op
-  router.handle(APP_UPDATE_DEV_EMIT_CHANNEL, (version: unknown): UpdateStatus =>
-    emitDevUpdate(typeof version === 'string' && version.length > 0 ? version : null, settings)
+  router.handle(APP_UPDATE_DEV_EMIT_CHANNEL, (version: unknown, phase: unknown): UpdateStatus =>
+    emitDevUpdate(
+      typeof version === 'string' && version.length > 0 ? version : null,
+      settings,
+      phase === 'downloaded' ? 'downloaded' : 'idle'
+    )
   )
 
   router.handle(SETTINGS_SET_CHANNEL, (patch: unknown) => {

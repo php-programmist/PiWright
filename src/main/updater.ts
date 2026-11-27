@@ -1,7 +1,8 @@
 /** Проверка обновлений (electron-updater, generic-провайдер). Только в упакованном приложении;
  *  проверка включается, только если в настройках задан updateUrl (иначе — фид-плейсхолдер
  *  из electron-builder недостижим). Автозагрузка выключена: о найденной версии сообщается в UI,
- *  скачать и установить — явной кнопкой пользователя. Версия, скрытая «Не предлагать эту версию»,
+ *  установка — в два шага: «Скачать», затем «Перезапустить, чтобы обновить» (quitAndInstall
+ *  только по явному клику). Версия, скрытая «Не предлагать эту версию»,
  *  не показывается до выхода более новой. */
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -50,8 +51,8 @@ export function startAutoUpdater(
     autoUpdater.on('update-available', (info) => handleAvailable(info.version, settings))
     autoUpdater.on('update-not-available', () => setStatus({ availableVersion: null, phase: 'idle' }))
     autoUpdater.on('update-downloaded', () => {
-      // пользователь уже нажал «Скачать и установить» — ставим сразу
-      autoUpdater.quitAndInstall()
+      // ждём явного «Перезапустить, чтобы обновить» — сами приложение не закрываем
+      setStatus({ ...status, phase: 'downloaded' })
     })
     autoUpdater.on('error', () => {
       if (status.phase === 'downloading') setStatus({ ...status, phase: 'error' })
@@ -69,11 +70,18 @@ export function getUpdateStatus(): UpdateStatus {
   return status
 }
 
-/** Кнопка «Скачать и установить»: загрузка вручную, после — quitAndInstall. */
+/** Кнопка «Скачать»: загрузка вручную, после — фаза downloaded и кнопка перезапуска. */
 export function downloadUpdate(): UpdateStatus {
   if (electronApp === undefined || !electronApp.isPackaged || status.availableVersion === null || status.phase !== 'idle') return status
   setStatus({ ...status, phase: 'downloading' })
   void autoUpdater.downloadUpdate().catch(() => {})
+  return status
+}
+
+/** Кнопка «Перезапустить, чтобы обновить»: выход и установка уже скачанного обновления. */
+export function installUpdate(): UpdateStatus {
+  if (electronApp === undefined || !electronApp.isPackaged || status.phase !== 'downloaded') return status
+  autoUpdater.quitAndInstall()
   return status
 }
 
@@ -86,10 +94,12 @@ export function dismissUpdate(settings: SettingsService): UpdateStatus {
   return status
 }
 
-/** Только dev (smoke): эмуляция найденного обновления тем же путём, что реальное событие. */
-export function emitDevUpdate(version: string | null, settings: SettingsService): UpdateStatus {
+/** Только dev (smoke): эмуляция найденного обновления тем же путём, что реальное событие;
+ *  phase 'downloaded' — эмуляция завершённой загрузки (в dev downloadUpdate не работает). */
+export function emitDevUpdate(version: string | null, settings: SettingsService, phase: 'idle' | 'downloaded' = 'idle'): UpdateStatus {
   if (electronApp === undefined || electronApp.isPackaged) return status
   if (version === null) setStatus({ availableVersion: null, phase: 'idle' })
   else handleAvailable(version, settings)
+  if (phase === 'downloaded' && status.availableVersion !== null) setStatus({ ...status, phase: 'downloaded' })
   return status
 }

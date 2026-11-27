@@ -140,8 +140,19 @@ function HistoryItem({
   )
 }
 
-function TranscriptItem({ summary, onOpen }: { summary: SessionSummary; onOpen: (summary: SessionSummary) => void }): React.JSX.Element {
+function TranscriptItem({ project, summary, onOpen }: { project: ProjectEntry; summary: SessionSummary; onOpen: (summary: SessionSummary) => void }): React.JSX.Element {
   const lang = useLang()
+  const t = useT()
+  const openChat = async (): Promise<void> => {
+    const result = await window.piwright.openSession(project, summary.path)
+    if (!result.ok) {
+      if (result.error !== null) window.alert(result.error)
+      return
+    }
+    useTabsStore.getState().setActiveProject(parentTabKey(project))
+    useTabsStore.getState().activateSession(project)
+    useSessionsStore.getState().setActive(result.hostId)
+  }
   return (
     <div className="history-item sub" title={summary.title} onClick={() => onOpen(summary)}>
       <span className="history-title">{summary.title}</span>
@@ -153,6 +164,18 @@ function TranscriptItem({ summary, onOpen }: { summary: SessionSummary; onOpen: 
           minute: '2-digit'
         })}
       </span>
+      <button
+        className="icon chat-open"
+        title={t('Open in chat')}
+        onClick={(e) => {
+          e.stopPropagation()
+          void openChat()
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 4.5v15l13-7.5z" fill="currentColor" />
+        </svg>
+      </button>
     </div>
   )
 }
@@ -533,7 +556,7 @@ function ProjectRow({
                   {!backgroundSessions && <button className="icon remove" title={t('Close session')} onClick={() => void closeSession(s.hostId)}>×</button>}
                 </div>
                 {sub.length > 0 && subOpen[s.sessionFile!] &&
-                  sub.filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
+                  sub.filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} project={row.project} summary={c} onOpen={openTranscript} />)}
               </div>
             )
           })}
@@ -552,7 +575,7 @@ function ProjectRow({
                 onDelete={() => void deleteHistory(h)}
               />
               {subOpen[h.path] &&
-                (childrenOf.get(h.path) ?? []).filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} summary={c} onOpen={openTranscript} />)}
+                (childrenOf.get(h.path) ?? []).filter((c) => matches(c.title)).map((c) => <TranscriptItem key={c.path} project={row.project} summary={c} onOpen={openTranscript} />)}
             </div>
           ))}
           {q === '' && !row.historyLoading && topLevel.length > HISTORY_PREVIEW_LIMIT && (
@@ -723,6 +746,7 @@ export function SessionsPanel(): React.JSX.Element {
 
   const availableVersion = updateStatus.availableVersion
   const downloading = updateStatus.phase === 'downloading'
+  const downloaded = updateStatus.phase === 'downloaded'
 
   const collapse = (): void => {
     setSidebarCollapsed(true)
@@ -895,9 +919,9 @@ export function SessionsPanel(): React.JSX.Element {
               <button
                 className="update-offer-install"
                 disabled={downloading}
-                onClick={() => void window.piwright.downloadUpdate().then(setUpdateStatus)}
+                onClick={() => void (downloaded ? window.piwright.installUpdate() : window.piwright.downloadUpdate()).then(setUpdateStatus)}
               >
-                {downloading ? t('Downloading…') : t('Download and install')}
+                {downloading ? t('Downloading…') : downloaded ? t('Restart to update') : t('Download')}
               </button>
               <button
                 className="update-offer-dismiss"

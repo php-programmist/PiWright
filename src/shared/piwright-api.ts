@@ -9,6 +9,7 @@ import {
   APP_UPDATE_DEV_EMIT_CHANNEL,
   APP_UPDATE_DISMISS_CHANNEL,
   APP_UPDATE_DOWNLOAD_CHANNEL,
+  APP_UPDATE_INSTALL_CHANNEL,
   APP_UPDATE_EVENT_CHANNEL,
   APP_UPDATE_INFO_CHANNEL,
   APP_UPDATE_STATUS_CHANNEL,
@@ -217,8 +218,9 @@ export function createPiWrightApi(transport: RpcTransport, platform: RpcPlatform
     updateStatus: () => invoke(APP_UPDATE_STATUS_CHANNEL),
     onUpdateEvent: (cb: (status: UpdateStatus) => void) => on<UpdateStatus>(transport, APP_UPDATE_EVENT_CHANNEL)(cb),
     downloadUpdate: () => invoke(APP_UPDATE_DOWNLOAD_CHANNEL),
+    installUpdate: () => invoke(APP_UPDATE_INSTALL_CHANNEL),
     dismissUpdate: () => invoke(APP_UPDATE_DISMISS_CHANNEL),
-    updateDevEmit: (version: string | null) => invoke(APP_UPDATE_DEV_EMIT_CHANNEL, version),
+    updateDevEmit: (version: string | null, phase?: 'idle' | 'downloaded') => invoke(APP_UPDATE_DEV_EMIT_CHANNEL, version, phase),
     listSessions: () => invoke(SESSIONS_LIST_CHANNEL),
     sessionHistory: (project: ProjectEntry) => invoke(SESSIONS_HISTORY_CHANNEL, project),
     sessionTranscript: (project: ProjectEntry, sessionPath: string) =>
