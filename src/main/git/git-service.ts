@@ -20,6 +20,8 @@ import type {
   GitLogResult,
   GitMessageResult,
   GitOpResult,
+  GitRepoInfo,
+  GitReposResult,
   GitStatusResult,
   ProjectEntry,
   Settings,
@@ -226,14 +228,33 @@ export class GitService {
     return groups
   }
 
+  /** Каталог git-команды: '' / undefined — корень проекта, иначе подкаталог вложенного репо
+   *  (валидация сегмента — на границе IPC, parseRepo в register.ts). */
+  private repoCwd(project: ProjectEntry, repo?: string): string {
+    if (repo === undefined || repo.length === 0) return project.dir
+    return join(project.dir, repo)
+  }
+
+  /** Репозитории проекта: сам проект (rel '') плюс вложенные; name — подпись для фильтра истории. */
+  async repos(project: ProjectEntry): Promise<GitReposResult> {
+    const base = project.dir.split(/[\\/]/).filter((p) => p.length > 0).pop() ?? project.dir
+    const repos: GitRepoInfo[] = [{ rel: '', name: base }]
+    for (const name of await this.nestedRepos(project)) repos.push({ rel: name, name })
+    return { ok: true, error: null, repos }
+  }
+
   async status(project: ProjectEntry): Promise<GitStatusResult> {
     const result = await this.run(project, ['status', '--porcelain=v2', '--branch', '-uall'])
     if (result.code !== 0) return { ok: false, error: errorOf(result, ['status']), status: null }
     const status = parseStatusOutput(result.stdout)
     // Внешний git игнорирует/схлопывает вложенные репозитории — досматриваем каждый сам (баг 8);
-    // его собственная untracked-запись на каталог вложенного репо (`? spec/`) — лишняя.
+    // его собственная untracked-запись на каталог вложенного репо (`? spec/`) — лишняя
+    // (путь приходит с хвостовым слэшем).
     const nested = await this.nestedRepos(project)
-    status.entries = status.entries.filter((e) => !nested.includes(e.path))
+    status.entries = status.entries.filter((e) => {
+      const p = e.path.endsWith('/') ? e.path.slice(0, -1) : e.path
+      return !nested.includes(p)
+    })
     for (const name of nested) {
       const dir = join(project.dir, name)
       const sub = await this.run(project, ['status', '--porcelain=v2', '-uall'], GIT_TIMEOUT_MS, dir)
@@ -508,10 +529,11 @@ export class GitService {
   }
 
   /** Страница лога для дока истории: page считается с 0, порядок по датам. Фильтр — подстрока
-   *  сообщения (--grep, без регистра) и/или ветка; query из 4+ hex-символов дополнительно
-   *  резолвится как префикс хэша и такой коммит добавляется в начало первой страницы. */
+   *  сообщения (--grep, без регистра), ветка и/или вложенный репозиторий; query из 4+ hex-символов
+   *  дополнительно резолвится как префикс хэша и такой коммит добавляется в начало первой страницы. */
   async log(project: ProjectEntry, page = 0, filter?: GitLogFilter): Promise<GitLogResult> {
     const query = filter?.query?.trim() ?? ''
+    const cwd = this.repoCwd(project, filter?.repo)
     const args = [
       'log',
       '--skip',
@@ -525,7 +547,7 @@ export class GitService {
     if (filter?.all === true) args.push('--glob=refs/heads', '--glob=refs/remotes', '--glob=refs/tags', 'HEAD')
     else if (filter?.branch) args.push(filter.branch)
     if (query.length > 0) args.push('-i', '--fixed-strings', '--grep', query)
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, cwd)
     if (result.code !== 0) return { ok: true, error: null, entries: [], hasMore: false }
     const entries = parseLogRich(result.stdout)
     const hasMore = entries.length > GIT_LOG_PAGE_SIZE
@@ -534,17 +556,16 @@ export class GitService {
       const known = pageEntries.map((e) => e.hash)
       const alreadyShown = known.some((h) => h.startsWith(query.toLowerCase()))
       if (!alreadyShown) {
-        const resolved = await this.run(project, ['rev-parse', '--verify', `${query}^{commit}`])
+        const resolved = await this.run(project, ['rev-parse', '--verify', `${query}^{commit}`], GIT_TIMEOUT_MS, cwd)
         if (resolved.code === 0) {
           const hash = resolved.stdout.trim()
           if (!known.includes(hash)) {
-            const one = await this.run(project, [
-              'log',
-              '-n',
-              '1',
-              '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e',
-              hash
-            ])
+            const one = await this.run(
+              project,
+              ['log', '-n', '1', '--pretty=format:%H%x1f%an%x1f%at%x1f%s%x1f%P%x1f%D%x1e', hash],
+              GIT_TIMEOUT_MS,
+              cwd
+            )
             const [entry] = one.code === 0 ? parseLogRich(one.stdout) : []
             if (entry !== undefined) pageEntries.unshift(entry)
           }
@@ -555,22 +576,24 @@ export class GitService {
   }
 
   /** Изменённые файлы коммита: diff против первого родителя (merge — только первая ветка),
- *  --root покрывает первый коммит. */
-  async commitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult> {
+ *  --root покрывает первый коммит; repo — вложенный репозиторий. */
+  async commitFiles(project: ProjectEntry, hash: string, repo?: string): Promise<GitCommitFilesResult> {
     if (!/^[0-9a-f]{4,40}$/i.test(hash)) return { ok: false, error: 'Invalid commit hash', files: [] }
     const args = ['diff-tree', '--no-commit-id', '--name-status', '-r', '--root', '-m', '--first-parent', hash]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     if (result.code !== 0) return { ok: false, error: errorOf(result, ['diff-tree']), files: [] }
     return { ok: true, error: null, files: parseNameStatus(result.stdout) }
   }
 
   /** Дифф файла в коммите: original — родительская версия, modified — версия коммита.
- *  У корневого коммита родителя нет — original пуст; удалённый файл — modified пуст. */
-  async commitFileDiff(project: ProjectEntry, hash: string, path: string): Promise<GitCommitFileDiffResult> {
+ *  У корневого коммита родителя нет — original пуст; удалённый файл — modified пуст.
+ *  repo — вложенный репозиторий. */
+  async commitFileDiff(project: ProjectEntry, hash: string, path: string, repo?: string): Promise<GitCommitFileDiffResult> {
     if (!/^[0-9a-f]{4,40}$/i.test(hash) || path.length === 0) {
       return { ok: false, error: 'Invalid request', original: '', modified: '' }
     }
-    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', hash])
+    const cwd = this.repoCwd(project, repo)
+    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', hash], GIT_TIMEOUT_MS, cwd)
     if (parents.code !== 0) return { ok: false, error: errorOf(parents, ['rev-list']), original: '', modified: '' }
     const tokens = parents.stdout.trim().split(/\s+/).filter((t) => t.length > 0)
     const parent = tokens.length > 1 ? tokens[1]! : null
@@ -578,13 +601,13 @@ export class GitService {
     const missingRevision = /exists on disk, but not in|does not exist|can't be found|unknown revision/i
     let originalText = ''
     if (parent !== null) {
-      const original = await this.run(project, ['show', `${parent}:${path}`])
+      const original = await this.run(project, ['show', `${parent}:${path}`], GIT_TIMEOUT_MS, cwd)
       if (original.code !== 0 && !missingRevision.test(original.stderr + original.stdout)) {
         return { ok: false, error: errorOf(original, ['show']), original: '', modified: '' }
       }
       if (original.code === 0) originalText = original.stdout
     }
-    const modified = await this.run(project, ['show', `${hash}:${path}`])
+    const modified = await this.run(project, ['show', `${hash}:${path}`], GIT_TIMEOUT_MS, cwd)
     if (modified.code !== 0 && !missingRevision.test(modified.stderr + modified.stdout)) {
       return { ok: false, error: errorOf(modified, ['show']), original: '', modified: '' }
     }
@@ -596,11 +619,11 @@ export class GitService {
     }
   }
 
-  async branches(project: ProjectEntry, all = false): Promise<GitBranchesResult> {
+  async branches(project: ProjectEntry, all = false, repo?: string): Promise<GitBranchesResult> {
     const args = all
       ? ['branch', '--all', '--format=%(refname:short)']
       : ['branch', '--list', '--format=%(refname:short)']
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     if (result.code !== 0) return { ok: false, error: errorOf(result, ['branch']), branches: [] }
     const branches = result.stdout
       .split('\n')
@@ -609,13 +632,13 @@ export class GitService {
     return { ok: true, error: null, branches }
   }
 
-  async checkout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult> {
+  async checkout(project: ProjectEntry, name: string, create: boolean, startPoint?: string, repo?: string): Promise<GitOpResult> {
     const trimmed = name.trim()
     if (trimmed.length === 0 || /\s/.test(trimmed)) return { ok: false, error: 'Invalid branch name' }
     const start = startPoint?.trim() ?? ''
     if (start.length > 0 && /\s/.test(start)) return { ok: false, error: 'Invalid branch name' }
     const args = create ? ['checkout', '-b', trimmed, ...(start.length > 0 ? [start] : [])] : ['checkout', trimmed]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
@@ -638,91 +661,95 @@ export class GitService {
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  async cherryPick(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+  async cherryPick(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult> {
     if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
     const args = ['cherry-pick', hash]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  async revertCommit(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+  async revertCommit(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult> {
     if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
     const args = ['revert', '--no-edit', hash]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  async resetBranch(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<GitOpResult> {
+  async resetBranch(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard', repo?: string): Promise<GitOpResult> {
     if (!HASH_RE.test(hash) || !RESET_MODES.has(mode)) return { ok: false, error: 'Invalid request' }
     const args = ['reset', `--${mode}`, hash]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
-  async tagCreate(project: ProjectEntry, name: string, hash: string): Promise<GitOpResult> {
+  async tagCreate(project: ProjectEntry, name: string, hash: string, repo?: string): Promise<GitOpResult> {
     const trimmed = name.trim()
     if (trimmed.length === 0 || /\s/.test(trimmed) || trimmed.startsWith('-')) {
       return { ok: false, error: 'Invalid tag name' }
     }
     if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
     const args = ['tag', trimmed, hash]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, this.repoCwd(project, repo))
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
   /** Выкинуть коммит из истории текущей ветки: rebase --onto <hash>^ <hash> (без редактора).
    *  Конфликты не разрешаем автоматически — ошибка git уходит в UI, пользователь разбирается сам. */
-  async dropCommit(project: ProjectEntry, hash: string): Promise<GitOpResult> {
+  async dropCommit(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult> {
     if (!HASH_RE.test(hash)) return { ok: false, error: 'Invalid commit hash' }
-    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    const cwd = this.repoCwd(project, repo)
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`], GIT_TIMEOUT_MS, cwd)
     if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
     const resolved = full.stdout.trim()
-    if (!(await this.hasParent(project, resolved))) return { ok: false, error: 'Root commit cannot be dropped' }
+    if (!(await this.hasParent(project, resolved, cwd))) return { ok: false, error: 'Root commit cannot be dropped' }
     const args = ['rebase', '--autostash', '--onto', `${resolved}^`, resolved]
-    const result = await this.run(project, args)
+    const result = await this.run(project, args, GIT_TIMEOUT_MS, cwd)
     return result.code === 0 ? OK : { ok: false, error: errorOf(result, args) }
   }
 
   /** Новое сообщение коммита: HEAD — `commit --amend --only` (индекс не трогается),
-   *  более старый — неинтерактивный rebase -i с reword целевого коммита. */
-  async editCommitMessage(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult> {
+   *  более старый — неинтерактивный rebase -i с reword целевого коммита; repo — вложенный репозиторий. */
+  async editCommitMessage(project: ProjectEntry, hash: string, message: string, repo?: string): Promise<GitOpResult> {
     const trimmed = message.trim()
     if (!HASH_RE.test(hash) || trimmed.length === 0) return { ok: false, error: 'Invalid request' }
-    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    const cwd = this.repoCwd(project, repo)
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`], GIT_TIMEOUT_MS, cwd)
     if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
     const resolved = full.stdout.trim()
-    const head = await this.run(project, ['rev-parse', 'HEAD'])
+    const head = await this.run(project, ['rev-parse', 'HEAD'], GIT_TIMEOUT_MS, cwd)
     if (head.code === 0 && head.stdout.trim() === resolved) {
       const args = ['commit', '--amend', '--only', '-m', message]
-      const result = await this.run(project, args)
+      const result = await this.run(project, args, GIT_TIMEOUT_MS, cwd)
       return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['commit']) }
     }
-    if (!(await this.hasParent(project, resolved))) {
+    if (!(await this.hasParent(project, resolved, cwd))) {
       return { ok: false, error: 'Cannot reword the root commit' }
     }
-    return await this.rebaseEdit(project, 'reword', resolved, message)
+    return await this.rebaseEdit(project, 'reword', resolved, message, cwd)
   }
 
   /** Уплотнить коммит в родительский с новым сообщением: rebase -i от родителя родителя,
-   *  pick родителя + squash цели. Родитель должен сам иметь родителя (не быть корнем). */
-  async squashInto(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult> {
+   *  pick родителя + squash цели. Родитель должен сам иметь родителя (не быть корнем).
+   *  repo — вложенный репозиторий. */
+  async squashInto(project: ProjectEntry, hash: string, message: string, repo?: string): Promise<GitOpResult> {
     const trimmed = message.trim()
     if (!HASH_RE.test(hash) || trimmed.length === 0) return { ok: false, error: 'Invalid request' }
-    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`])
+    const cwd = this.repoCwd(project, repo)
+    const full = await this.run(project, ['rev-parse', '--verify', `${hash}^{commit}`], GIT_TIMEOUT_MS, cwd)
     if (full.code !== 0) return { ok: false, error: errorOf(full, ['rev-parse']) }
     const resolved = full.stdout.trim()
-    if (!(await this.hasParent(project, resolved))) {
+    if (!(await this.hasParent(project, resolved, cwd))) {
       return { ok: false, error: 'Root commit has no parent to squash into' }
     }
-    const parent = (await this.run(project, ['rev-parse', `${resolved}^`])).stdout.trim()
-    if (!(await this.hasParent(project, parent))) {
+    const parent = (await this.run(project, ['rev-parse', `${resolved}^`], GIT_TIMEOUT_MS, cwd)).stdout.trim()
+    if (!(await this.hasParent(project, parent, cwd))) {
       return { ok: false, error: 'Cannot squash into the root commit' }
     }
-    return await this.rebaseEdit(project, 'squash', resolved, message)
+    return await this.rebaseEdit(project, 'squash', resolved, message, cwd)
   }
 
-  private async hasParent(project: ProjectEntry, resolved: string): Promise<boolean> {
-    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', resolved])
+  private async hasParent(project: ProjectEntry, resolved: string, cwd?: string): Promise<boolean> {
+    const parents = await this.run(project, ['rev-list', '--parents', '-n', '1', resolved], GIT_TIMEOUT_MS, cwd)
     if (parents.code !== 0) return false
     return parents.stdout.trim().split(/\s+/).filter((t) => t.length > 0).length > 1
   }
@@ -734,7 +761,8 @@ export class GitService {
     project: ProjectEntry,
     verb: 'reword' | 'squash',
     hash: string,
-    message: string
+    message: string,
+    cwd = project.dir
   ): Promise<GitOpResult> {
     const short = hash.slice(0, 7)
     const args: string[] = []
@@ -771,7 +799,7 @@ export class GitService {
         env = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
       } else {
         const msgName = '.piwright-rebase-msg.tmp'
-        const msgPath = getProjectFs(project, this.getSettings()).join(project.dir, msgName)
+        const msgPath = getProjectFs(project, this.getSettings()).join(cwd, msgName)
         await getProjectFs(project, this.getSettings()).writeFile(msgPath, message)
         cleanup.push(msgPath)
         args.push(
@@ -782,12 +810,12 @@ export class GitService {
         )
       }
       args.push('rebase', '--autostash', '-i', verb === 'squash' ? `${hash}^^` : `${hash}^`)
-      const result = await this.run(project, args, GIT_TIMEOUT_MS, undefined, env)
+      const result = await this.run(project, args, GIT_TIMEOUT_MS, cwd, env)
       return result.code === 0 ? OK : { ok: false, error: errorOf(result, ['rebase']) }
     } finally {
       for (const path of cleanup) {
         try {
-          if (path.startsWith(project.dir)) await getProjectFs(project, this.getSettings()).rm(path)
+          if (path.startsWith(cwd)) await getProjectFs(project, this.getSettings()).rm(path)
           else await unlink(path)
         } catch {
           // файла уже нет

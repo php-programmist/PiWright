@@ -4109,6 +4109,24 @@ pre.code-block {
   user-select: none;
 }
 
+.git-repo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 10px;
+  cursor: pointer;
+  color: var(--text);
+  user-select: none;
+}
+
+.git-repo:hover {
+  background: var(--hover);
+}
+
+.git-head .icon.active {
+  color: var(--blue);
+}
+
 .git-folder:hover {
   background: var(--hover);
 }
@@ -5241,6 +5259,17 @@ pre.code-block {
   font: inherit;
   font-size: 12px;
   max-width: 170px;
+  padding: 2px 4px;
+}
+
+.gitlog-repo-select {
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  max-width: 120px;
   padding: 2px 4px;
 }
 

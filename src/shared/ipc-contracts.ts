@@ -179,6 +179,8 @@ export interface PanelPrefs {
   width?: number
   /** Высота терминального дока (горизонтальная область внизу). */
   height?: number
+  /** Git-панель: группировать изменения по репозиториям (несколько репо в проекте). */
+  groupByRepo?: boolean
 }
 
 export type PanelName = 'git' | 'files' | 'terminal' | 'gitlog' | 'kanban' | 'db' | 'sessions'
@@ -469,7 +471,7 @@ export interface GitLogResult extends GitOpResult {
   hasMore: boolean
 }
 
-/** Фильтр страницы лога: подстрока сообщения (или префикс хэша) и/или ветка. */
+/** Фильтр страницы лога: подстрока сообщения (или префикс хэша), ветка и/или репозиторий. */
 export interface GitLogFilter {
   /** Подстрока сообщения без регистра; 4+ hex-символа дополнительно ищутся как префикс хэша. */
   query?: string
@@ -477,6 +479,8 @@ export interface GitLogFilter {
   branch?: string | null
   /** Все ветки (локальные, remote-tracking, теги); перекрывает branch. */
   all?: boolean
+  /** Вложенный репозиторий: путь от корня проекта (один сегмент); undefined — сам проект. */
+  repo?: string
 }
 
 export interface GitCommitFileDiffResult extends GitOpResult {
@@ -507,6 +511,17 @@ export interface WorktreeRemoveResult {
 /** Локальные ветки репозитория (`git branch --list`; all — плюс remote-tracking). */
 export interface GitBranchesResult extends GitOpResult {
   branches: string[]
+}
+
+/** Репозиторий проекта: rel — путь от корня проекта ('' — сам проект), name — подпись в UI. */
+export interface GitRepoInfo {
+  rel: string
+  name: string
+}
+
+/** Список репозиториев проекта: сам проект + вложенные (каталоги с собственным .git). */
+export interface GitReposResult extends GitOpResult {
+  repos: GitRepoInfo[]
 }
 
 /** Состояние sequencer'а git: rebase (REBASE_HEAD) или merge (MERGE_HEAD) в процессе. */
@@ -1178,31 +1193,33 @@ export interface PiWrightApi {
   /** `git fetch --quiet` — обновить remote-tracking ref'ы (ahead/behind в статусе). */
   gitFetch(project: ProjectEntry): Promise<GitOpResult>
   gitLog(project: ProjectEntry, page?: number, filter?: GitLogFilter): Promise<GitLogResult>
-  /** Список изменённых файлов коммита (diff против первого родителя). */
-  gitCommitFiles(project: ProjectEntry, hash: string): Promise<GitCommitFilesResult>
-  /** Дифф файла в коммите: original = <hash>^:<path>, modified = <hash>:<path>. */
-  gitCommitFileDiff(project: ProjectEntry, hash: string, path: string): Promise<GitCommitFileDiffResult>
-  gitBranches(project: ProjectEntry, all?: boolean): Promise<GitBranchesResult>
-  /** create — `git checkout -b <name> [startPoint]` (создать и переключиться), иначе `git checkout <name>`. */
-  gitCheckout(project: ProjectEntry, name: string, create: boolean, startPoint?: string): Promise<GitOpResult>
+  /** Репозитории проекта: сам проект + вложенные (для фильтра истории и группировки изменений). */
+  gitRepos(project: ProjectEntry): Promise<GitReposResult>
+  /** Список изменённых файлов коммита (diff против первого родителя); repo — вложенный репозиторий. */
+  gitCommitFiles(project: ProjectEntry, hash: string, repo?: string): Promise<GitCommitFilesResult>
+  /** Дифф файла в коммите: original = <hash>^:<path>, modified = <hash>:<path>; repo — вложенный репозиторий. */
+  gitCommitFileDiff(project: ProjectEntry, hash: string, path: string, repo?: string): Promise<GitCommitFileDiffResult>
+  gitBranches(project: ProjectEntry, all?: boolean, repo?: string): Promise<GitBranchesResult>
+  /** create — `git checkout -b <name> [startPoint]` (создать и переключиться), иначе `git checkout <name>`; repo — вложенный репозиторий. */
+  gitCheckout(project: ProjectEntry, name: string, create: boolean, startPoint?: string, repo?: string): Promise<GitOpResult>
   /** `git branch -m <oldName> <newName>`. */
   gitBranchRename(project: ProjectEntry, oldName: string, newName: string): Promise<GitOpResult>
   /** `git branch -d <name>` (безопасное удаление; неслитая ветка — ошибка git). */
   gitBranchDelete(project: ProjectEntry, name: string): Promise<GitOpResult>
-  /** `git cherry-pick <hash>` в текущую ветку. */
-  gitCherryPick(project: ProjectEntry, hash: string): Promise<GitOpResult>
-  /** `git revert --no-edit <hash>` — обратный коммит поверх HEAD. */
-  gitRevert(project: ProjectEntry, hash: string): Promise<GitOpResult>
-  /** `git reset --<mode> <hash>`; mode — soft|mixed|hard. */
-  gitReset(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<GitOpResult>
-  /** `git tag <name> <hash>`. */
-  gitTagCreate(project: ProjectEntry, name: string, hash: string): Promise<GitOpResult>
-  /** Выкинуть коммит из истории: `git rebase --autostash --onto <hash>^ <hash>`. */
-  gitDropCommit(project: ProjectEntry, hash: string): Promise<GitOpResult>
-  /** Новое сообщение коммита: HEAD — `commit --amend --only`, глубже — rebase -i reword. */
-  gitEditCommitMessage(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
-  /** Уплотнить коммит в родительский с новым сообщением (rebase -i squash). */
-  gitSquashInto(project: ProjectEntry, hash: string, message: string): Promise<GitOpResult>
+  /** `git cherry-pick <hash>` в текущую ветку; repo — вложенный репозиторий. */
+  gitCherryPick(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult>
+  /** `git revert --no-edit <hash>` — обратный коммит поверх HEAD; repo — вложенный репозиторий. */
+  gitRevert(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult>
+  /** `git reset --<mode> <hash>`; mode — soft|mixed|hard; repo — вложенный репозиторий. */
+  gitReset(project: ProjectEntry, hash: string, mode: 'soft' | 'mixed' | 'hard', repo?: string): Promise<GitOpResult>
+  /** `git tag <name> <hash>`; repo — вложенный репозиторий. */
+  gitTagCreate(project: ProjectEntry, name: string, hash: string, repo?: string): Promise<GitOpResult>
+  /** Выкинуть коммит из истории: `git rebase --autostash --onto <hash>^ <hash>`; repo — вложенный репозиторий. */
+  gitDropCommit(project: ProjectEntry, hash: string, repo?: string): Promise<GitOpResult>
+  /** Новое сообщение коммита: HEAD — `commit --amend --only`, глубже — rebase -i reword; repo — вложенный репозиторий. */
+  gitEditCommitMessage(project: ProjectEntry, hash: string, message: string, repo?: string): Promise<GitOpResult>
+  /** Уплотнить коммит в родительский с новым сообщением (rebase -i squash); repo — вложенный репозиторий. */
+  gitSquashInto(project: ProjectEntry, hash: string, message: string, repo?: string): Promise<GitOpResult>
   /** Состояние sequencer'а (rebase/merge в процессе) — для диалога Resolve Conflicts. */
   gitConflictState(project: ProjectEntry): Promise<GitConflictStateResult>
   /** Разрешить конфликт одной стороной: `checkout --ours|--theirs -- <path>` + `add`. */
@@ -1393,6 +1410,7 @@ export const GIT_PULL_BRANCH_CHANNEL = 'git:pull-branch'
 export const GIT_BRANCH_SYNC_CHANNEL = 'git:branch-sync'
 export const GIT_FETCH_CHANNEL = 'git:fetch'
 export const GIT_LOG_CHANNEL = 'git:log'
+export const GIT_REPOS_CHANNEL = 'git:repos'
 export const GIT_COMMIT_FILES_CHANNEL = 'git:commit-files'
 export const GIT_COMMIT_FILE_DIFF_CHANNEL = 'git:commit-file-diff'
 export const GIT_BRANCHES_CHANNEL = 'git:branches'

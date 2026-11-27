@@ -58,6 +58,8 @@ const RU: Record<string, string> = {
   'commit not found in loaded history': 'коммит не найден в загруженной истории',
   'Search commits (message or hash)': 'Поиск коммитов (сообщение или хэш)',
   'Branch filter': 'Фильтр по ветке',
+  'Repository filter': 'Фильтр по репозиторию',
+  'Group changes by repository': 'Группировать изменения по репозиториям',
   'HEAD (current)': 'HEAD (текущая)',
   'All branches': 'Все ветки',
   'Copy Revision Number': 'Копировать номер ревизии',

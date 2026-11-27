@@ -52,6 +52,8 @@ export interface ProjectTab {
   path?: string
   /** diff — хеш коммита (дифф файла в коммите из истории Git). */
   hash?: string
+  /** diff — вложенный репозиторий коммита (rel-путь от корня проекта). */
+  repo?: string
   /** kanban/task — id доски. */
   boardId?: string
   /** task — id карточки. */

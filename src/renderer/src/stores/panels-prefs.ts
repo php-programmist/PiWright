@@ -28,7 +28,7 @@ export function persistPanel(panel: PanelName, patch: PanelPrefs): void {
 
 export function hydratePanels(settings: Settings): void {
   const { git, files, terminal, gitlog, kanban, sessions, db } = settings.panels
-  if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}) })
+  if (git !== undefined) useGitStore.setState({ ...(git.open !== undefined ? { open: git.open } : {}), ...(git.width !== undefined ? { width: git.width } : {}), ...(git.groupByRepo !== undefined ? { groupByRepo: git.groupByRepo } : {}) })
   if (files !== undefined) useFilesStore.setState({ ...(files.open !== undefined ? { open: files.open } : {}), ...(files.width !== undefined ? { width: files.width } : {}) })
   if (terminal !== undefined)
     useTerminalStore.setState({

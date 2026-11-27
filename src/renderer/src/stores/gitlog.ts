@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GitCommitFileEntry, GitLogEntry, ProjectEntry } from '../../../shared/ipc-contracts'
+import type { GitCommitFileEntry, GitLogEntry, GitRepoInfo, ProjectEntry } from '../../../shared/ipc-contracts'
 import { projectKey } from './sessions'
 
 /** Состояние дока Git Log для активного проекта; смена проекта сбрасывает всё, кроме open/height. */
@@ -27,6 +27,10 @@ interface GitLogState {
   allBranches: boolean
   /** Локальные + remote-tracking ветки для выпадающего фильтра. */
   branches: string[]
+  /** Репозитории проекта (фильтр виден, когда их больше одного). */
+  repos: GitRepoInfo[]
+  /** Выбранный репозиторий: rel-путь от корня проекта, '' — сам проект. */
+  repo: string
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Догрузить следующую страницу (если есть); возвращает true — что-то догрузилось. */
@@ -38,6 +42,10 @@ interface GitLogState {
   setBranchFilter: (project: ProjectEntry, branch: string | null, all: boolean) => Promise<void>
   /** Подгрузить список веток для фильтра (локальные + remote-tracking). */
   loadBranches: (project: ProjectEntry) => Promise<void>
+  /** Подгрузить список репозиториев проекта. */
+  loadRepos: (project: ProjectEntry) => Promise<void>
+  /** Выбрать репозиторий истории: сброс фильтра веток и выбора, перезагрузка. */
+  setRepo: (project: ProjectEntry, repo: string) => Promise<void>
   toggleOpen: () => void
   setHeight: (height: number) => void
   setError: (error: string | null) => void
@@ -59,6 +67,8 @@ function resetState(): Pick<
   | 'branch'
   | 'allBranches'
   | 'branches'
+  | 'repos'
+  | 'repo'
 > {
   return {
     projectKey: null,
@@ -74,7 +84,9 @@ function resetState(): Pick<
     query: '',
     branch: null,
     allBranches: true,
-    branches: []
+    branches: [],
+    repos: [],
+    repo: ''
   }
 }
 
@@ -93,11 +105,12 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
   refresh: async (project) => {
     if (projectKey(project) !== get().projectKey) return
     set({ loading: true })
-    const { query, branch, allBranches } = get()
+    const { query, branch, allBranches, repo } = get()
     const result = await window.piwright.gitLog(project, 0, {
       query: query.length > 0 ? query : undefined,
       branch,
-      all: allBranches
+      all: allBranches,
+      repo: repo.length > 0 ? repo : undefined
     })
     set((state) => ({
       loading: false,
@@ -112,11 +125,12 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
     const state = get()
     if (projectKey(project) !== state.projectKey || !state.hasMore || state.loadingMore || state.loading) return false
     set({ loadingMore: true })
-    const { query, branch, allBranches } = get()
+    const { query, branch, allBranches, repo } = get()
     const result = await window.piwright.gitLog(project, state.page + 1, {
       query: query.length > 0 ? query : undefined,
       branch,
-      all: allBranches
+      all: allBranches,
+      repo: repo.length > 0 ? repo : undefined
     })
     const stale = projectKey(project) !== get().projectKey
     if (stale) return false
@@ -140,7 +154,7 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
       return
     }
     set({ selectedHash: hash, files: [], filesLoading: true, error: null })
-    const result = await window.piwright.gitCommitFiles(project, hash)
+    const result = await window.piwright.gitCommitFiles(project, hash, get().repo.length > 0 ? get().repo : undefined)
     set((state) =>
       state.selectedHash === hash
         ? { filesLoading: false, files: result.ok ? result.files : [], error: result.ok ? state.error : result.error }
@@ -163,9 +177,25 @@ export const useGitLogStore = create<GitLogState>((set, get) => ({
 
   loadBranches: async (project) => {
     if (projectKey(project) !== get().projectKey) return
-    const result = await window.piwright.gitBranches(project, true)
-    if (projectKey(project) !== get().projectKey) return
+    const repo = get().repo
+    const result = await window.piwright.gitBranches(project, true, repo.length > 0 ? repo : undefined)
+    if (projectKey(project) !== get().projectKey || repo !== get().repo) return
     if (result.ok) set({ branches: result.branches })
+  },
+
+  loadRepos: async (project) => {
+    if (projectKey(project) !== get().projectKey) return
+    const result = await window.piwright.gitRepos(project)
+    if (projectKey(project) !== get().projectKey) return
+    if (!result.ok) return
+    const known = result.repos.some((r) => r.rel === get().repo)
+    set({ repos: result.repos, repo: known ? get().repo : '' })
+  },
+
+  setRepo: async (project, repo) => {
+    if (projectKey(project) !== get().projectKey || get().repo === repo) return
+    set({ repo, branch: null, allBranches: true, selectedHash: null, files: [], filesLoading: false, entries: [], page: 0, hasMore: false })
+    await Promise.all([get().refresh(project), get().loadBranches(project)])
   },
 
   toggleOpen: () => set((state) => ({ open: !state.open })),

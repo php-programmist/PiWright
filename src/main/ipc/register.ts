@@ -41,6 +41,7 @@ import {
   GIT_FILE_DIFF_CHANNEL,
   GIT_GENERATE_MESSAGE_CHANNEL,
   GIT_LOG_CHANNEL,
+  GIT_REPOS_CHANNEL,
   GIT_COMMIT_FILES_CHANNEL,
   GIT_COMMIT_FILE_DIFF_CHANNEL,
   GIT_PUSH_CHANNEL,
@@ -338,7 +339,15 @@ function parseLogFilter(value: unknown): GitLogFilter | undefined {
   if (typeof raw['query'] === 'string' && raw['query'].length > 0) filter.query = raw['query']
   if (typeof raw['branch'] === 'string' && raw['branch'].length > 0) filter.branch = raw['branch']
   if (raw['all'] === true) filter.all = true
+  const repo = parseRepo(raw['repo'])
+  if (repo !== undefined) filter.repo = repo
   return Object.keys(filter).length > 0 ? filter : undefined
+}
+
+/** Имя вложенного репозитория: один сегмент пути без разделителей (защита от выхода за корень проекта). */
+function parseRepo(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined
+  return /^[^\\/]{1,128}$/.test(value) && value !== '.' && value !== '..' ? value : undefined
 }
 
 function isProfileId(value: unknown): value is TerminalProfileId {
@@ -1150,18 +1159,23 @@ export function registerIpc(
     return git.log(project, typeof page === 'number' && Number.isInteger(page) && page >= 0 ? page : 0, parsed)
   })
 
-  router.handle(GIT_COMMIT_FILES_CHANNEL, async (project: unknown, hash: unknown) => {
+  router.handle(GIT_REPOS_CHANNEL, async (project: unknown) => {
+    if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', repos: [] }
+    return git.repos(project)
+  })
+
+  router.handle(GIT_COMMIT_FILES_CHANNEL, async (project: unknown, hash: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string' || hash.length === 0) {
       return { ok: false, error: 'Invalid request', files: [] }
     }
-    return git.commitFiles(project, hash)
+    return git.commitFiles(project, hash, parseRepo(repo))
   })
 
-  router.handle(GIT_COMMIT_FILE_DIFF_CHANNEL, async (project: unknown, hash: unknown, path: unknown) => {
+  router.handle(GIT_COMMIT_FILE_DIFF_CHANNEL, async (project: unknown, hash: unknown, path: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string' || typeof path !== 'string' || path.length === 0) {
       return { ok: false, error: 'Invalid request', original: '', modified: '' }
     }
-    return git.commitFileDiff(project, hash, path)
+    return git.commitFileDiff(project, hash, path, parseRepo(repo))
   })
 
   router.handle(GIT_GENERATE_MESSAGE_CHANNEL, async (project: unknown) => {
@@ -1169,16 +1183,16 @@ export function registerIpc(
     return git.generateCommitMessage(project)
   })
 
-  router.handle(GIT_BRANCHES_CHANNEL, async (project: unknown, all: unknown) => {
+  router.handle(GIT_BRANCHES_CHANNEL, async (project: unknown, all: unknown, repo: unknown) => {
     if (!isProjectEntry(project)) return { ok: false, error: 'Invalid project', branches: [] }
-    return git.branches(project, all === true)
+    return git.branches(project, all === true, parseRepo(repo))
   })
 
-  router.handle(GIT_CHECKOUT_CHANNEL, async (project: unknown, name: unknown, create: unknown, startPoint: unknown) => {
+  router.handle(GIT_CHECKOUT_CHANNEL, async (project: unknown, name: unknown, create: unknown, startPoint: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof create !== 'boolean') {
       return { ok: false, error: 'Invalid request' }
     }
-    return git.checkout(project, name, create, typeof startPoint === 'string' ? startPoint : undefined)
+    return git.checkout(project, name, create, typeof startPoint === 'string' ? startPoint : undefined, parseRepo(repo))
   })
 
   router.handle(GIT_BRANCH_RENAME_CHANNEL, async (project: unknown, oldName: unknown, newName: unknown) => {
@@ -1193,46 +1207,46 @@ export function registerIpc(
     return git.deleteBranch(project, name)
   })
 
-  router.handle(GIT_CHERRY_PICK_CHANNEL, async (project: unknown, hash: unknown) => {
+  router.handle(GIT_CHERRY_PICK_CHANNEL, async (project: unknown, hash: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
-    return git.cherryPick(project, hash)
+    return git.cherryPick(project, hash, parseRepo(repo))
   })
 
-  router.handle(GIT_REVERT_CHANNEL, async (project: unknown, hash: unknown) => {
+  router.handle(GIT_REVERT_CHANNEL, async (project: unknown, hash: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
-    return git.revertCommit(project, hash)
+    return git.revertCommit(project, hash, parseRepo(repo))
   })
 
-  router.handle(GIT_RESET_CHANNEL, async (project: unknown, hash: unknown, mode: unknown) => {
+  router.handle(GIT_RESET_CHANNEL, async (project: unknown, hash: unknown, mode: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
     if (mode !== 'soft' && mode !== 'mixed' && mode !== 'hard') return { ok: false, error: 'Invalid request' }
-    return git.resetBranch(project, hash, mode)
+    return git.resetBranch(project, hash, mode, parseRepo(repo))
   })
 
-  router.handle(GIT_TAG_CREATE_CHANNEL, async (project: unknown, name: unknown, hash: unknown) => {
+  router.handle(GIT_TAG_CREATE_CHANNEL, async (project: unknown, name: unknown, hash: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof name !== 'string' || typeof hash !== 'string') {
       return { ok: false, error: 'Invalid request' }
     }
-    return git.tagCreate(project, name, hash)
+    return git.tagCreate(project, name, hash, parseRepo(repo))
   })
 
-  router.handle(GIT_DROP_COMMIT_CHANNEL, async (project: unknown, hash: unknown) => {
+  router.handle(GIT_DROP_COMMIT_CHANNEL, async (project: unknown, hash: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string') return { ok: false, error: 'Invalid request' }
-    return git.dropCommit(project, hash)
+    return git.dropCommit(project, hash, parseRepo(repo))
   })
 
-  router.handle(GIT_EDIT_MESSAGE_CHANNEL, async (project: unknown, hash: unknown, message: unknown) => {
+  router.handle(GIT_EDIT_MESSAGE_CHANNEL, async (project: unknown, hash: unknown, message: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string' || typeof message !== 'string') {
       return { ok: false, error: 'Invalid request' }
     }
-    return git.editCommitMessage(project, hash, message)
+    return git.editCommitMessage(project, hash, message, parseRepo(repo))
   })
 
-  router.handle(GIT_SQUASH_INTO_CHANNEL, async (project: unknown, hash: unknown, message: unknown) => {
+  router.handle(GIT_SQUASH_INTO_CHANNEL, async (project: unknown, hash: unknown, message: unknown, repo: unknown) => {
     if (!isProjectEntry(project) || typeof hash !== 'string' || typeof message !== 'string') {
       return { ok: false, error: 'Invalid request' }
     }
-    return git.squashInto(project, hash, message)
+    return git.squashInto(project, hash, message, parseRepo(repo))
   })
 
   router.handle(GIT_CONFLICT_STATE_CHANNEL, async (project: unknown) => {

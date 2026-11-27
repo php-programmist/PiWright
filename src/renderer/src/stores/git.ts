@@ -20,6 +20,7 @@ type GitData = Pick<
   | 'branchSync'
   | 'conflict'
   | 'conflictOpen'
+  | 'groupByRepo'
 >
 
 interface GitState {
@@ -46,6 +47,8 @@ interface GitState {
   conflict: { state: GitSequencerState; repoRoot: string | null } | null
   /** Открыт диалог Resolve Conflicts. */
   conflictOpen: boolean
+  /** Группировать изменения по репозиториям (видна только при нескольких репо). */
+  groupByRepo: boolean
   setProject: (project: ProjectEntry | null) => void
   refresh: (project: ProjectEntry) => Promise<void>
   /** Только статус; silent — не трогать error/status при сбое (поллинг, конец хода). */
@@ -53,8 +56,8 @@ interface GitState {
   /** Только ahead/behind веток; при сбое данные остаются старыми (стрелки просто не обновляются). */
   refreshBranchSync: (project: ProjectEntry) => Promise<void>
   openFile: (project: ProjectEntry, path: string) => Promise<void>
-  /** Дифф файла в коммите (из истории Git). */
-  openCommitFile: (project: ProjectEntry, hash: string, path: string) => Promise<void>
+  /** Дифф файла в коммите (из истории Git); repo — вложенный репозиторий. */
+  openCommitFile: (project: ProjectEntry, hash: string, path: string, repo?: string) => Promise<void>
   closeFile: () => void
   stage: (project: ProjectEntry, paths: string[]) => Promise<void>
   unstage: (project: ProjectEntry, paths: string[]) => Promise<void>
@@ -86,6 +89,7 @@ interface GitState {
   setError: (error: string | null) => void
   toggleOpen: () => void
   setWidth: (width: number) => void
+  toggleGroupByRepo: () => void
 }
 
 function resetState(): GitData {
@@ -104,7 +108,8 @@ function resetState(): GitData {
     branches: [],
     branchSync: [],
     conflict: null,
-    conflictOpen: false
+    conflictOpen: false,
+    groupByRepo: false
   }
 }
 
@@ -175,9 +180,9 @@ export const useGitStore = create<GitState>((set, get) => {
     )
   },
 
-  openCommitFile: async (project, hash, path) => {
+  openCommitFile: async (project, hash, path, repo) => {
     set({ selectedPath: path, commitHash: hash, diff: null, diffLoading: true, error: null })
-    const result = await window.piwright.gitCommitFileDiff(project, hash, path)
+    const result = await window.piwright.gitCommitFileDiff(project, hash, path, repo)
     set((state) =>
       state.selectedPath === path && state.commitHash === hash
         ? { diffLoading: false, diff: result.ok ? { original: result.original, modified: result.modified } : null, error: result.ok ? state.error : result.error }
@@ -331,6 +336,7 @@ export const useGitStore = create<GitState>((set, get) => {
   setMessage: (message) => set({ message }),
   setError: (error) => set({ error }),
   toggleOpen: () => set((state) => ({ open: !state.open })),
+  toggleGroupByRepo: () => set((state) => ({ groupByRepo: !state.groupByRepo })),
   setWidth: (width) => set({ width: Math.min(Math.max(width, 280), window.innerWidth - 560) })
   }
 })

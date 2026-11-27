@@ -13,6 +13,7 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
   const t = useT()
   const path = tab.path ?? ''
   const commitHash = tab.hash
+  const repo = tab.repo
   const selectedPath = useGitStore((s) => s.selectedPath)
   const diff = useGitStore((s) => s.diff)
   const diffLoading = useGitStore((s) => s.diffLoading)
@@ -24,12 +25,12 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
     const git = useGitStore.getState()
     if (commitHash !== undefined) {
       if (git.selectedPath !== path || git.commitHash !== commitHash || (git.diff === null && !git.diffLoading)) {
-        void git.openCommitFile(tab.project, commitHash, path)
+        void git.openCommitFile(tab.project, commitHash, path, repo)
       }
       return
     }
     if (git.selectedPath !== path || (git.diff === null && !git.diffLoading)) void git.openFile(tab.project, path)
-  }, [tab.project, path, commitHash])
+  }, [tab.project, path, commitHash, repo])
 
   // Дифф файла исчез из статуса (закоммичен/откачен) — закрываем его вкладку (только рабочая копия).
   useEffect(() => {
@@ -46,7 +47,7 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
   useEffect(() => {
     let cancelled = false
     if (commitHash !== undefined) {
-      void window.piwright.gitCommitFiles(tab.project, commitHash).then((r) => {
+      void window.piwright.gitCommitFiles(tab.project, commitHash, repo).then((r) => {
         if (!cancelled) setContextFiles(r.ok ? r.files.map((f) => f.path) : null)
       })
     } else {
@@ -57,7 +58,7 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
     return () => {
       cancelled = true
     }
-  }, [tab.project, commitHash])
+  }, [tab.project, commitHash, repo])
 
   const step = useCallback(
     (delta: number): void => {
@@ -67,14 +68,14 @@ export function DiffOverlay({ tab }: { tab: ProjectTab }): React.JSX.Element | n
       const nextPath = contextFiles[(index + delta + contextFiles.length) % contextFiles.length]
       const git = useGitStore.getState()
       if (commitHash !== undefined) {
-        useTabsStore.getState().openTab(tab.project, { kind: 'diff', path: nextPath, hash: commitHash })
-        void git.openCommitFile(tab.project, commitHash, nextPath)
+        useTabsStore.getState().openTab(tab.project, { kind: 'diff', path: nextPath, hash: commitHash, repo })
+        void git.openCommitFile(tab.project, commitHash, nextPath, repo)
       } else {
         useTabsStore.getState().openTab(tab.project, { kind: 'diff', path: nextPath })
         void git.openFile(tab.project, nextPath)
       }
     },
-    [contextFiles, path, commitHash, tab.project]
+    [contextFiles, path, commitHash, repo, tab.project]
   )
 
   // Клавиши ↑/↓ листают диффы, пока фокус не внутри Monaco/поля ввода (там стрелки — курсор).

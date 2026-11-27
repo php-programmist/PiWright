@@ -33,11 +33,14 @@ interface GitFileNode {
   files: GitFileEntry[]
 }
 
-/** Дерево папок из плоских путей (фича 41): группировка списка изменений по папкам. */
-export function buildFileTree(entries: GitFileEntry[]): GitFileNode {
+/** Дерево папок из плоских путей (фича 41): группировка списка изменений по папкам.
+ *  strip — префикс вложенного репозитория: при построении папок он снимается, пути записей
+ *  остаются полными (стад/дифф ищутся по ним). */
+export function buildFileTree(entries: GitFileEntry[], strip = ''): GitFileNode {
   const root: GitFileNode = { name: '', dirs: new Map(), files: [] }
   for (const entry of entries) {
-    const parts = entry.path.split('/')
+    const rel = strip.length > 0 && entry.path.startsWith(`${strip}/`) ? entry.path.slice(strip.length + 1) : entry.path
+    const parts = rel.split('/')
     let node = root
     for (let i = 0; i < parts.length - 1; i++) {
       const name = parts[i]
@@ -51,6 +54,13 @@ export function buildFileTree(entries: GitFileEntry[]): GitFileNode {
     node.files.push(entry)
   }
   return root
+}
+
+/** Группа изменений одного репозитория: rel — путь от корня проекта ('' — сам проект). */
+interface RepoGroup {
+  rel: string
+  name: string
+  entries: GitFileEntry[]
 }
 
 function subtreeCount(node: GitFileNode): number {
@@ -227,6 +237,32 @@ export function GitPanel(): React.JSX.Element {
   const changes = useMemo(() => entries.filter((e) => e.worktree !== '.' || e.untracked), [entries])
   const stagedTree = useMemo(() => buildFileTree(staged), [staged])
   const changesTree = useMemo(() => buildFileTree(changes), [changes])
+  const groupByRepo = useGitStore((s) => s.groupByRepo)
+  // Группы по репозиториям: главный репо первый, вложенные по алфавиту; имя — для заголовка секции.
+  const repoGroups = useMemo<RepoGroup[]>(() => {
+    if (project === null) return []
+    const map = new Map<string, GitFileEntry[]>()
+    for (const entry of entries) {
+      const rel =
+        entry.repoRoot !== undefined && entry.repoRoot.startsWith(project.dir)
+          ? entry.repoRoot.slice(project.dir.length).replace(/^[\\/]+/, '')
+          : ''
+      const group = map.get(rel)
+      if (group === undefined) map.set(rel, [entry])
+      else group.push(entry)
+    }
+    return [...map.entries()]
+      .map(([rel, list]) => ({ rel, name: rel.length > 0 ? rel : project.dir.split(/[\\/]/).filter((p) => p.length > 0).pop() ?? project.dir, entries: list }))
+      .sort((a, b) => (a.rel === '' ? -1 : b.rel === '' ? 1 : a.rel.localeCompare(b.rel)))
+  }, [entries, project])
+  const stagedGroups = useMemo(
+    () => repoGroups.map((g) => ({ ...g, entries: g.entries.filter((e) => e.index !== '.') })).filter((g) => g.entries.length > 0),
+    [repoGroups]
+  )
+  const changesGroups = useMemo(
+    () => repoGroups.map((g) => ({ ...g, entries: g.entries.filter((e) => e.worktree !== '.' || e.untracked) })).filter((g) => g.entries.length > 0),
+    [repoGroups]
+  )
   const lang = useLang()
   // Свёрнутые папки дерева; смена проекта сбрасывает без эффекта (ключ привязан к проекту).
   const [collapsedState, setCollapsedState] = useState<{ project: ProjectEntry | null; keys: Set<string> }>({
@@ -251,6 +287,51 @@ export function GitPanel(): React.JSX.Element {
     )
   }
 
+  const openDiff = (path: string): void => {
+    useTabsStore.getState().openTab(project, { kind: 'diff', path })
+    void useGitStore.getState().openFile(project, path)
+  }
+
+  /** Секции по репозиториям (тумблер группировки); rel префикс снимается с путей дерева. */
+  const renderGroups = (
+    groups: RepoGroup[],
+    badgeOf: (e: GitFileEntry) => string,
+    action: string,
+    keyPrefix: string,
+    onToggle: (path: string) => void
+  ): React.JSX.Element[] =>
+    groups.map((g) => {
+      const key = `${keyPrefix}:${g.rel}`
+      const open = !collapsed.has(key)
+      return (
+        <div key={`repo:${key}`}>
+          <div className="git-repo" onClick={() => toggleCollapsed(key)}>
+            <span className="git-folder-chevron">{open ? '▾' : '▸'}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="7" cy="6" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <circle cx="7" cy="18" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <circle cx="17" cy="9" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M7 8.6v6.8M9.4 7.2c3 .4 5.2 1 6.4 1.9" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+            <span className="git-folder-name">{g.name}</span>
+            <span className="git-folder-count">{filesLabel(lang, g.entries.length)}</span>
+          </div>
+          {open && (
+            <FileTree
+              root={buildFileTree(g.entries, g.rel)}
+              badgeOf={badgeOf}
+              action={action}
+              collapsed={collapsed}
+              toggleCollapsed={toggleCollapsed}
+              onOpen={openDiff}
+              onToggle={onToggle}
+              lang={lang}
+            />
+          )}
+        </div>
+      )
+    })
+
   return (
     <aside className="git-panel" style={{ width }}>
       <div className="git-resizer" onMouseDown={startResize} />
@@ -267,6 +348,24 @@ export function GitPanel(): React.JSX.Element {
         {(status?.ahead ?? 0) > 0 && <span className="git-ab">↑{status?.ahead}</span>}
         {(status?.behind ?? 0) > 0 && <span className="git-ab">↓{status?.behind}</span>}
         <span className="spacer" />
+        <button
+          className={`icon${groupByRepo ? ' active' : ''}`}
+          title={t('Group changes by repository')}
+          onClick={() => {
+            useGitStore.getState().toggleGroupByRepo()
+            persistPanel('git', { groupByRepo: useGitStore.getState().groupByRepo })
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M2.5 3.5h11M4.5 8h9M6.5 12.5h7"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              fill="none"
+            />
+          </svg>
+        </button>
         <button className="icon" title={t('Refresh')} onClick={() => void refresh(project)}>⟲</button>
         <button
           className="icon"
@@ -287,34 +386,36 @@ export function GitPanel(): React.JSX.Element {
           <>
             <div className="git-section-title">{t('staged ({count})', { count: staged.length })}</div>
             {staged.length === 0 && <div className="panel-hint">{t('nothing staged')}</div>}
-            <FileTree
-              root={stagedTree}
-              badgeOf={(e) => e.index}
-              action="−"
-              collapsed={collapsed}
-              toggleCollapsed={toggleCollapsed}
-              onOpen={(path) => {
-                useTabsStore.getState().openTab(project, { kind: 'diff', path })
-                void useGitStore.getState().openFile(project, path)
-              }}
-              onToggle={(path) => void unstage(project, [path])}
-              lang={lang}
-            />
+            {groupByRepo && stagedGroups.length > 1
+              ? renderGroups(stagedGroups, (e) => e.index, '−', 'staged', (path) => void unstage(project, [path]))
+              : (
+                <FileTree
+                  root={stagedTree}
+                  badgeOf={(e) => e.index}
+                  action="−"
+                  collapsed={collapsed}
+                  toggleCollapsed={toggleCollapsed}
+                  onOpen={openDiff}
+                  onToggle={(path) => void unstage(project, [path])}
+                  lang={lang}
+                />
+              )}
             <div className="git-section-title">{t('changes ({count})', { count: changes.length })}</div>
             {changes.length === 0 && <div className="panel-hint">{t('working tree clean')}</div>}
-            <FileTree
-              root={changesTree}
-              badgeOf={(e) => (e.untracked ? '?' : e.worktree)}
-              action="+"
-              collapsed={collapsed}
-              toggleCollapsed={toggleCollapsed}
-              onOpen={(path) => {
-                useTabsStore.getState().openTab(project, { kind: 'diff', path })
-                void useGitStore.getState().openFile(project, path)
-              }}
-              onToggle={(path) => void stage(project, [path])}
-              lang={lang}
-            />
+            {groupByRepo && changesGroups.length > 1
+              ? renderGroups(changesGroups, (e) => (e.untracked ? '?' : e.worktree), '+', 'changes', (path) => void stage(project, [path]))
+              : (
+                <FileTree
+                  root={changesTree}
+                  badgeOf={(e) => (e.untracked ? '?' : e.worktree)}
+                  action="+"
+                  collapsed={collapsed}
+                  toggleCollapsed={toggleCollapsed}
+                  onOpen={openDiff}
+                  onToggle={(path) => void stage(project, [path])}
+                  lang={lang}
+                />
+              )}
             <div className="git-commit">
               <textarea
                 value={message}

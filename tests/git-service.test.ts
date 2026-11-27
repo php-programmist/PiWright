@@ -301,7 +301,8 @@ describe('GitService with a nested repository (bug 8)', () => {
     expect(paths).toContainEqual(['spec/inner.txt', join(outer, 'spec')])
     expect(paths).toContainEqual(['spec/new.txt', join(outer, 'spec')])
     // схлопнутая untracked-запись внешнего git на вложенный репо отфильтрована
-    expect(paths?.some(([path]) => path === 'spec')).toBe(false)
+    // (путь приходит и без слэша, и с хвостовым `spec/`)
+    expect(paths?.some(([path]) => path === 'spec' || path === 'spec/')).toBe(false)
   })
 
   it('fileDiff routes to the nested repository', async () => {
@@ -326,6 +327,63 @@ describe('GitService with a nested repository (bug 8)', () => {
     expect(status.status?.entries.find((e) => e.path === 'spec/new.txt')).toBeUndefined()
     const log = execSync('git log --oneline -n 1', { cwd: join(outer, 'spec'), encoding: 'utf8' })
     expect(log).toContain('nested commit')
+  })
+
+  it('repos lists the project and the nested repository', async () => {
+    const result = await git.repos(project)
+    expect(result.ok).toBe(true)
+    expect(result.repos).toEqual([
+      { rel: '', name: outer.split(/[\\/]/).pop() },
+      { rel: 'spec', name: 'spec' }
+    ])
+  })
+
+  it('log with repo filter reads the nested repository history', async () => {
+    gitIn(join(outer, 'spec'), 'git commit -q --allow-empty -m inner-only')
+    const main = await git.log(project, 0, { all: true })
+    expect(main.entries.some((e) => e.subject === 'inner-only')).toBe(false)
+    const nested = await git.log(project, 0, { all: true, repo: 'spec' })
+    expect(nested.entries.some((e) => e.subject === 'inner-only')).toBe(true)
+  })
+
+  it('commitFiles and commitFileDiff accept the nested repository', async () => {
+    writeFileSync(join(outer, 'spec', 'inner.txt'), 'second')
+    gitIn(join(outer, 'spec'), 'git add .')
+    gitIn(join(outer, 'spec'), 'git commit -q -m inner-second')
+    const hash = execSync('git rev-parse HEAD', { cwd: join(outer, 'spec'), encoding: 'utf8' }).trim()
+    const files = await git.commitFiles(project, hash, 'spec')
+    expect(files.ok).toBe(true)
+    expect(files.files).toContainEqual({ status: 'M', path: 'inner.txt', origPath: null })
+    // Без repo коммит вложенного репо в главном не виден
+    expect((await git.commitFiles(project, hash)).ok).toBe(false)
+    const diff = await git.commitFileDiff(project, hash, 'inner.txt', 'spec')
+    expect(diff.ok).toBe(true)
+    expect(diff.original).toBe('inner')
+    expect(diff.modified).toBe('second')
+  })
+
+  it('branches and checkout accept the nested repository', async () => {
+    gitIn(join(outer, 'spec'), 'git branch feature-inner')
+    const all = await git.branches(project, true, 'spec')
+    expect(all.branches).toContain('feature-inner')
+    expect((await git.branches(project, true)).branches).not.toContain('feature-inner')
+    expect((await git.checkout(project, 'feature-inner', false, undefined, 'spec')).ok).toBe(true)
+    const head = execSync('git rev-parse --abbrev-ref HEAD', { cwd: join(outer, 'spec'), encoding: 'utf8' }).trim()
+    expect(head).toBe('feature-inner')
+    const mainHead = execSync('git rev-parse --abbrev-ref HEAD', { cwd: outer, encoding: 'utf8' }).trim()
+    expect(mainHead).not.toBe('feature-inner')
+  })
+
+  it('cherry-pick routes to the nested repository', async () => {
+    gitIn(join(outer, 'spec'), 'git checkout -q main')
+    writeFileSync(join(outer, 'spec', 'cherry.txt'), 'cherry')
+    gitIn(join(outer, 'spec'), 'git add .')
+    gitIn(join(outer, 'spec'), 'git commit -q -m cherry-me')
+    const hash = execSync('git rev-parse HEAD', { cwd: join(outer, 'spec'), encoding: 'utf8' }).trim()
+    gitIn(join(outer, 'spec'), 'git checkout -q -b cherry-target main~1')
+    expect((await git.cherryPick(project, hash, 'spec')).ok).toBe(true)
+    const log = execSync('git log --oneline -n 1', { cwd: join(outer, 'spec'), encoding: 'utf8' })
+    expect(log).toContain('cherry-me')
   })
 })
 

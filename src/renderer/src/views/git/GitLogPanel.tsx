@@ -162,6 +162,8 @@ export function GitLogPanel(): React.JSX.Element {
   const branch = useGitLogStore((s) => s.branch)
   const allBranches = useGitLogStore((s) => s.allBranches)
   const branchList = useGitLogStore((s) => s.branches)
+  const repos = useGitLogStore((s) => s.repos)
+  const repo = useGitLogStore((s) => s.repo)
   const dockOpen = useGitLogStore((s) => s.open)
   const t = useT()
   const lang = useLang()
@@ -191,7 +193,10 @@ export function GitLogPanel(): React.JSX.Element {
   }, [search, project])
 
   useEffect(() => {
-    if (project !== null && dockOpen) void useGitLogStore.getState().loadBranches(project)
+    if (project !== null && dockOpen) {
+      void useGitLogStore.getState().loadRepos(project)
+      void useGitLogStore.getState().loadBranches(project)
+    }
   }, [project, dockOpen])
 
   // Закрытие контекстного меню: клик мимо или Escape.
@@ -257,7 +262,7 @@ export function GitLogPanel(): React.JSX.Element {
 
   const openCommitDiff = (path: string): void => {
     if (project === null || selectedHash === null) return
-    useTabsStore.getState().openTab(project, { kind: 'diff', path, hash: selectedHash })
+    useTabsStore.getState().openTab(project, { kind: 'diff', path, hash: selectedHash, repo: repo.length > 0 ? repo : undefined })
   }
 
   const select = (hash: string | null): void => {
@@ -348,7 +353,10 @@ export function GitLogPanel(): React.JSX.Element {
     setMenu(null)
     setResetHash(null)
     const id = await useTerminalStore.getState().spawn(project)
-    if (id !== null) window.piwright.termInput(id, `git rebase -i ${menuEntry.hash}\n`)
+    if (id !== null) {
+      const cd = repo.length > 0 ? `cd ${JSON.stringify(repo)} && ` : ''
+      window.piwright.termInput(id, `${cd}git rebase -i ${menuEntry.hash}\n`)
+    }
   }
 
   const collapse = (): void => {
@@ -394,6 +402,22 @@ export function GitLogPanel(): React.JSX.Element {
             </button>
           )}
         </div>
+        {repos.length > 1 && (
+          <select
+            className="gitlog-repo-select"
+            value={repo}
+            title={t('Repository filter')}
+            onChange={(e) => {
+              if (project !== null) void useGitLogStore.getState().setRepo(project, e.target.value)
+            }}
+          >
+            {repos.map((r) => (
+              <option key={r.rel} value={r.rel}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           className="gitlog-branch-select"
           value={allBranches ? '*' : (branch ?? '')}
