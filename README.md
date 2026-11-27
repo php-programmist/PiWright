@@ -157,6 +157,11 @@ npm i -g piwright-server
 piwright-server --port 7691
 ```
 
+On Linux the `node-pty` dependency compiles from source: a C/C++ toolchain and Python >= 3.8 are
+required. On old distributions (e.g. Ubuntu 18.04 with system Python 3.6) the install fails
+silently — install `python3.8` and run `PYTHON=$(command -v python3.8) npx -y piwright-server`
+(details in the [package README](server/README.md)).
+
 ```sh
 npm run serve                                   # dev build required first (npm run build)
 # packaged (Windows/Linux):

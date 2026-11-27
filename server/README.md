@@ -10,6 +10,8 @@ PIN-based authentication.
 - Node.js >= 20
 - The `pi` CLI installed on the server machine (the agent binary PiWright talks to), e.g.
   `~/.local/bin/pi` on Linux/macOS.
+- Linux only: a C/C++ toolchain and Python >= 3.8 to compile `node-pty` (see
+  [Troubleshooting](#troubleshooting)). Windows and macOS use prebuilt binaries.
 
 ## Install
 
@@ -24,7 +26,7 @@ npx piwright-server
 ```
 
 On Linux the `node-pty` dependency compiles from source when no prebuilt binary matches —
-make sure build tools are available (Debian/Ubuntu: `sudo apt install build-essential`).
+make sure build tools and Python >= 3.8 are available (see [Troubleshooting](#troubleshooting)).
 
 ## Run
 
@@ -128,6 +130,22 @@ Then: `launchctl load ~/Library/LaunchAgents/com.piwright.server.plist`
   localhost; changing the PIN revokes existing browser sessions.
 - Without TLS the PIN and traffic travel in plaintext — use `--tls-cert/--tls-key` or a reverse
   proxy for anything beyond localhost.
+
+## Troubleshooting
+
+**`npx piwright-server` (or `npm install -g piwright-server`) exits silently on Linux.**
+Compiling `node-pty` needs Python >= 3.8 (the node-gyp bundled with npm 10+). Distributions with
+an older system Python (e.g. Ubuntu 18.04 ships 3.6) fail the build, and npx exits with code 1
+without printing anything. Fix — install Python 3.8 and point node-gyp at it for the install run:
+
+```sh
+sudo apt install python3.8        # Ubuntu 18.04; newer distros already ship >= 3.8
+PYTHON=$(command -v python3.8) npx -y piwright-server
+```
+
+The compiled binary is cached by npm, so subsequent runs don't need `PYTHON` until the package
+is (re)installed. Also make sure a C/C++ toolchain is present (Debian/Ubuntu:
+`sudo apt install build-essential`).
 
 ## License
 
