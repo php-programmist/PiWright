@@ -257,7 +257,14 @@ const RU: Record<string, string> = {
   'Show schema in the tree': 'Показывать схему в дереве',
   'Open table data': 'Открыть данные таблицы',
   'Tables': 'Таблицы',
-  'Table data will appear here': 'Данные таблицы появятся здесь',
+  'no rows': 'нет строк',
+  'rows {shown} of {total}': 'строки {shown} из {total}',
+  'rows ≥ {count}': 'строк ≥ {count}',
+  'Page size': 'Размер страницы',
+  'Clear filters': 'Сбросить фильтры',
+  'Filter': 'Фильтр',
+  'Previous page': 'Предыдущая страница',
+  'Next page': 'Следующая страница',
 
   // Файлы
   'Refresh tree': 'Обновить дерево',
