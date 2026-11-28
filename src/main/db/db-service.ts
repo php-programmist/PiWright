@@ -8,9 +8,13 @@ import { createConnection, type Connection as MysqlConnection, type ConnectionOp
 import type {
   DbColumn,
   DbConnectionEntry,
+  DbPendingChange,
   DbQueryResult,
   DbSchemasResult,
   DbSecretInput,
+  DbSubmitInput,
+  DbSubmitPreviewResult,
+  DbSubmitResult,
   DbTableDataInput,
   DbTableDataResult,
   DbTableFilter,
@@ -81,6 +85,10 @@ export interface DbDriver {
   listSchemas(): Promise<string[]>
   listTables(schema: string): Promise<string[]>
   describeTable(schema: string, table: string): Promise<DbColumn[]>
+  /** Колонки первичного ключа (по порядку); пусто — ключа нет. */
+  primaryKeys(schema: string, table: string): Promise<string[]>
+  /** Выполнить стейтменты одной транзакцией (BEGIN…COMMIT, при ошибке ROLLBACK). */
+  executeTransaction(statements: string[]): Promise<number>
   selectRows(schema: string, table: string, opts: { limit: number; offset: number; orderBy: DbTableOrder | null; filters: DbTableFilter[] }): Promise<{
     columns: DbColumn[]
     rows: unknown[][]
@@ -126,6 +134,43 @@ export function buildSelectSql(opts: {
 
 function rowsToArrays(rows: Record<string, unknown>[], columns: string[]): unknown[][] {
   return rows.map((row) => columns.map((column) => row[column] ?? null))
+}
+
+/** Литерал SQL из значения правки: null → NULL, числа как есть, строки в кавычках
+ *  (для MySQL удваивается ещё и обратный слэш — дефолтный sql_mode без NO_BACKSLASH_ESCAPES). */
+export function sqlLiteral(value: string | null, kind: DbConnectionEntry['kind']): string {
+  if (value === null) return 'NULL'
+  if (typeof value === 'number') return String(value)
+  const escaped = value.replace(/'/g, "''")
+  return `'${kind === 'mysql' ? escaped.replace(/\\/g, '\\\\') : escaped}'`
+}
+
+/** SQL-стейтменты буфера правок (в порядке изменений): UPDATE по PK, INSERT, DELETE по PK.
+ *  Идентификаторы квотируются quote-функцией драйвера, значения — sqlLiteral. */
+export function buildChangeStatements(opts: {
+  kind: DbConnectionEntry['kind']
+  quote: (name: string) => string
+  schema: string
+  table: string
+  primaryKeys: string[]
+  changes: DbPendingChange[]
+}): string[] {
+  const target = `${opts.quote(opts.schema)}.${opts.quote(opts.table)}`
+  const whereKeys = (keys: Record<string, string | null>): string =>
+    opts.primaryKeys
+      .map((pk) => `${opts.quote(pk)} = ${sqlLiteral(keys[pk] ?? null, opts.kind)}`)
+      .join(' AND ')
+  return opts.changes.map((change) => {
+    if (change.kind === 'delete') return `DELETE FROM ${target} WHERE ${whereKeys(change.keys)}`
+    const entries = Object.entries(change.values)
+    if (change.kind === 'insert') {
+      const columns = entries.map(([column]) => opts.quote(column)).join(', ')
+      const values = entries.map(([, value]) => sqlLiteral(value, opts.kind)).join(', ')
+      return `INSERT INTO ${target} (${columns}) VALUES (${values})`
+    }
+    const sets = entries.map(([column, value]) => `${opts.quote(column)} = ${sqlLiteral(value, opts.kind)}`)
+    return `UPDATE ${target} SET ${sets.join(', ')} WHERE ${whereKeys(change.keys)}`
+  })
 }
 
 /** Серверная ошибка SQL (pg — 5-значный code вроде 42601, mysql2 — число errno + sqlState):
@@ -192,6 +237,38 @@ export class PgDriver implements DbDriver {
       [schema, table]
     )
     return result.rows.map((row) => ({ name: row.name, type: row.type }))
+  }
+
+  async primaryKeys(schema: string, table: string): Promise<string[]> {
+    const result = await this.pool.query<{ name: string }>(
+      `SELECT kcu.column_name AS name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+       WHERE tc.table_schema = $1 AND tc.table_name = $2 AND tc.constraint_type = 'PRIMARY KEY'
+       ORDER BY kcu.ordinal_position`,
+      [schema, table]
+    )
+    return result.rows.map((row) => row.name)
+  }
+
+  async executeTransaction(statements: string[]): Promise<number> {
+    const client = await this.pool.connect()
+    let affected = 0
+    try {
+      await client.query('BEGIN')
+      for (const sql of statements) {
+        const result = await client.query(sql)
+        affected += result.rowCount ?? 0
+      }
+      await client.query('COMMIT')
+      return affected
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw err
+    } finally {
+      client.release()
+    }
   }
 
   async selectRows(schema: string, table: string, opts: { limit: number; offset: number; orderBy: DbTableOrder | null; filters: DbTableFilter[] }): Promise<{
@@ -307,6 +384,42 @@ export class MysqlDriver implements DbDriver {
       return (rows as Record<string, unknown>[]).map((row) => ({ name: String(row['name']), type: String(row['type']) }))
     } catch (err) {
       this.drop(conn)
+      throw err
+    }
+  }
+
+  async primaryKeys(schema: string, table: string): Promise<string[]> {
+    const conn = await this.conn()
+    try {
+      const [rows] = await conn.query(
+        `SELECT kcu.column_name AS name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         WHERE tc.table_schema = ? AND tc.table_name = ? AND tc.constraint_type = 'PRIMARY KEY'
+         ORDER BY kcu.ordinal_position`,
+        [schema, table]
+      )
+      return (rows as Record<string, unknown>[]).map((row) => String(row['name']))
+    } catch (err) {
+      this.drop(conn)
+      throw err
+    }
+  }
+
+  async executeTransaction(statements: string[]): Promise<number> {
+    const conn = await this.conn()
+    let affected = 0
+    try {
+      await conn.query('START TRANSACTION')
+      for (const sql of statements) {
+        const [result] = await conn.query(sql)
+        affected += (result as { affectedRows?: number }).affectedRows ?? 0
+      }
+      await conn.query('COMMIT')
+      return affected
+    } catch (err) {
+      await conn.query('ROLLBACK').catch(() => {})
       throw err
     }
   }
@@ -490,16 +603,50 @@ export class DbService {
   async tableData(input: DbTableDataInput): Promise<DbTableDataResult> {
     try {
       const driver = await this.driverFor(this.entry(input.connectionId), null)
-      const result = await driver.selectRows(input.schema, input.table, {
-        limit: input.limit,
-        offset: input.offset,
-        orderBy: input.orderBy ?? null,
-        filters: input.filters ?? []
-      })
-      return { ok: true, error: null, columns: result.columns, rows: result.rows, total: result.total }
+      const [result, primaryKeys] = await Promise.all([
+        driver.selectRows(input.schema, input.table, {
+          limit: input.limit,
+          offset: input.offset,
+          orderBy: input.orderBy ?? null,
+          filters: input.filters ?? []
+        }),
+        driver.primaryKeys(input.schema, input.table).catch(() => [])
+      ])
+      return { ok: true, error: null, columns: result.columns, rows: result.rows, total: result.total, primaryKeys }
     } catch (err) {
       if (!isServerSideError(err)) this.evictDriver(input.connectionId)
-      return { ok: false, error: errorMessage(err), columns: [], rows: [], total: null }
+      return { ok: false, error: errorMessage(err), columns: [], rows: [], total: null, primaryKeys: [] }
+    }
+  }
+
+  /** Превью SQL буфера правок: без соединения, квотирование по kind подключения. */
+  submitPreview(input: DbSubmitInput): DbSubmitPreviewResult {
+    try {
+      const kind = this.entry(input.connectionId).kind
+      if (input.primaryKeys.length === 0) return { ok: false, error: 'Table has no primary key', statements: [] }
+      const quote = kind === 'mysql' ? quoteMysqlIdentifier : quotePgIdentifier
+      return { ok: true, error: null, statements: buildChangeStatements({ kind, quote, schema: input.schema, table: input.table, primaryKeys: input.primaryKeys, changes: input.changes }) }
+    } catch (err) {
+      return { ok: false, error: errorMessage(err), statements: [] }
+    }
+  }
+
+  async submit(input: DbSubmitInput): Promise<DbSubmitResult> {
+    try {
+      if (input.primaryKeys.length === 0) return { ok: false, error: 'Table has no primary key', rowsAffected: null }
+      const driver = await this.driverFor(this.entry(input.connectionId), null)
+      const statements = buildChangeStatements({
+        kind: driver.kind,
+        quote: driver.kind === 'mysql' ? quoteMysqlIdentifier : quotePgIdentifier,
+        schema: input.schema,
+        table: input.table,
+        primaryKeys: input.primaryKeys,
+        changes: input.changes
+      })
+      return { ok: true, error: null, rowsAffected: await driver.executeTransaction(statements) }
+    } catch (err) {
+      if (!isServerSideError(err)) this.evictDriver(input.connectionId)
+      return { ok: false, error: errorMessage(err), rowsAffected: null }
     }
   }
 

@@ -147,6 +147,8 @@ export interface Settings {
   projects: ProjectEntry[]
   /** Подключения БД на проект (ключ projectKey; секреты — в db-secrets.json). */
   projectDbConnections: Record<string, DbConnectionEntry[]>
+  /** Превью SQL перед применением правок таблицы БД (зелёная стрелка). */
+  dbSqlPreview: boolean
 }
 
 /** Зелёная точка на задаче после закрытия сессии: sessions — pi session id с непрочитанным
@@ -825,6 +827,37 @@ export interface DbTableDataResult {
   rows: unknown[][]
   /** count(*) с таймаутом; null — не успели посчитать (UI показывает «≥ N»). */
   total: number | null
+  /** Колонки первичного ключа; пусто — таблица read-only (редактирование запрещено). */
+  primaryKeys: string[]
+}
+
+/** Одна правка буфера таблицы: значения — строки из UI (null = NULL). */
+export interface DbPendingChange {
+  kind: 'insert' | 'update' | 'delete'
+  /** Значения PK-колонок строки (для update/delete). */
+  keys: Record<string, string | null>
+  /** Новые значения колонок (update — изменённые, insert — все заданные). */
+  values: Record<string, string | null>
+}
+
+export interface DbSubmitInput {
+  connectionId: string
+  schema: string
+  table: string
+  primaryKeys: string[]
+  changes: DbPendingChange[]
+}
+
+export interface DbSubmitPreviewResult {
+  ok: boolean
+  error: string | null
+  statements: string[]
+}
+
+export interface DbSubmitResult {
+  ok: boolean
+  error: string | null
+  rowsAffected: number | null
 }
 
 export interface DbQueryResult {
@@ -1129,6 +1162,10 @@ export interface PiWrightApi {
   dbSchemas(connectionId: string): Promise<DbSchemasResult>
   dbTables(connectionId: string, schema: string): Promise<DbTablesResult>
   dbTableData(input: DbTableDataInput): Promise<DbTableDataResult>
+  /** Превью SQL для буфера правок таблицы (без выполнения). */
+  dbSubmitPreview(input: DbSubmitInput): Promise<DbSubmitPreviewResult>
+  /** Применить буфер правок таблицы одной транзакцией. */
+  dbSubmit(input: DbSubmitInput): Promise<DbSubmitResult>
   /** SQL в консоли запросов; SELECT возвращает грид, прочее — rowsAffected. */
   dbQuery(connectionId: string, sql: string): Promise<DbQueryResult>
   /** Закрыть пул соединений подключения (после правки конфига или вручную). */
@@ -1372,6 +1409,8 @@ export const DB_CONNECTION_TEST_CHANNEL = 'db:connection-test'
 export const DB_SCHEMAS_CHANNEL = 'db:schemas'
 export const DB_TABLES_CHANNEL = 'db:tables'
 export const DB_TABLE_DATA_CHANNEL = 'db:table-data'
+export const DB_SUBMIT_PREVIEW_CHANNEL = 'db:submit-preview'
+export const DB_SUBMIT_CHANNEL = 'db:submit'
 export const DB_QUERY_CHANNEL = 'db:query'
 export const DB_DISCONNECT_CHANNEL = 'db:disconnect'
 export const PROJECTS_REVEAL_CHANNEL = 'projects:reveal'

@@ -144,6 +144,8 @@ import {
   DB_SCHEMAS_CHANNEL,
   DB_TABLES_CHANNEL,
   DB_TABLE_DATA_CHANNEL,
+  DB_SUBMIT_PREVIEW_CHANNEL,
+  DB_SUBMIT_CHANNEL,
   DB_QUERY_CHANNEL,
   DB_DISCONNECT_CHANNEL,
   SSH_LIST_DIR_CHANNEL,
@@ -196,7 +198,7 @@ import { chooseAttachment, putAttachment } from '../attachments/attachments'
 import { getSshService } from '../ssh/ssh-service'
 import { SshProjectFs } from '../fs/project-fs'
 import type { SshSecretInput, SshSecretStatus, SshServerEntry, SshListDirResult, SshOpResult, SshTestResult } from '../../shared/ipc-contracts'
-import type { DbConnectionsResult, DbConnectionEntry, DbOpResult, DbQueryResult, DbSchemasResult, DbSecretInput, DbTablesResult, DbTableDataInput, DbTableDataResult, DbTestResult } from '../../shared/ipc-contracts'
+import type { DbConnectionsResult, DbConnectionEntry, DbOpResult, DbPendingChange, DbQueryResult, DbSchemasResult, DbSecretInput, DbSubmitInput, DbSubmitPreviewResult, DbSubmitResult, DbTablesResult, DbTableDataInput, DbTableDataResult, DbTestResult } from '../../shared/ipc-contracts'
 import type { DbService } from '../db/db-service'
 import { chooseSoundFile, readSoundFile, saveSoundFile } from '../sounds/sounds'
 import { sendTestTelegram } from '../notifications/telegram'
@@ -320,6 +322,30 @@ function isDbTableDataInput(value: unknown): value is DbTableDataInput {
       if (typeof f['column'] !== 'string' || f['column'].length === 0 || typeof f['value'] !== 'string') return false
     }
   }
+  return true
+}
+
+function isDbPendingChange(value: unknown): value is DbPendingChange {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  if (raw['kind'] !== 'insert' && raw['kind'] !== 'update' && raw['kind'] !== 'delete') return false
+  for (const field of ['keys', 'values'] as const) {
+    if (raw[field] === null || typeof raw[field] !== 'object' || Array.isArray(raw[field])) return false
+    for (const v of Object.values(raw[field] as Record<string, unknown>)) {
+      if (v !== null && typeof v !== 'string') return false
+    }
+  }
+  return true
+}
+
+function isDbSubmitInput(value: unknown): value is DbSubmitInput {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const raw = value as Record<string, unknown>
+  if (typeof raw['connectionId'] !== 'string' || raw['connectionId'].length === 0) return false
+  if (typeof raw['schema'] !== 'string' || raw['schema'].length === 0) return false
+  if (typeof raw['table'] !== 'string' || raw['table'].length === 0) return false
+  if (!Array.isArray(raw['primaryKeys']) || !raw['primaryKeys'].every((k) => typeof k === 'string' && k.length > 0)) return false
+  if (!Array.isArray(raw['changes']) || !raw['changes'].every(isDbPendingChange)) return false
   return true
 }
 
@@ -509,6 +535,9 @@ export function registerIpc(
       }
       if (typeof raw['backgroundSessions'] === 'boolean') {
         safe.backgroundSessions = raw['backgroundSessions']
+      }
+      if (typeof raw['dbSqlPreview'] === 'boolean') {
+        safe.dbSqlPreview = raw['dbSqlPreview']
       }
       if (typeof raw['kanbanTheme'] === 'string' && raw['kanbanTheme'].trim().length > 0) {
         safe.kanbanTheme = raw['kanbanTheme'].trim().slice(0, 32)
@@ -726,9 +755,21 @@ export function registerIpc(
 
   router.handle(DB_TABLE_DATA_CHANNEL, (input: unknown): Promise<DbTableDataResult> => {
     if (!isDbTableDataInput(input)) {
-      return Promise.resolve({ ok: false, error: 'Invalid request', columns: [], rows: [], total: null })
+      return Promise.resolve({ ok: false, error: 'Invalid request', columns: [], rows: [], total: null, primaryKeys: [] })
     }
     return db.tableData(input)
+  })
+
+  router.handle(DB_SUBMIT_PREVIEW_CHANNEL, (input: unknown): DbSubmitPreviewResult => {
+    if (!isDbSubmitInput(input)) return { ok: false, error: 'Invalid request', statements: [] }
+    return db.submitPreview(input)
+  })
+
+  router.handle(DB_SUBMIT_CHANNEL, (input: unknown): Promise<DbSubmitResult> => {
+    if (!isDbSubmitInput(input) || input.changes.length === 0) {
+      return Promise.resolve({ ok: false, error: 'Invalid request', rowsAffected: null })
+    }
+    return db.submit(input)
   })
 
   router.handle(DB_QUERY_CHANNEL, (connectionId: unknown, sql: unknown): Promise<DbQueryResult> => {

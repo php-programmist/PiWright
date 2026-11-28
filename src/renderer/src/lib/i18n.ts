@@ -280,6 +280,15 @@ const RU: Record<string, string> = {
   'Filter': 'Фильтр',
   'Previous page': 'Предыдущая страница',
   'Next page': 'Следующая страница',
+  'Add row': 'Добавить строку',
+  'Apply changes': 'Применить изменения',
+  'Revert pending changes': 'Отменить правки',
+  'Set NULL': 'Установить NULL',
+  'Delete row': 'Удалить строку',
+  'Drop row': 'Убрать строку',
+  'Restore row': 'Восстановить строку',
+  'Pending SQL': 'SQL изменений',
+  'Execute': 'Выполнить',
 
   // Файлы
   'Refresh tree': 'Обновить дерево',
@@ -422,6 +431,9 @@ const RU: Record<string, string> = {
   'Session not found': 'Сессия не найдена',
   'Agent': 'Агент',
   'You': 'Вы',
+  'Show SQL preview before applying table changes': 'Показывать превью SQL перед применением изменений таблицы',
+  'When enabled, the green arrow button opens a preview of the generated INSERT/UPDATE/DELETE statements before they run':
+    'Когда включено, зелёная стрелка показывает сгенерированные INSERT/UPDATE/DELETE до выполнения; когда выключено — изменения применяются сразу',
   'Enable kanban boards (agent tools and the boards panel)':
     'Включить канбан-доски (инструменты агента и панель досок)',
   'The extension adds kanban board tools to the agent: pick up a task, create and move cards, leave a comment with links to the session and commits. Boards are stored in .pi/kanban at the root of the main repository (worktree sessions see a single board) and are committed together with the code; attachments go to .pi/kanban/attachments (not committed to git).':

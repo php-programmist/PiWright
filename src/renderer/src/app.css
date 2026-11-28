@@ -3650,6 +3650,111 @@ pre.code-block {
   opacity: 0.6;
 }
 
+/* Редактирование таблиц БД: буфер правок (pending), вставленные/удалённые строки, превью SQL */
+.db-grid tbody td:not(.db-grid-empty) {
+  cursor: default;
+}
+
+.db-grid td .db-cell-text {
+  display: inline-block;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.db-grid td.db-cell-pending {
+  background: var(--warn-bg, rgba(255, 193, 7, 0.15));
+}
+
+.db-grid td .db-cell-input {
+  width: 100%;
+  min-width: 60px;
+  font-size: 12px;
+  padding: 0 2px;
+  border: 1px solid var(--accent, #4a9eff);
+  background: var(--panel-bg);
+  color: var(--fg);
+  outline: none;
+}
+
+.db-grid tr.db-row-deleted td {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.db-grid tr.db-row-insert td {
+  background: var(--ok-bg, rgba(76, 175, 80, 0.1));
+}
+
+.db-submit-btn {
+  color: #4caf50;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.db-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.db-preview-box {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 8px;
+}
+
+.db-preview-head {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.db-preview-sql {
+  margin: 0;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--hover);
+  padding: 8px;
+  border-radius: 4px;
+  user-select: text;
+}
+
+.db-preview-statement {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.db-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.db-preview-run {
+  color: #fff;
+  background: #4caf50;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 14px;
+}
+
+
 .db-console-tab {
   display: flex;
   flex-direction: column;

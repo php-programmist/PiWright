@@ -43,6 +43,7 @@ export const DEFAULT_SETTINGS: Settings = {
   loopCloseSession: false,
   kanbanEnabled: false,
   backgroundSessions: false,
+  dbSqlPreview: true,
   kanbanTheme: KANBAN_DEFAULT_THEME_ID,
   language: 'en',
   panels: {},

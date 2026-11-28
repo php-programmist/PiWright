@@ -3,12 +3,17 @@
  *  Схемы и таблицы грузятся лениво при раскрытии узла; выбор схем (чекбоксы) персистится
  *  в DbConnectionEntry.selectedSchemas. */
 import { create } from 'zustand'
-import type { DbConnectionEntry } from '../../../shared/ipc-contracts'
+import type { DbConnectionEntry, DbPendingChange } from '../../../shared/ipc-contracts'
 import { useSessionsStore } from './sessions'
 
 /** Ключ списков таблиц: схемы живут в пространстве имён подключения. */
 export function dbTablesKey(connectionId: string, schema: string): string {
   return `${connectionId}\u0000${schema}`
+}
+
+/** Ключ буфера правок таблицы. */
+export function dbTableKey(connectionId: string, schema: string, table: string): string {
+  return `${connectionId}\u0000${schema}\u0000${table}`
 }
 
 interface DbState {
@@ -34,6 +39,10 @@ interface DbState {
   /** История запросов консоли per connectionId (в памяти, не персистится, новые сверху). */
   queryHistory: Record<string, string[]>
   pushQueryHistory: (connectionId: string, sql: string) => void
+  /** Буфер правок таблицы (ключ dbTableKey) — копится до зелёной стрелки, не персистится. */
+  pendingByTable: Record<string, DbPendingChange[]>
+  dbPendingSet: (key: string, changes: DbPendingChange[]) => void
+  dbPendingClear: (key: string) => void
   /** Кнопка «+» панели БД просит открыть форму нового подключения во вкладке db-settings. */
   addEditorPending: boolean
   requestAddEditor: () => void
@@ -95,6 +104,22 @@ export const useDbStore = create<DbState>((set, get) => ({
       queryHistory: { ...state.queryHistory, [connectionId]: [sql, ...state.queryHistory[connectionId]?.filter((q) => q !== sql) ?? []].slice(0, 50) }
     }))
   },
+
+  pendingByTable: {},
+  dbPendingSet: (key, changes) =>
+    set((state) => {
+      const pendingByTable = { ...state.pendingByTable }
+      if (changes.length === 0) delete pendingByTable[key]
+      else pendingByTable[key] = changes
+      return { pendingByTable }
+    }),
+  dbPendingClear: (key) =>
+    set((state) => {
+      if (state.pendingByTable[key] === undefined) return state
+      const pendingByTable = { ...state.pendingByTable }
+      delete pendingByTable[key]
+      return { pendingByTable }
+    }),
 
   addEditorPending: false,
   requestAddEditor: () => set({ addEditorPending: true }),

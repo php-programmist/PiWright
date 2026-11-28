@@ -9,7 +9,7 @@ import { createServer, connect as netConnect, type Server as NetServer, type Soc
 import { Duplex } from 'node:stream'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DbSecretsService } from '../src/main/db/db-secrets'
-import { buildSelectSql, DbService, PgDriver, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
+import { buildChangeStatements, buildSelectSql, DbService, PgDriver, quoteMysqlIdentifier, quotePgIdentifier, type DbDriver, type DbDriverFactory } from '../src/main/db/db-service'
 import { DEFAULT_SETTINGS } from '../src/main/settings/settings'
 import type { SshService } from '../src/main/ssh/ssh-service'
 import type { SshSecret } from '../src/main/ssh/secrets'
@@ -56,6 +56,8 @@ function makeFakeFactory(state: FakeDriverState): DbDriverFactory {
       listSchemas: async () => ['public'],
       listTables: async () => ['users'],
       describeTable: async () => [{ name: 'id', type: 'integer' }],
+      primaryKeys: async () => ['id'],
+      executeTransaction: async () => 0,
       selectRows: async () => ({ columns: [{ name: 'id', type: null }], rows: [[1]], total: 1 }),
       query: async () => ({ columns: [], rows: [], rowsAffected: 1, isSelect: false }),
       close: async () => {
@@ -202,6 +204,8 @@ describe('DbService (fake drivers)', () => {
           return ['users']
         },
         describeTable: async () => [],
+        primaryKeys: async () => [],
+        executeTransaction: async () => 0,
         selectRows: async () => ({ columns: [], rows: [], total: null }),
         query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
         close: async () => {
@@ -235,6 +239,8 @@ describe('DbService (fake drivers)', () => {
           throw Object.assign(new Error('syntax error'), { code: '42601' })
         },
         describeTable: async () => [],
+        primaryKeys: async () => [],
+        executeTransaction: async () => 0,
         selectRows: async () => ({ columns: [], rows: [], total: null }),
         query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
         close: async () => {
@@ -263,6 +269,8 @@ describe('DbService (fake drivers)', () => {
         listSchemas: async () => ['shop'],
         listTables: async () => ['items'],
         describeTable: async () => [],
+        primaryKeys: async () => [],
+        executeTransaction: async () => 0,
         selectRows: async () => ({ columns: [], rows: [], total: null }),
         query: async () => {
           if (mode === 'server') throw Object.assign(new Error('no such table'), { errno: 1146, sqlState: '42S02' })
@@ -355,6 +363,95 @@ describe('SQL builders', () => {
     expect(built.sql).toBe('SELECT * FROM `shop`.`items` ORDER BY `id` ASC LIMIT 10 OFFSET 0')
     expect(built.params).toEqual([])
     expect(built.countSql).toBe('SELECT count(*) AS total FROM `shop`.`items`')
+  })
+
+  it('change statements: update by pk, insert, delete by pk (pg literals)', () => {
+    const statements = buildChangeStatements({
+      kind: 'postgres',
+      quote: quotePgIdentifier,
+      schema: 'public',
+      table: 'users',
+      primaryKeys: ['id'],
+      changes: [
+        { kind: 'update', keys: { id: '1' }, values: { name: "O'Brien", age: '30' } },
+        { kind: 'insert', keys: {}, values: { id: '2', name: null } },
+        { kind: 'delete', keys: { id: '3' }, values: {} }
+      ]
+    })
+    expect(statements).toEqual([
+      `UPDATE "public"."users" SET "name" = 'O''Brien', "age" = '30' WHERE "id" = '1'`,
+      'INSERT INTO "public"."users" ("id", "name") VALUES (\'2\', NULL)',
+      'DELETE FROM "public"."users" WHERE "id" = \'3\''
+    ])
+  })
+
+  it('change statements: mysql doubles backslashes in literals, composite pk where', () => {
+    const statements = buildChangeStatements({
+      kind: 'mysql',
+      quote: quoteMysqlIdentifier,
+      schema: 'shop',
+      table: 'items',
+      primaryKeys: ['a', 'b'],
+      changes: [{ kind: 'update', keys: { a: '1', b: 'x\\y' }, values: { c: "it's" } }]
+    })
+    expect(statements).toEqual(["UPDATE `shop`.`items` SET `c` = 'it''s' WHERE `a` = '1' AND `b` = 'x\\\\y'"])
+  })
+
+  it('submit runs changes in one transaction; no pk rejected', async () => {
+    const executed: string[][] = []
+    const factory: DbDriverFactory = async () => ({
+      kind: 'postgres',
+      version: async () => 'v',
+      listSchemas: async () => ['public'],
+      listTables: async () => ['users'],
+      describeTable: async () => [],
+      primaryKeys: async () => ['id'],
+      executeTransaction: async (statements) => {
+        executed.push(statements)
+        return statements.length
+      },
+      selectRows: async () => ({ columns: [{ name: 'id', type: null }], rows: [[1]], total: 1 }),
+      query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
+      close: async () => {}
+    })
+    const { db } = makeService([pgEntry], factory)
+    const input = {
+      connectionId: 'pg1',
+      schema: 'public',
+      table: 'users',
+      primaryKeys: ['id'],
+      changes: [{ kind: 'update' as const, keys: { id: '1' }, values: { name: 'x' } }]
+    }
+    const result = await db.submit(input)
+    expect(result.ok).toBe(true)
+    expect(result.rowsAffected).toBe(1)
+    expect(executed).toEqual([['UPDATE "public"."users" SET "name" = \'x\' WHERE "id" = \'1\'']])
+    const noPk = await db.submit({ ...input, primaryKeys: [] })
+    expect(noPk.ok).toBe(false)
+    expect(executed.length).toBe(1)
+    const preview = db.submitPreview(input)
+    expect(preview.ok).toBe(true)
+    expect(preview.statements).toEqual(['UPDATE "public"."users" SET "name" = \'x\' WHERE "id" = \'1\''])
+    expect(db.submitPreview({ ...input, primaryKeys: [] }).ok).toBe(false)
+  })
+
+  it('tableData returns primaryKeys from driver', async () => {
+    const factory: DbDriverFactory = async () => ({
+      kind: 'postgres',
+      version: async () => 'v',
+      listSchemas: async () => ['public'],
+      listTables: async () => ['users'],
+      describeTable: async () => [],
+      primaryKeys: async () => ['id'],
+      executeTransaction: async () => 0,
+      selectRows: async () => ({ columns: [{ name: 'id', type: null }], rows: [[1]], total: 1 }),
+      query: async () => ({ columns: [], rows: [], rowsAffected: null, isSelect: false }),
+      close: async () => {}
+    })
+    const { db } = makeService([pgEntry], factory)
+    const result = await db.tableData({ connectionId: 'pg1', schema: 'public', table: 'users', limit: 10, offset: 0 })
+    expect(result.ok).toBe(true)
+    expect(result.primaryKeys).toEqual(['id'])
   })
 })
 

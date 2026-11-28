@@ -16,6 +16,7 @@ const baseSettings: Settings = {
   piPathWsl: '',
   piExtraArgs: '',
   updateUrl: '',
+  dbSqlPreview: true,
   selectorPlacement: 'top',
   theme: 'dark',
   chatFontSize: 14,

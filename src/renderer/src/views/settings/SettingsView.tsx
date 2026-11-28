@@ -290,6 +290,20 @@ function SettingsForm({ settings, onClose }: { settings: Settings; onClose: () =
           )}
           {tab === 'advanced' && (
             <section className="settings-section">
+              <h3>{t('Database')}</h3>
+              <label className="settings-check">
+                <input
+                  type="checkbox"
+                  checked={draft.dbSqlPreview}
+                  onChange={(e) => update({ dbSqlPreview: e.target.checked })}
+                />
+                {t('Show SQL preview before applying table changes')}
+                <Hint text={t('When enabled, the green arrow button opens a preview of the generated INSERT/UPDATE/DELETE statements before they run')} />
+              </label>
+            </section>
+          )}
+          {tab === 'advanced' && (
+            <section className="settings-section">
               <h3>{t('Background sessions')}</h3>
               <label className="settings-check">
                 <input
